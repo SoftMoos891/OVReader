@@ -23,6 +23,8 @@ from pathlib import Path
 
 import requests
 
+from .concession_mapping import classify_operator, UNKNOWN
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 GTFS_ZIP_URL = "https://gtfs.ovapi.nl/nl/gtfs-nl.zip"
 GTFS_ZIP_PATH = DATA_DIR / "gtfs-nl.zip"
@@ -140,6 +142,21 @@ def main():
 
     line_names = sorted({r["short_name"] for r in routes.values()}, key=lambda s: (len(s), s))
     log(f"Lijnnummers ({len(line_names)}): {', '.join(line_names)}")
+
+    for r in routes.values():
+        r["operator"] = classify_operator(r["short_name"], r["long_name"])
+    operator_counts = {}
+    unknown_lines = []
+    for r in routes.values():
+        operator_counts[r["operator"]] = operator_counts.get(r["operator"], 0) + 1
+        if r["operator"] == UNKNOWN:
+            unknown_lines.append(f"{r['short_name']} ({r['long_name']})")
+    log(f"Verdeling Keolis/Transdev: {operator_counts}")
+    if unknown_lines:
+        log(
+            "WAARSCHUWING: onherkende lijn(en), niet toegewezen aan Keolis of "
+            "Transdev -- voeg toe aan app/concession_mapping.py: " + "; ".join(unknown_lines)
+        )
 
     OUT_STOPS.write_text(json.dumps(stop_info, ensure_ascii=False), encoding="utf-8")
     OUT_ROUTES.write_text(json.dumps(routes, ensure_ascii=False), encoding="utf-8")

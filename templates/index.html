@@ -124,7 +124,7 @@ async function refreshVehicles() {
     const key = v.ident;
     seen.add(key);
     const color = delayColor(v.delay_seconds);
-    const html = `<b>Lijn ${v.route_short_name}</b> (${v.agency_name})<br>` +
+    const html = `<b>Lijn ${v.route_short_name}</b> (U-OV, ${v.operator})<br>` +
                  `Vertraging: ${delayText(v.delay_seconds)}<br>` +
                  `Rit ${v.vehicle_id || v.trip_id}`;
     if (markers[key]) {
@@ -181,12 +181,12 @@ async function refreshStats() {
   const data = await res.json();
 
   const ag = document.getElementById('agency-stats');
-  if (data.per_agency.length === 0) {
+  if (data.per_operator.length === 0) {
     ag.innerHTML = '<div class="empty">Nog geen data verzameld</div>';
   } else {
     ag.innerHTML = '<table><tr><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th></tr>' +
-      data.per_agency.map(a => `<tr>
-        <td>${a.agency_name}</td>
+      data.per_operator.map(a => `<tr>
+        <td>${a.operator}</td>
         <td><span class="pill ${pillClass(a.on_time_pct)}">${a.on_time_pct}%</span></td>
         <td>${Math.round(a.avg_delay_seconds)}s</td>
       </tr>`).join('') + '</table>';
@@ -199,7 +199,7 @@ async function refreshStats() {
     rt.innerHTML = '<table><tr><th>Lijn</th><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th><th>Max vertr.</th><th>Metingen</th></tr>' +
       data.per_route.map(r => `<tr>
         <td>${r.short_name}</td>
-        <td>${r.agency_name}</td>
+        <td>${r.operator}</td>
         <td><span class="pill ${pillClass(r.on_time_pct)}">${r.on_time_pct}%</span></td>
         <td>${Math.round(r.avg_delay_seconds)}s</td>
         <td>${Math.round(r.max_delay_seconds/60)} min</td>

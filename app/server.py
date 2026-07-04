@@ -54,6 +54,7 @@ def route_meta(route_id):
         "short_name": r.get("short_name", "?"),
         "long_name": r.get("long_name", ""),
         "agency_name": r.get("agency_name", "?"),
+        "operator": r.get("operator", "Onbekend"),
     }
 
 
@@ -65,11 +66,15 @@ def index():
 @app.route("/api/meta")
 def api_meta():
     agencies = sorted({r["agency_name"] for r in _index.routes.values()})
+    operators = sorted({r.get("operator", "Onbekend") for r in _index.routes.values()})
     routes = [
         {"route_id": rid, **route_meta(rid)}
         for rid in _index.routes
     ]
-    return jsonify({"agencies": agencies, "routes": routes, "route_count": len(routes)})
+    return jsonify({
+        "agencies": agencies, "operators": operators,
+        "routes": routes, "route_count": len(routes),
+    })
 
 
 @app.route("/api/vehicles")
@@ -133,6 +138,7 @@ def api_vehicles():
             "route_id": r["route_id"],
             "route_short_name": meta["short_name"],
             "agency_name": meta["agency_name"],
+            "operator": meta["operator"],
             "lat": r["lat"],
             "lon": r["lon"],
             "bearing": r["bearing"],
@@ -202,6 +208,10 @@ def api_stats():
     by_route = {}
     for r in list(raw) + list(rolled):
         rid = r["route_id"]
+        if not _index.is_relevant_route(rid):
+            # Historische rijen van lijnen die niet meer in de huidige index
+            # zitten (bv. na een scope-wijziging of dienstregelingswijziging).
+            continue
         entry = by_route.setdefault(rid, {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0, "max_delay": 0})
         entry["sample_count"] += r["sample_count"] or 0
         entry["on_time_count"] += r["on_time_count"] or 0
@@ -223,28 +233,28 @@ def api_stats():
             "avg_delay_seconds": round(avg_delay, 1),
             "max_delay_seconds": e["max_delay"],
         })
-        agg = per_agency.setdefault(meta["agency_name"], {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0})
+        agg = per_agency.setdefault(meta["operator"], {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0})
         agg["sample_count"] += e["sample_count"]
         agg["on_time_count"] += e["on_time_count"]
         agg["avg_sum"] += avg_delay * e["sample_count"]
 
-    agency_stats = []
+    operator_stats = []
     for name, a in per_agency.items():
         if a["sample_count"] == 0:
             continue
-        agency_stats.append({
-            "agency_name": name,
+        operator_stats.append({
+            "operator": name,
             "sample_count": a["sample_count"],
             "on_time_pct": round(100.0 * a["on_time_count"] / a["sample_count"], 1),
             "avg_delay_seconds": round(a["avg_sum"] / a["sample_count"], 1),
         })
 
     per_route.sort(key=lambda x: -x["sample_count"])
-    agency_stats.sort(key=lambda x: -x["sample_count"])
+    operator_stats.sort(key=lambda x: -x["sample_count"])
 
     return jsonify({
         "on_time_threshold_seconds": ON_TIME_MAX_DELAY,
-        "per_agency": agency_stats,
+        "per_operator": operator_stats,
         "per_route": per_route,
     })
 
@@ -311,6 +321,8 @@ def api_cancellations():
     weekday_ran = [0] * 7
     hour_canceled = [0] * 24
     for r in canceled_rows:
+        if not _index.is_relevant_route(r["route_id"]):
+            continue  # historische rij van een lijn die niet meer in de huidige index zit
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["canceled"] += r["cnt"]
         route_canceled[r["route_id"]] = route_canceled.get(r["route_id"], 0) + r["cnt"]
@@ -322,6 +334,8 @@ def api_cancellations():
             except (ValueError, IndexError):
                 pass
     for r in ran_rows:
+        if not _index.is_relevant_route(r["route_id"]):
+            continue  # historische rij van een lijn die niet meer in de huidige index zit
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["ran"] += r["cnt"]
         route_ran[r["route_id"]] = route_ran.get(r["route_id"], 0) + r["cnt"]
@@ -341,7 +355,7 @@ def api_cancellations():
     total = total_canceled + total_ran
 
     per_route = []
-    per_agency_acc = {}
+    per_operator_acc = {}
     for rid in set(route_canceled) | set(route_ran):
         c = route_canceled.get(rid, 0)
         if c == 0:
@@ -353,19 +367,19 @@ def api_cancellations():
             **meta, "canceled": c, "ran": r,
             "cancellation_pct": round(100.0 * c / rtotal, 1) if rtotal else 0.0,
         })
-        agg = per_agency_acc.setdefault(meta["agency_name"], {"canceled": 0, "ran": 0})
+        agg = per_operator_acc.setdefault(meta["operator"], {"canceled": 0, "ran": 0})
         agg["canceled"] += c
         agg["ran"] += r
     per_route.sort(key=lambda x: -x["canceled"])
 
-    per_agency = []
-    for name, a in per_agency_acc.items():
+    per_operator = []
+    for name, a in per_operator_acc.items():
         atotal = a["canceled"] + a["ran"]
-        per_agency.append({
-            "agency_name": name, "canceled": a["canceled"], "ran": a["ran"],
+        per_operator.append({
+            "operator": name, "canceled": a["canceled"], "ran": a["ran"],
             "cancellation_pct": round(100.0 * a["canceled"] / atotal, 1) if atotal else 0.0,
         })
-    per_agency.sort(key=lambda x: -x["canceled"])
+    per_operator.sort(key=lambda x: -x["canceled"])
 
     per_weekday = []
     for i, name in enumerate(WEEKDAY_NAMES_NL):
@@ -387,7 +401,7 @@ def api_cancellations():
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
         "daily": daily_list,
         "per_route": per_route,
-        "per_agency": per_agency,
+        "per_operator": per_operator,
         "per_weekday": per_weekday,
         "per_hour": per_hour,
     })
@@ -400,13 +414,13 @@ def api_cancellation_trips():
     range_key = request.args.get("range", "today")
     since_date, today_str = _cancellation_date_bounds(range_key)
     route_id = request.args.get("route_id")
-    agency = request.args.get("agency")
+    operator = request.args.get("operator")
     limit = min(int(request.args.get("limit", 100)), 500)
     offset = max(int(request.args.get("offset", 0)), 0)
 
     route_ids_filter = None
-    if agency:
-        route_ids_filter = {rid for rid, r in _index.routes.items() if r["agency_name"] == agency}
+    if operator:
+        route_ids_filter = {rid for rid, r in _index.routes.items() if r.get("operator") == operator}
 
     conn = db.get_conn()
     try:
@@ -422,6 +436,8 @@ def api_cancellation_trips():
 
     items = []
     for r in rows:
+        if not _index.is_relevant_route(r["route_id"]):
+            continue  # historische rij van een lijn die niet meer in de huidige index zit
         if route_id and r["route_id"] != route_id:
             continue
         if route_ids_filter is not None and r["route_id"] not in route_ids_filter:

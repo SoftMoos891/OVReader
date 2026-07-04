@@ -219,7 +219,7 @@ function renderRouteTable() {
   const filterEl = document.getElementById('route-filter');
   const filter = filterEl.value.trim().toLowerCase();
   let rows = cancellationData.per_route.filter(r =>
-    !filter || r.short_name.toLowerCase().includes(filter) || r.agency_name.toLowerCase().includes(filter));
+    !filter || r.short_name.toLowerCase().includes(filter) || r.operator.toLowerCase().includes(filter));
   rows.sort((a, b) => (a[routeSort.key] > b[routeSort.key] ? 1 : -1) * routeSort.dir);
 
   const container = document.getElementById('route-table');
@@ -229,11 +229,11 @@ function renderRouteTable() {
   }
   const col = (key, label) => `<th data-key="${key}" class="${routeSort.key === key ? 'sorted' : ''}">${label}</th>`;
   container.innerHTML = `<table><tr>
-      ${col('short_name', 'Lijn')}${col('agency_name', 'Operator')}${col('canceled', 'Uitgevallen')}${col('ran', 'Gereden')}${col('cancellation_pct', '%')}
+      ${col('short_name', 'Lijn')}${col('operator', 'Operator')}${col('canceled', 'Uitgevallen')}${col('ran', 'Gereden')}${col('cancellation_pct', '%')}
     </tr>` +
     rows.map(r => `<tr class="clickable" data-route-id="${r.route_id}">
       <td>${r.short_name}</td>
-      <td>${r.agency_name}</td>
+      <td>${r.operator}</td>
       <td>${r.canceled}</td>
       <td>${r.ran}</td>
       <td><span class="pill ${pillClass(r.cancellation_pct)}">${r.cancellation_pct}%</span></td>
@@ -254,7 +254,7 @@ function renderRouteTable() {
 }
 
 function renderAgencyTable() {
-  const rows = cancellationData.per_agency;
+  const rows = cancellationData.per_operator;
   const container = document.getElementById('agency-table');
   if (rows.length === 0) {
     container.innerHTML = '<div class="empty">Geen resultaten</div>';
@@ -262,7 +262,7 @@ function renderAgencyTable() {
   }
   container.innerHTML = '<table><tr><th>Operator</th><th>Uitgevallen</th><th>Gereden</th><th>%</th></tr>' +
     rows.map(a => `<tr>
-      <td>${a.agency_name}</td>
+      <td>${a.operator}</td>
       <td>${a.canceled}</td>
       <td>${a.ran}</td>
       <td><span class="pill ${pillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
@@ -273,18 +273,18 @@ function populateAgencyFilter() {
   const sel = document.getElementById('agency-drill-filter');
   const current = sel.value;
   sel.innerHTML = '<option value="">Alle operators</option>' +
-    cancellationData.per_agency.map(a => `<option value="${a.agency_name}">${a.agency_name}</option>`).join('');
+    cancellationData.per_operator.map(a => `<option value="${a.operator}">${a.operator}</option>`).join('');
   sel.value = current;
 }
 
 let filterRouteId = '';
 
 async function loadTrips() {
-  const agency = document.getElementById('agency-drill-filter').value;
+  const operator = document.getElementById('agency-drill-filter').value;
   const search = document.getElementById('trip-search').value.trim();
   const params = new URLSearchParams({ range: currentRange, limit: TRIP_PAGE_SIZE, offset: tripPage * TRIP_PAGE_SIZE });
   if (filterRouteId) params.set('route_id', filterRouteId);
-  if (agency) params.set('agency', agency);
+  if (operator) params.set('operator', operator);
   const res = await fetch(`/api/cancellations/trips?${params}`);
   const data = await res.json();
 
@@ -303,7 +303,7 @@ async function loadTrips() {
         <td>${i.service_date}</td>
         <td>${i.start_time || '?'}</td>
         <td>${i.short_name} <span style="color:var(--muted)">${i.long_name || ''}</span></td>
-        <td>${i.agency_name}</td>
+        <td>${i.operator}</td>
         <td style="color:var(--muted)">${i.trip_id}</td>
       </tr>`).join('') + '</table>';
   }
