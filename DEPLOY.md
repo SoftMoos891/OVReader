@@ -105,7 +105,7 @@ De meegeleverde `deploy/Caddyfile` is al ingesteld op `ovreader.dvznet.nl`.
 
 - https://ovreader.dvznet.nl/ moet om inloggegevens vragen (Basic Auth) en
   daarna het live dashboard tonen.
-- https://ovreader.dvznet.nl/uitval voor het uitval-dashboard.
+- Wil  voor het uitval-dashboard.
 - `sudo journalctl -u utrecht-bus-collector -f` moet elke 30s een regel
   "fetch klaar op ..." laten zien.
 

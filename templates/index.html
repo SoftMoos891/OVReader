@@ -47,6 +47,9 @@
                font-weight: 700; font-size: 12px; color: #fff; border-radius: 8px;
                border: 2px solid rgba(255,255,255,.9); box-shadow: 0 1px 4px rgba(0,0,0,.5);
                white-space: nowrap; padding: 0 5px; line-height: 1; }
+  .operator-logo { position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
+                    border-radius: 50%; background: #fff; padding: 1.5px; object-fit: contain;
+                    box-shadow: 0 1px 3px rgba(0,0,0,.6); }
   #lastupdate { color: var(--muted); font-size: 12px; margin-left: auto; }
   .nav-btn { background: var(--accent); color: #05121f; font-weight: 600; text-decoration: none;
              padding: 7px 16px; border-radius: 6px; font-size: 13px; white-space: nowrap; }
@@ -135,11 +138,21 @@ function delayText(delay) {
   return (min > 0 ? '+' : '') + min + ' min';
 }
 
-function busIcon(shortName, color) {
+const OPERATOR_LOGOS = {
+  'Keolis': '/static/img/keolis.png',
+  'Transdev': '/static/img/transdev.png',
+};
+
+function busIcon(shortName, color, operator) {
   const width = Math.max(24, 12 + shortName.length * 9);
+  const logo = OPERATOR_LOGOS[operator];
+  const logoHtml = logo ? `<img src="${logo}" class="operator-logo" alt="${operator}">` : '';
   return L.divIcon({
     className: '',
-    html: `<div class="bus-badge" style="background:${color}; width:${width}px; height:22px; transform:translate(${-width / 2}px, -11px);">${shortName}</div>`,
+    html: `<div style="position:relative; transform:translate(${-width / 2}px, -11px);">
+             <div class="bus-badge" style="background:${color}; width:${width}px; height:22px;">${shortName}</div>
+             ${logoHtml}
+           </div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   });
@@ -158,10 +171,10 @@ async function refreshVehicles() {
                  `Rit ${v.vehicle_id || v.trip_id}`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
-      markers[key].setIcon(busIcon(v.route_short_name, color));
+      markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
       markers[key].setPopupContent(html);
     } else {
-      const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color) }).bindPopup(html);
+      const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
       vehicleLayer.addLayer(m);
       markers[key] = m;
     }
