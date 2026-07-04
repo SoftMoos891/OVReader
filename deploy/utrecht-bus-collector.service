@@ -1,0 +1,15 @@
+[Unit]
+Description=Utrecht bus monitor - achtergrond dataverzamelaar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=utrechtbus
+WorkingDirectory=/opt/utrecht-bus-monitor
+ExecStart=/opt/utrecht-bus-monitor/venv/bin/python -m app.collector_service
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

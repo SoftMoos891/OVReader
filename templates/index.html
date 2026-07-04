@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Busvervoer Utrecht — live monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171d2c; --border: #2a3245; --text: #e6e9f0;
+    --muted: #8b93a7; --accent: #4da3ff; --good: #35c98d; --warn: #f5a623; --bad: #f0505a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--text); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: baseline; gap: 14px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  #layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto; height: calc(100vh - 53px); }
+  #map { grid-row: 1 / 2; grid-column: 1 / 2; }
+  #side { grid-row: 1 / 3; grid-column: 2 / 3; border-left: 1px solid var(--border);
+          overflow-y: auto; background: var(--panel); }
+  #stats { grid-row: 2 / 3; grid-column: 1 / 2; overflow-y: auto; padding: 16px; }
+  .section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+                 color: var(--muted); margin: 0 0 10px; }
+  .alert { background: #1e2434; border-left: 3px solid var(--warn); padding: 8px 10px;
+           margin-bottom: 8px; border-radius: 4px; font-size: 13px; }
+  .alert .hdr { font-weight: 600; margin-bottom: 3px; }
+  .alert .routes { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .pill.good { background: rgba(53,201,141,.15); color: var(--good); }
+  .pill.warn { background: rgba(245,166,35,.15); color: var(--warn); }
+  .pill.bad { background: rgba(240,80,90,.15); color: var(--bad); }
+  #topbar-stats { display: flex; gap: 24px; margin: 8px 0 4px; }
+  .kpi { }
+  .kpi .num { font-size: 26px; font-weight: 700; }
+  .kpi .label { color: var(--muted); font-size: 12px; }
+  .leaflet-container { background: #0b0f18; }
+  #lastupdate { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .range-toggle { display: flex; gap: 6px; }
+  .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+               border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .range-btn.active { background: var(--accent); color: #05121f; border-color: var(--accent); font-weight: 600; }
+  .kpi-box .num { font-size: 30px; font-weight: 700; }
+  .kpi-box .label { color: var(--muted); font-size: 12px; }
+  .kpi-box .num.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚌 Busvervoer provincie Utrecht</h1>
+  <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis/Transdev) en overige lijnen</span>
+  <span id="lastupdate">–</span>
+</header>
+<div id="layout">
+  <div id="map"></div>
+  <div id="side">
+    <div class="section">
+      <h2>Actuele storingen &amp; meldingen</h2>
+      <div id="alerts"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
+      <h2>Punctualiteit per operator</h2>
+      <div id="agency-stats"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+  <div id="stats">
+    <div class="section" style="border:none; padding:0;">
+      <h2>Punctualiteit per lijn</h2>
+      <div id="route-stats"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="cancellations" class="section">
+  <div style="display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
+    <h2 style="margin:0;">Uitgevallen ritten vandaag</h2>
+    <a href="/uitval" class="range-btn" style="text-decoration:none;">Volledig uitval-dashboard &rarr;</a>
+  </div>
+  <div id="cancel-kpis" style="display:flex; gap:32px; margin:14px 0;"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const map = L.map('map').setView([52.09, 5.20], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+}).addTo(map);
+
+const vehicleLayer = L.layerGroup().addTo(map);
+const markers = {};
+
+function delayColor(delay) {
+  if (delay === null || delay === undefined) return '#8b93a7';
+  if (delay <= 180) return '#35c98d';
+  if (delay <= 360) return '#f5a623';
+  return '#f0505a';
+}
+
+function delayText(delay) {
+  if (delay === null || delay === undefined) return 'onbekend';
+  const min = Math.round(delay / 60);
+  if (min === 0) return 'op tijd';
+  return (min > 0 ? '+' : '') + min + ' min';
+}
+
+async function refreshVehicles() {
+  const res = await fetch('/api/vehicles');
+  const data = await res.json();
+  const seen = new Set();
+  for (const v of data.vehicles) {
+    const key = v.ident;
+    seen.add(key);
+    const color = delayColor(v.delay_seconds);
+    const html = `<b>Lijn ${v.route_short_name}</b> (${v.agency_name})<br>` +
+                 `Vertraging: ${delayText(v.delay_seconds)}<br>` +
+                 `Rit ${v.vehicle_id || v.trip_id}`;
+    if (markers[key]) {
+      markers[key].setLatLng([v.lat, v.lon]);
+      markers[key].setStyle({ fillColor: color, color: color });
+      markers[key].setPopupContent(html);
+    } else {
+      const m = L.circleMarker([v.lat, v.lon], {
+        radius: 6, fillColor: color, color: color, weight: 1, fillOpacity: 0.85,
+      }).bindPopup(html);
+      m.addTo(vehicleLayer);
+      markers[key] = m;
+    }
+  }
+  for (const id of Object.keys(markers)) {
+    if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; }
+  }
+  document.getElementById('lastupdate').textContent =
+    `${data.count} actieve bussen · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
+}
+
+function effectLabel(effect) {
+  const map = {
+    NO_SERVICE: 'Geen dienst', REDUCED_SERVICE: 'Beperkte dienst',
+    SIGNIFICANT_DELAYS: 'Grote vertraging', DETOUR: 'Omleiding',
+    ADDITIONAL_SERVICE: 'Extra dienst', MODIFIED_SERVICE: 'Aangepaste dienst',
+    STOP_MOVED: 'Halte verplaatst', ACCESSIBILITY_ISSUE: 'Toegankelijkheid',
+    OTHER_EFFECT: 'Melding', UNKNOWN_EFFECT: 'Melding', NO_EFFECT: 'Melding',
+  };
+  return map[effect] || 'Melding';
+}
+
+async function refreshAlerts() {
+  const res = await fetch('/api/alerts');
+  const data = await res.json();
+  const el = document.getElementById('alerts');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
+  el.innerHTML = data.alerts.map(a => `
+    <div class="alert">
+      <div class="hdr">${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
+      <div>${a.description || ''}</div>
+      <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}</div>
+    </div>`).join('');
+}
+
+function pillClass(pct) {
+  if (pct >= 90) return 'good';
+  if (pct >= 75) return 'warn';
+  return 'bad';
+}
+
+async function refreshStats() {
+  const res = await fetch('/api/stats');
+  const data = await res.json();
+
+  const ag = document.getElementById('agency-stats');
+  if (data.per_agency.length === 0) {
+    ag.innerHTML = '<div class="empty">Nog geen data verzameld</div>';
+  } else {
+    ag.innerHTML = '<table><tr><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th></tr>' +
+      data.per_agency.map(a => `<tr>
+        <td>${a.agency_name}</td>
+        <td><span class="pill ${pillClass(a.on_time_pct)}">${a.on_time_pct}%</span></td>
+        <td>${Math.round(a.avg_delay_seconds)}s</td>
+      </tr>`).join('') + '</table>';
+  }
+
+  const rt = document.getElementById('route-stats');
+  if (data.per_route.length === 0) {
+    rt.innerHTML = '<div class="empty">Nog geen data verzameld — even geduld tot de collector een paar metingen heeft gedaan.</div>';
+  } else {
+    rt.innerHTML = '<table><tr><th>Lijn</th><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th><th>Max vertr.</th><th>Metingen</th></tr>' +
+      data.per_route.map(r => `<tr>
+        <td>${r.short_name}</td>
+        <td>${r.agency_name}</td>
+        <td><span class="pill ${pillClass(r.on_time_pct)}">${r.on_time_pct}%</span></td>
+        <td>${Math.round(r.avg_delay_seconds)}s</td>
+        <td>${Math.round(r.max_delay_seconds/60)} min</td>
+        <td>${r.sample_count}</td>
+      </tr>`).join('') + '</table>';
+  }
+}
+
+async function refreshCancellations() {
+  const res = await fetch('/api/cancellations?range=today');
+  const data = await res.json();
+  const kpis = document.getElementById('cancel-kpis');
+  kpis.innerHTML = `
+    <div class="kpi-box"><div class="num bad">${data.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
+    <div class="kpi-box"><div class="num">${data.total_ran}</div><div class="label">Ritten gereden</div></div>
+    <div class="kpi-box"><div class="num">${data.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
+  `;
+}
+
+function tick() {
+  refreshVehicles().catch(console.error);
+  refreshAlerts().catch(console.error);
+  refreshStats().catch(console.error);
+  refreshCancellations().catch(console.error);
+}
+tick();
+setInterval(tick, 15000);
+</script>
+</body>
+</html>

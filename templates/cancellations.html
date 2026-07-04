@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Uitval-dashboard — busvervoer Utrecht</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171d2c; --border: #2a3245; --text: #e6e9f0;
+    --muted: #8b93a7; --accent: #4da3ff; --good: #35c98d; --warn: #f5a623; --bad: #f0505a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--text); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
+  main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+  .range-toggle { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+               border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .range-btn.active { background: var(--accent); color: #05121f; border-color: var(--accent); font-weight: 600; }
+  .kpi-row { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+  .kpi-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 16px 22px; min-width: 150px; }
+  .kpi-box .num { font-size: 32px; font-weight: 700; }
+  .kpi-box .num.bad { color: var(--bad); }
+  .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 14px; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .panel-header h2 { margin: 0; }
+  canvas { max-height: 280px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: var(--text); }
+  th.sorted::after { content: ' \25BE'; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  tr.clickable { cursor: pointer; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .pill.good { background: rgba(53,201,141,.15); color: var(--good); }
+  .pill.warn { background: rgba(245,166,35,.15); color: var(--warn); }
+  .pill.bad { background: rgba(240,80,90,.15); color: var(--bad); }
+  input[type=text], select { background: #0f1420; color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; font-size: 13px; }
+  .table-scroll { max-height: 420px; overflow-y: auto; }
+  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .pagination button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .pagination button:disabled { opacity: .4; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚫 Uitval-dashboard</h1>
+  <span class="sub">Uitgevallen ritten busvervoer provincie Utrecht — trends, per lijn, per operator, per uur/weekdag</span>
+  <a class="back" href="/">&larr; Terug naar live overzicht</a>
+</header>
+<main>
+  <div class="range-toggle">
+    <button class="range-btn" data-range="today">Vandaag</button>
+    <button class="range-btn active" data-range="week">Afgelopen 7 dagen</button>
+    <button class="range-btn" data-range="2weeks">Afgelopen 14 dagen</button>
+    <button class="range-btn" data-range="30d">Afgelopen 30 dagen</button>
+    <button class="range-btn" data-range="all">Alles (sinds start collector)</button>
+  </div>
+
+  <div class="kpi-row" id="kpis"></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Trend per dag</h2>
+      <canvas id="trendChart"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Per weekdag</h2>
+      <canvas id="weekdayChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Per vertrektijdstip (uur van de dag)</h2>
+    <canvas id="hourChart"></canvas>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Per lijn</h2>
+        <input type="text" id="route-filter" placeholder="Filter op lijn/operator...">
+      </div>
+      <div class="table-scroll" id="route-table"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="panel">
+      <h2>Per operator</h2>
+      <div id="agency-table"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Alle individuele vervallen ritten</h2>
+      <div style="display:flex; gap:8px;">
+        <select id="agency-drill-filter"><option value="">Alle operators</option></select>
+        <input type="text" id="trip-search" placeholder="Zoek op rit-ID of lijn...">
+      </div>
+    </div>
+    <div class="table-scroll" id="trip-table"><div class="empty">Laden...</div></div>
+    <div class="pagination">
+      <button id="prev-page">&larr; Vorige</button>
+      <span id="page-info"></span>
+      <button id="next-page">Volgende &rarr;</button>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
+<script>
+let currentRange = 'week';
+let cancellationData = null;
+let routeSort = { key: 'canceled', dir: -1 };
+let tripPage = 0;
+const TRIP_PAGE_SIZE = 50;
+
+const CHART_COLORS = { accent: '#4da3ff', bad: '#f0505a', good: '#35c98d', muted: '#8b93a7', grid: '#2a3245' };
+Chart.defaults.color = CHART_COLORS.muted;
+Chart.defaults.borderColor = CHART_COLORS.grid;
+Chart.defaults.font.size = 12;
+
+let trendChart, weekdayChart, hourChart;
+
+function fmtDateShort(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
+function pillClass(pct) {
+  if (pct > 10) return 'bad';
+  if (pct > 3) return 'warn';
+  return 'good';
+}
+
+async function loadAll() {
+  const res = await fetch(`/api/cancellations?range=${currentRange}`);
+  cancellationData = await res.json();
+  renderKpis();
+  renderTrendChart();
+  renderWeekdayChart();
+  renderHourChart();
+  renderRouteTable();
+  renderAgencyTable();
+  populateAgencyFilter();
+  tripPage = 0;
+  loadTrips();
+}
+
+function renderKpis() {
+  const d = cancellationData;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
+    <div class="kpi-box"><div class="num">${d.total_ran}</div><div class="label">Ritten gereden</div></div>
+    <div class="kpi-box"><div class="num">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
+    <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
+  `;
+}
+
+function renderTrendChart() {
+  const labels = cancellationData.daily.map(x => fmtDateShort(x.date));
+  const canceled = cancellationData.daily.map(x => x.canceled);
+  const pct = cancellationData.daily.map(x => x.cancellation_pct);
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Uitgevallen ritten', data: canceled, backgroundColor: CHART_COLORS.bad, yAxisID: 'y' },
+        { type: 'line', label: 'Uitvalpercentage', data: pct, borderColor: CHART_COLORS.accent, backgroundColor: CHART_COLORS.accent, yAxisID: 'y1', tension: 0.3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Aantal' } },
+        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '%' } },
+      },
+    },
+  });
+}
+
+function renderWeekdayChart() {
+  const labels = cancellationData.per_weekday.map(x => x.weekday);
+  const pct = cancellationData.per_weekday.map(x => x.cancellation_pct);
+  if (weekdayChart) weekdayChart.destroy();
+  weekdayChart = new Chart(document.getElementById('weekdayChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Uitvalpercentage', data: pct, backgroundColor: CHART_COLORS.warn }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } } },
+  });
+}
+
+function renderHourChart() {
+  const labels = cancellationData.per_hour.map(x => x.hour + ':00');
+  const canceled = cancellationData.per_hour.map(x => x.canceled);
+  if (hourChart) hourChart.destroy();
+  hourChart = new Chart(document.getElementById('hourChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Uitgevallen ritten', data: canceled, backgroundColor: CHART_COLORS.accent }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } },
+  });
+}
+
+function renderRouteTable() {
+  const filterEl = document.getElementById('route-filter');
+  const filter = filterEl.value.trim().toLowerCase();
+  let rows = cancellationData.per_route.filter(r =>
+    !filter || r.short_name.toLowerCase().includes(filter) || r.agency_name.toLowerCase().includes(filter));
+  rows.sort((a, b) => (a[routeSort.key] > b[routeSort.key] ? 1 : -1) * routeSort.dir);
+
+  const container = document.getElementById('route-table');
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="empty">Geen resultaten</div>';
+    return;
+  }
+  const col = (key, label) => `<th data-key="${key}" class="${routeSort.key === key ? 'sorted' : ''}">${label}</th>`;
+  container.innerHTML = `<table><tr>
+      ${col('short_name', 'Lijn')}${col('agency_name', 'Operator')}${col('canceled', 'Uitgevallen')}${col('ran', 'Gereden')}${col('cancellation_pct', '%')}
+    </tr>` +
+    rows.map(r => `<tr class="clickable" data-route-id="${r.route_id}">
+      <td>${r.short_name}</td>
+      <td>${r.agency_name}</td>
+      <td>${r.canceled}</td>
+      <td>${r.ran}</td>
+      <td><span class="pill ${pillClass(r.cancellation_pct)}">${r.cancellation_pct}%</span></td>
+    </tr>`).join('') + '</table>';
+
+  container.querySelectorAll('th[data-key]').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    routeSort.dir = (routeSort.key === key) ? -routeSort.dir : -1;
+    routeSort.key = key;
+    renderRouteTable();
+  }));
+  container.querySelectorAll('tr[data-route-id]').forEach(tr => tr.addEventListener('click', () => {
+    document.getElementById('trip-search').value = '';
+    filterRouteId = tr.dataset.routeId;
+    tripPage = 0;
+    loadTrips();
+  }));
+}
+
+function renderAgencyTable() {
+  const rows = cancellationData.per_agency;
+  const container = document.getElementById('agency-table');
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="empty">Geen resultaten</div>';
+    return;
+  }
+  container.innerHTML = '<table><tr><th>Operator</th><th>Uitgevallen</th><th>Gereden</th><th>%</th></tr>' +
+    rows.map(a => `<tr>
+      <td>${a.agency_name}</td>
+      <td>${a.canceled}</td>
+      <td>${a.ran}</td>
+      <td><span class="pill ${pillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
+    </tr>`).join('') + '</table>';
+}
+
+function populateAgencyFilter() {
+  const sel = document.getElementById('agency-drill-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Alle operators</option>' +
+    cancellationData.per_agency.map(a => `<option value="${a.agency_name}">${a.agency_name}</option>`).join('');
+  sel.value = current;
+}
+
+let filterRouteId = '';
+
+async function loadTrips() {
+  const agency = document.getElementById('agency-drill-filter').value;
+  const search = document.getElementById('trip-search').value.trim();
+  const params = new URLSearchParams({ range: currentRange, limit: TRIP_PAGE_SIZE, offset: tripPage * TRIP_PAGE_SIZE });
+  if (filterRouteId) params.set('route_id', filterRouteId);
+  if (agency) params.set('agency', agency);
+  const res = await fetch(`/api/cancellations/trips?${params}`);
+  const data = await res.json();
+
+  let items = data.items;
+  if (search) {
+    const s = search.toLowerCase();
+    items = items.filter(i => i.trip_id.toLowerCase().includes(s) || i.short_name.toLowerCase().includes(s));
+  }
+
+  const container = document.getElementById('trip-table');
+  if (items.length === 0) {
+    container.innerHTML = '<div class="empty">Geen vervallen ritten gevonden voor dit filter</div>';
+  } else {
+    container.innerHTML = '<table><tr><th>Datum</th><th>Vertrektijd</th><th>Lijn</th><th>Operator</th><th>Rit-ID</th></tr>' +
+      items.map(i => `<tr>
+        <td>${i.service_date}</td>
+        <td>${i.start_time || '?'}</td>
+        <td>${i.short_name} <span style="color:var(--muted)">${i.long_name || ''}</span></td>
+        <td>${i.agency_name}</td>
+        <td style="color:var(--muted)">${i.trip_id}</td>
+      </tr>`).join('') + '</table>';
+  }
+
+  const totalPages = Math.max(1, Math.ceil(data.total / TRIP_PAGE_SIZE));
+  document.getElementById('page-info').textContent =
+    `Pagina ${tripPage + 1} van ${totalPages} (${data.total} ritten${filterRouteId ? ' voor gekozen lijn' : ''})`;
+  document.getElementById('prev-page').disabled = tripPage === 0;
+  document.getElementById('next-page').disabled = tripPage + 1 >= totalPages;
+}
+
+document.querySelectorAll('.range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentRange = btn.dataset.range;
+    filterRouteId = '';
+    loadAll().catch(console.error);
+  });
+});
+document.getElementById('route-filter').addEventListener('input', renderRouteTable);
+document.getElementById('agency-drill-filter').addEventListener('change', () => { tripPage = 0; loadTrips(); });
+document.getElementById('trip-search').addEventListener('input', () => { tripPage = 0; loadTrips(); });
+document.getElementById('prev-page').addEventListener('click', () => { if (tripPage > 0) { tripPage--; loadTrips(); } });
+document.getElementById('next-page').addEventListener('click', () => { tripPage++; loadTrips(); });
+
+loadAll().catch(console.error);
+setInterval(() => loadAll().catch(console.error), 60000);
+</script>
+</body>
+</html>
