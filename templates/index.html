@@ -6,6 +6,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+      integrity="sha256-YU3qCpj/P06tdPBJGPax0bm6Q1wltfwjsho5TR4+TYc=" crossorigin=""/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+      integrity="sha256-YSWCMtmNZNwqex4CEw1nQhvFub2lmU7vcCKP+XVwwXA=" crossorigin=""/>
 <style>
   :root {
     --bg: #0f1420; --panel: #171d2c; --border: #2a3245; --text: #e6e9f0;
@@ -43,6 +47,15 @@
   .kpi .num { font-size: 26px; font-weight: 700; }
   .kpi .label { color: var(--muted); font-size: 12px; }
   .leaflet-container { background: #0b0f18; }
+  .bus-badge { display: flex; align-items: center; justify-content: center;
+               font-weight: 700; font-size: 12px; color: #fff; border-radius: 8px;
+               border: 2px solid rgba(255,255,255,.9); box-shadow: 0 1px 4px rgba(0,0,0,.5);
+               white-space: nowrap; padding: 0 5px; line-height: 1; }
+  .bus-cluster { display: flex; align-items: center; justify-content: center;
+                 font-weight: 700; font-size: 13px; color: #05121f; background: var(--accent);
+                 border-radius: 50%; border: 2px solid rgba(255,255,255,.9);
+                 box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: transparent; }
   #lastupdate { color: var(--muted); font-size: 12px; margin-left: auto; }
   .nav-btn { background: var(--accent); color: #05121f; font-weight: 600; text-decoration: none;
              padding: 7px 16px; border-radius: 6px; font-size: 13px; white-space: nowrap; }
@@ -93,13 +106,41 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+        integrity="sha256-Hk4dIpcqOSb0hZjgyvFOP+cEmDXUKKNE/tT542ZbNQg=" crossorigin=""></script>
 <script>
 const map = L.map('map').setView([52.09, 5.20], 10);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
 }).addTo(map);
 
-const vehicleLayer = L.layerGroup().addTo(map);
+const legend = L.control({ position: 'bottomleft' });
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div');
+  div.style.cssText = 'background:#171d2c; border:1px solid #2a3245; border-radius:8px; ' +
+    'padding:8px 10px; font-size:12px; color:#e6e9f0; line-height:1.6;';
+  div.innerHTML = `
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#35c98d;margin-right:6px;"></span>Op tijd</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#f5a623;margin-right:6px;"></span>Lichte vertraging (3-6 min)</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#f0505a;margin-right:6px;"></span>Grote vertraging (&gt;6 min)</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#8b93a7;margin-right:6px;"></span>Onbekend</div>
+  `;
+  return div;
+};
+legend.addTo(map);
+
+const vehicleLayer = L.markerClusterGroup({
+  maxClusterRadius: 45,
+  disableClusteringAtZoom: 16,
+  spiderfyOnMaxZoom: true,
+  iconCreateFunction: function (cluster) {
+    return L.divIcon({
+      className: '',
+      html: `<div class="bus-cluster" style="width:${30 + String(cluster.getChildCount()).length * 4}px; height:${30 + String(cluster.getChildCount()).length * 4}px;">${cluster.getChildCount()}</div>`,
+      iconSize: null,
+    });
+  },
+}).addTo(map);
 const markers = {};
 
 function delayColor(delay) {
@@ -116,6 +157,16 @@ function delayText(delay) {
   return (min > 0 ? '+' : '') + min + ' min';
 }
 
+function busIcon(shortName, color) {
+  const width = Math.max(24, 12 + shortName.length * 9);
+  return L.divIcon({
+    className: '',
+    html: `<div class="bus-badge" style="background:${color}; width:${width}px; height:22px; transform:translate(${-width / 2}px, -11px);">${shortName}</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
 async function refreshVehicles() {
   const res = await fetch('/api/vehicles');
   const data = await res.json();
@@ -129,13 +180,11 @@ async function refreshVehicles() {
                  `Rit ${v.vehicle_id || v.trip_id}`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
-      markers[key].setStyle({ fillColor: color, color: color });
+      markers[key].setIcon(busIcon(v.route_short_name, color));
       markers[key].setPopupContent(html);
     } else {
-      const m = L.circleMarker([v.lat, v.lon], {
-        radius: 6, fillColor: color, color: color, weight: 1, fillOpacity: 0.85,
-      }).bindPopup(html);
-      m.addTo(vehicleLayer);
+      const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color) }).bindPopup(html);
+      vehicleLayer.addLayer(m);
       markers[key] = m;
     }
   }
