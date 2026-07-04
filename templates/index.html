@@ -44,6 +44,9 @@
   .kpi .label { color: var(--muted); font-size: 12px; }
   .leaflet-container { background: #0b0f18; }
   #lastupdate { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .nav-btn { background: var(--accent); color: #05121f; font-weight: 600; text-decoration: none;
+             padding: 7px 16px; border-radius: 6px; font-size: 13px; white-space: nowrap; }
+  .nav-btn:hover { opacity: 0.9; }
   .range-toggle { display: flex; gap: 6px; }
   .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
                border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
@@ -58,6 +61,7 @@
   <h1>🚌 Busvervoer provincie Utrecht</h1>
   <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis/Transdev) en overige lijnen</span>
   <span id="lastupdate">–</span>
+  <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
 </header>
 <div id="layout">
   <div id="map"></div>
