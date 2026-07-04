@@ -1,16 +1,18 @@
-# Busvervoer-monitor provincie Utrecht
+# Busvervoer-monitor U-OV (provincie Utrecht)
 
-Lokale app die real-time het busvervoer in de provincie Utrecht (U-OV / Keolis /
-Transdev en overige lijnen die de provincie doorkruisen) monitort: live
-voertuigposities, vertragingen, storingsmeldingen en punctualiteitsstatistieken.
+Lokale app die real-time het busvervoer van U-OV monitort — de concessie voor
+busvervoer in de provincie Utrecht, uitgevoerd door Keolis en Transdev onder
+de gezamenlijke merknaam U-OV: live voertuigposities, vertragingen,
+storingsmeldingen en punctualiteitsstatistieken.
 
 ## Databron
 
 Open, gratis GTFS-Realtime feeds van NDOV/OVapi (`gtfs.ovapi.nl`) — geen
 API-key nodig. Relevante lijnen worden bepaald door de statische GTFS-feed te
-filteren op haltes die daadwerkelijk binnen de provinciegrens van Utrecht
-liggen (echte polygon, niet een bounding box), niet op operatornaam alleen —
-dat vangt automatisch grensoverschrijdende lijnen van andere vervoerders mee.
+filteren op `agency_id == "UOV"` (bus, geen sneltram) — dus precies de
+officiële U-OV-concessie, geen andere vervoerders die toevallig de provincie
+doorkruisen (Qbuzz, Connexxion, Arriva, GVB, NS-bus e.d. worden bewust
+uitgesloten).
 
 ## Starten
 
@@ -41,8 +43,8 @@ Dit downloadt (indien nog niet aanwezig) de landelijke GTFS-zip
 
 ## Projectstructuur
 
-- `app/build_static_index.py` — bepaalt welke haltes/routes/agencies binnen
-  de provincie Utrecht vallen (eenmalig/periodiek).
+- `app/build_static_index.py` — filtert de landelijke GTFS-feed op de U-OV-
+  concessie (agency_id UOV, bus) en de bijbehorende trips/haltes (eenmalig/periodiek).
 - `app/gtfs_rt.py` — haalt en filtert de drie realtime feeds (posities,
   vertragingen, storingen).
 - `app/collector.py` — achtergrondscheduler die elke 30s data ophaalt en

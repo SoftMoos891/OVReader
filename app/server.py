@@ -1,6 +1,6 @@
 """Flask-app: dashboard + JSON API voor het busvervoer-monitoringssysteem
-van de provincie Utrecht (U-OV / Keolis / Transdev en overige lijnen die
-de provincie doorkruisen)."""
+van U-OV (Keolis en Transdev, gezamenlijke concessiehouder busvervoer
+provincie Utrecht)."""
 import hmac
 import os
 import time
@@ -119,6 +119,12 @@ def api_vehicles():
 
     vehicles = []
     for r in rows:
+        if not _index.is_relevant_route(r["route_id"]):
+            # Kan voorkomen vlak na het herbouwen van de statische index
+            # (build_static_index.py), als de database nog verse rijen van
+            # een inmiddels uitgesloten lijn bevat. Verdwijnt vanzelf zodra
+            # die rijen buiten het freshness-venster vallen.
+            continue
         meta = route_meta(r["route_id"])
         vehicles.append({
             "ident": r["ident"],
