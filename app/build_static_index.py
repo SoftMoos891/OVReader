@@ -143,32 +143,36 @@ def find_calendar_for_services(zf, service_ids):
 
 
 def find_stop_times_for_trips(zf, trip_ids):
-    """Streamt stop_times.txt (groot bestand) om te bepalen welke haltes deze
-    U-OV trips aandoen (gebruikt door de alerts-fallback) en om de volledige
-    halte-tijden per halte te verzamelen (gebruikt door de haltezoeker/
-    dienstregeling)."""
-    stop_ids = set()
+    """Streamt stop_times.txt (groot bestand, landelijk -- vaak tientallen
+    miljoenen regels waarvan er maar een klein deel U-OV is) om te bepalen
+    welke haltes deze trips aandoen (gebruikt door de alerts-fallback) en om
+    de vertrektijden per halte te verzamelen (gebruikt door de haltezoeker/
+    dienstregeling).
+
+    Gebruikt bewust csv.reader (niet DictReader) met handmatige kolomindex, en
+    slaat een match op als compacte tuple (niet als dict met vier keys): een
+    dict per rij voor de volledige landelijke feed kost op een kleine VPS al
+    gauw te veel geheugen/CPU-tijd."""
     stop_times_by_stop = {}
     with zf.open("stop_times.txt") as f:
-        reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
+        text = io.TextIOWrapper(f, encoding="utf-8-sig")
+        reader = csv.reader(text)
+        header = next(reader)
+        idx = {name: i for i, name in enumerate(header)}
+        i_trip, i_stop, i_seq = idx["trip_id"], idx["stop_id"], idx["stop_sequence"]
+        i_arr, i_dep = idx["arrival_time"], idx["departure_time"]
         for i, row in enumerate(reader):
-            trip_id = row["trip_id"]
+            trip_id = row[i_trip]
             if trip_id in trip_ids:
-                stop_id = row["stop_id"]
-                stop_ids.add(stop_id)
                 try:
-                    stop_sequence = int(row.get("stop_sequence", 0))
-                except ValueError:
+                    stop_sequence = int(row[i_seq])
+                except (ValueError, IndexError):
                     stop_sequence = 0
-                stop_times_by_stop.setdefault(stop_id, []).append({
-                    "trip_id": trip_id,
-                    "stop_sequence": stop_sequence,
-                    "arrival_time": row.get("arrival_time", ""),
-                    "departure_time": row.get("departure_time", ""),
-                })
+                time_str = row[i_dep] or row[i_arr]
+                stop_times_by_stop.setdefault(row[i_stop], []).append((trip_id, stop_sequence, time_str))
             if i % 2_000_000 == 0 and i:
-                log(f"  ...{i:,} stop_times regels verwerkt, {len(stop_ids):,} haltes gevonden")
-    return stop_ids, stop_times_by_stop
+                log(f"  ...{i:,} stop_times regels verwerkt, {len(stop_times_by_stop):,} haltes gevonden")
+    return set(stop_times_by_stop), stop_times_by_stop
 
 
 def load_stop_info(zf, stop_ids):

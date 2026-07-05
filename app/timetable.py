@@ -18,7 +18,7 @@ LIVE_DELAY_FRESHNESS_SECONDS = 20 * 60  # hoe oud een laatst-bekende vertraging 
 class Timetable:
     def __init__(self):
         self.stops = {}          # stop_id -> {name, lat, lon}
-        self.stop_times = {}     # stop_id -> [{trip_id, stop_sequence, arrival_time, departure_time}]
+        self.stop_times = {}     # stop_id -> [(trip_id, stop_sequence, time_str), ...]
         self.trip_meta = {}      # trip_id -> {route_id, service_id, headsign}
         self.calendar = {}       # service_id -> {days, start_date, end_date, added, removed}
         self.loaded_at = 0
@@ -131,16 +131,15 @@ class Timetable:
             if not active:
                 continue
             midnight = datetime.combine(d, datetime.min.time())
-            for entry in entries:
-                meta = self.trip_meta.get(entry["trip_id"])
+            for trip_id, _stop_sequence, time_str in entries:
+                meta = self.trip_meta.get(trip_id)
                 if not meta or meta.get("service_id") not in active:
                     continue
-                time_str = entry.get("departure_time") or entry.get("arrival_time")
                 seconds = _parse_gtfs_time(time_str)
                 if seconds is None:
                     continue
                 scheduled_dt = midnight + timedelta(seconds=seconds)
-                candidates.append((scheduled_dt, entry, meta))
+                candidates.append((scheduled_dt, trip_id, meta))
 
         window_start = now_dt - timedelta(minutes=1)  # kleine marge voor net-vertrokken bussen
         window_end = now_dt + timedelta(minutes=window_minutes)
@@ -148,15 +147,15 @@ class Timetable:
         upcoming.sort(key=lambda c: c[0])
         upcoming = upcoming[:limit]
 
-        trip_ids = [c[1]["trip_id"] for c in upcoming]
+        trip_ids = [c[1] for c in upcoming]
         delay_by_trip = self._live_delay_by_trip(trip_ids, stop_id, now_ts)
 
         results = []
-        for scheduled_dt, entry, meta in upcoming:
-            delay = delay_by_trip.get(entry["trip_id"])
+        for scheduled_dt, trip_id, meta in upcoming:
+            delay = delay_by_trip.get(trip_id)
             estimated_dt = scheduled_dt + timedelta(seconds=delay) if delay is not None else None
             results.append({
-                "trip_id": entry["trip_id"],
+                "trip_id": trip_id,
                 "route_id": meta.get("route_id"),
                 "headsign": meta.get("headsign", ""),
                 "scheduled_time": scheduled_dt.strftime("%H:%M"),
