@@ -251,7 +251,7 @@ function delayPillClass(delay) {
 function delayText(delay) {
   if (delay === null || delay === undefined) return 'onbekend';
   const min = Math.round(delay / 60);
-  if (min === 0) return 'Dienstregeling';
+  if (min === 0) return 'Op tijd';
   return (min > 0 ? '+' : '') + min + ' min';
 }
 
