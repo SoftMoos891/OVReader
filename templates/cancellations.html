@@ -78,18 +78,24 @@
 
   <div class="grid2">
     <div class="panel">
-      <h2>Trend per dag</h2>
-      <canvas id="trendChart"></canvas>
+      <h2>Uitvalpercentage per dag</h2>
+      <canvas id="dailyPctChart"></canvas>
     </div>
+    <div class="panel">
+      <h2>Aantal uitgevallen ritten per dag</h2>
+      <canvas id="dailyCountChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid2">
     <div class="panel">
       <h2>Per weekdag</h2>
       <canvas id="weekdayChart"></canvas>
     </div>
-  </div>
-
-  <div class="panel">
-    <h2>Per vertrektijdstip (uur van de dag)</h2>
-    <canvas id="hourChart"></canvas>
+    <div class="panel">
+      <h2>Per vertrektijdstip (uur van de dag)</h2>
+      <canvas id="hourChart"></canvas>
+    </div>
   </div>
 
   <div class="grid2">
@@ -150,7 +156,7 @@ function toggleDarkMode() {
   location.reload();
 }
 
-let trendChart, weekdayChart, hourChart;
+let dailyPctChart, dailyCountChart, weekdayChart, hourChart;
 
 function fmtDateShort(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
@@ -166,7 +172,8 @@ async function loadAll() {
   const res = await fetch(`/api/cancellations?range=${currentRange}`);
   cancellationData = await res.json();
   renderKpis();
-  renderTrendChart();
+  renderDailyPctChart();
+  renderDailyCountChart();
   renderWeekdayChart();
   renderHourChart();
   renderRouteTable();
@@ -191,33 +198,46 @@ function renderKpis() {
 const OPERATOR_COLORS = { Keolis: CHART_COLORS.warn, Transdev: CHART_COLORS.accent };
 function operatorColor(name) { return OPERATOR_COLORS[name] || CHART_COLORS.muted; }
 
-function renderTrendChart() {
+function renderDailyPctChart() {
   const labels = cancellationData.daily.map(x => fmtDateShort(x.date));
   const dateKeys = cancellationData.daily.map(x => x.date);
-  const canceled = cancellationData.daily.map(x => x.canceled);
-  const operatorDatasets = Object.entries(cancellationData.daily_by_operator || {}).map(([op, rows]) => {
+  const datasets = Object.entries(cancellationData.daily_by_operator || {}).map(([op, rows]) => {
     const pctByDate = Object.fromEntries(rows.map(r => [r.date, r.cancellation_pct]));
     return {
-      type: 'line', label: `${op} %`, data: dateKeys.map(d => pctByDate[d] ?? null),
+      label: op, data: dateKeys.map(d => pctByDate[d] ?? null),
       borderColor: operatorColor(op), backgroundColor: operatorColor(op),
-      yAxisID: 'y1', tension: 0.3, spanGaps: true,
+      borderWidth: 2, pointRadius: 2, tension: 0.3, spanGaps: true,
     };
   });
-  if (trendChart) trendChart.destroy();
-  trendChart = new Chart(document.getElementById('trendChart'), {
-    data: {
-      labels,
-      datasets: [
-        { type: 'bar', label: 'Uitgevallen ritten', data: canceled, backgroundColor: CHART_COLORS.bad, yAxisID: 'y' },
-        ...operatorDatasets,
-      ],
+  if (dailyPctChart) dailyPctChart.destroy();
+  dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } },
     },
+  });
+}
+
+function renderDailyCountChart() {
+  const labels = cancellationData.daily.map(x => fmtDateShort(x.date));
+  const dateKeys = cancellationData.daily.map(x => x.date);
+  const datasets = Object.entries(cancellationData.daily_by_operator || {}).map(([op, rows]) => {
+    const countByDate = Object.fromEntries(rows.map(r => [r.date, r.canceled]));
+    return { label: op, data: dateKeys.map(d => countByDate[d] ?? 0), backgroundColor: operatorColor(op) };
+  });
+  if (dailyCountChart) dailyCountChart.destroy();
+  dailyCountChart = new Chart(document.getElementById('dailyCountChart'), {
+    type: 'bar',
+    data: { labels, datasets },
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Aantal' } },
-        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '%' } },
+        x: { stacked: true },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Aantal' } },
       },
     },
   });
