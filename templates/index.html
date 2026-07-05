@@ -27,9 +27,10 @@
   .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
                  color: var(--muted); margin: 0 0 10px; }
   .alert { background: #1e2434; border-left: 3px solid var(--warn); padding: 8px 10px;
-           margin-bottom: 8px; border-radius: 4px; font-size: 13px; }
+           margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
   .alert .hdr { font-weight: 600; margin-bottom: 3px; }
   .alert .routes { color: var(--muted); font-size: 12px; }
+  #route-stats, #agency-stats { overflow-x: auto; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
@@ -77,9 +78,18 @@
   #stop-results { margin-top: 6px; max-height: 160px; overflow-y: auto; }
   .stop-result { padding: 5px 8px; font-size: 13px; border-radius: 4px; cursor: pointer; }
   .stop-result:hover { background: rgba(255,255,255,.05); }
-  #stop-departures { margin-top: 10px; }
+  #stop-departures { margin-top: 10px; overflow-x: auto; }
   #stop-departures table { width: 100%; }
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
+
+  @media (max-width: 800px) {
+    header { flex-wrap: wrap; }
+    #lastupdate { margin-left: 0; }
+    #layout { display: block; height: auto; }
+    #map { height: 45vh; }
+    #side { border-left: none; border-top: 1px solid var(--border); overflow-y: visible; }
+    #stats { overflow-y: visible; }
+  }
 </style>
 </head>
 <body>
