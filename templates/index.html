@@ -126,6 +126,7 @@ const markers = {};
 
 function delayColor(delay) {
   if (delay === null || delay === undefined) return '#8b93a7';
+  if (delay < -120) return '#f0505a';  // meer dan 2 min te vroeg
   if (delay <= 180) return '#35c98d';
   if (delay <= 360) return '#f5a623';
   return '#f0505a';
@@ -134,7 +135,7 @@ function delayColor(delay) {
 function delayText(delay) {
   if (delay === null || delay === undefined) return 'onbekend';
   const min = Math.round(delay / 60);
-  if (min === 0) return 'op tijd';
+  if (min === 0) return 'Dienstregeling';
   return (min > 0 ? '+' : '') + min + ' min';
 }
 
@@ -167,7 +168,7 @@ async function refreshVehicles() {
     seen.add(key);
     const color = delayColor(v.delay_seconds);
     const html = `<b>Lijn ${v.route_short_name}</b> (U-OV, ${v.operator})<br>` +
-                 `Vertraging: ${delayText(v.delay_seconds)}<br>` +
+                 `Status: ${delayText(v.delay_seconds)}<br>` +
                  `Rit ${v.vehicle_id || v.trip_id}`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);

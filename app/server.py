@@ -21,6 +21,7 @@ app = Flask(
 _index = UtrechtIndex()
 
 ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op tijd"
+ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
 VEHICLE_FRESHNESS_SECONDS = 90
 
 # HTTP Basic Auth: staat standaard UIT (handig voor lokaal gebruik). Zet de
@@ -183,13 +184,13 @@ def api_stats():
             """
             SELECT route_id,
                    COUNT(*) AS sample_count,
-                   SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) <= ? THEN 1 ELSE 0 END) AS on_time_count,
+                   SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
                    AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
                    MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
             FROM trip_delays
             GROUP BY route_id
             """,
-            (ON_TIME_MAX_DELAY,),
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY),
         ).fetchall()
         rolled = conn.execute(
             """
@@ -254,6 +255,7 @@ def api_stats():
 
     return jsonify({
         "on_time_threshold_seconds": ON_TIME_MAX_DELAY,
+        "on_time_min_delay_seconds": ON_TIME_MIN_DELAY,
         "per_operator": operator_stats,
         "per_route": per_route,
     })

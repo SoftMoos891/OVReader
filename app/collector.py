@@ -13,6 +13,10 @@ from .gtfs_rt import (
 FETCH_INTERVAL_SECONDS = 30
 RETENTION_DAYS = 14
 CANCELLATION_HISTORY_RETENTION_DAYS = 400  # ruwweg, deze tabellen zijn al compact (1 rij per rit/dag)
+# "Op tijd" (Dienstregeling): zelfde definitie als in server.py -- tussen 2 min
+# te vroeg en 3 min te laat. Buiten die band telt een rit niet meer als op tijd.
+ON_TIME_MIN_DELAY = -120
+ON_TIME_MAX_DELAY = 180
 
 _index = None
 
@@ -138,7 +142,7 @@ def cleanup_old_data():
                 date(fetched_at, 'unixepoch') AS day,
                 route_id,
                 COUNT(*) AS sample_count,
-                SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) <= 180 THEN 1 ELSE 0 END) AS on_time_count,
+                SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
                 AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
                 MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
             FROM trip_delays
@@ -151,7 +155,7 @@ def cleanup_old_data():
                                     / (sample_count + excluded.sample_count),
                 max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
             """,
-            (cutoff,),
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
         )
         conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (cutoff,))
         conn.execute("DELETE FROM vehicle_positions WHERE fetched_at < ?", (cutoff,))
