@@ -54,6 +54,17 @@ CREATE TABLE IF NOT EXISTS route_stats_daily (
     PRIMARY KEY (day, route_id)
 );
 
+CREATE TABLE IF NOT EXISTS route_stats_period_daily (
+    day TEXT NOT NULL,
+    route_id TEXT NOT NULL,
+    period TEXT NOT NULL,
+    sample_count INTEGER NOT NULL,
+    on_time_count INTEGER NOT NULL,
+    avg_delay_seconds REAL NOT NULL,
+    max_delay_seconds INTEGER NOT NULL,
+    PRIMARY KEY (day, route_id, period)
+);
+
 CREATE TABLE IF NOT EXISTS trip_cancellations (
     trip_id TEXT NOT NULL,
     service_date TEXT NOT NULL,
@@ -81,6 +92,20 @@ def get_conn():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+# Spitsuren (lokale tijd) voor de piek/dal-analyse: 07:00-08:59 en 16:00-17:59.
+PEAK_HOURS = {7, 8, 16, 17}
+
+
+def period_hour_sql(fetched_at_expr="fetched_at"):
+    """SQL-CASE-expressie die 'peak'/'offpeak' teruggeeft o.b.v. het lokale uur
+    van fetched_at (unix-epoch seconden), consistent met PEAK_HOURS."""
+    hours = ",".join(str(h) for h in sorted(PEAK_HOURS))
+    return (
+        f"CASE WHEN CAST(strftime('%H', {fetched_at_expr}, 'unixepoch', 'localtime') AS INTEGER) "
+        f"IN ({hours}) THEN 'peak' ELSE 'offpeak' END"
+    )
 
 
 def _migrate(conn):

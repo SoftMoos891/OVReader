@@ -18,7 +18,7 @@
            align-items: baseline; gap: 14px; }
   header h1 { font-size: 18px; margin: 0; }
   header .sub { color: var(--muted); font-size: 13px; }
-  #layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto; height: calc(100vh - 53px); }
+  #layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto; height: calc(100vh - 94px); }
   #map { grid-row: 1 / 2; grid-column: 1 / 2; }
   #side { grid-row: 1 / 3; grid-column: 2 / 3; border-left: 1px solid var(--border);
           overflow-y: auto; background: var(--panel); }
@@ -61,6 +61,25 @@
   .kpi-box .num { font-size: 30px; font-weight: 700; }
   .kpi-box .label { color: var(--muted); font-size: 12px; }
   .kpi-box .num.bad { color: var(--bad); }
+  #filter-bar { display: flex; align-items: center; gap: 14px; padding: 8px 20px; border-bottom: 1px solid var(--border);
+                flex-wrap: wrap; font-size: 13px; }
+  #filter-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+  #filter-bar input[type=text] { background: #0f1420; color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 4px 10px; font-size: 13px; width: 140px; }
+  #notif-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+               border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  #notif-btn.on { background: var(--good); color: #05121f; border-color: var(--good); font-weight: 600; }
+  .fav-star { cursor: pointer; color: var(--muted); margin-right: 4px; user-select: none; }
+  .fav-star.active { color: var(--warn); }
+  #stop-search-box { position: relative; }
+  #stop-search-input { width: 100%; background: #0f1420; color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  #stop-results { margin-top: 6px; max-height: 160px; overflow-y: auto; }
+  .stop-result { padding: 5px 8px; font-size: 13px; border-radius: 4px; cursor: pointer; }
+  .stop-result:hover { background: rgba(255,255,255,.05); }
+  #stop-departures { margin-top: 10px; }
+  #stop-departures table { width: 100%; }
+  #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -68,11 +87,26 @@
   <h1>🚌 Busvervoer provincie Utrecht</h1>
   <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis &amp; Transdev)</span>
   <span id="lastupdate">–</span>
+  <a href="/trends" class="nav-btn">📈 Trends &amp; analyse &rarr;</a>
   <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
 </header>
+<div id="filter-bar">
+  <span style="color:var(--muted);">Filter:</span>
+  <div id="operator-filters"></div>
+  <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
+  <button id="notif-btn">🔔 Meldingen aanzetten</button>
+</div>
 <div id="layout">
   <div id="map"></div>
   <div id="side">
+    <div class="section">
+      <h2>Halte zoeken</h2>
+      <div id="stop-search-box">
+        <input type="text" id="stop-search-input" placeholder="Zoek een halte op naam...">
+        <div id="stop-results"></div>
+      </div>
+      <div id="stop-departures"></div>
+    </div>
     <div class="section">
       <h2>Actuele storingen &amp; meldingen</h2>
       <div id="alerts"><div class="empty">Laden...</div></div>
@@ -124,11 +158,75 @@ legend.addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
 const markers = {};
 
+// --- Filter op lijn/operator ---------------------------------------------
+const filterState = { operators: new Set(), lineText: '' };
+
+async function initMeta() {
+  const res = await fetch('/api/meta');
+  const meta = await res.json();
+  filterState.operators = new Set(meta.operators); // standaard: alle operators aan
+  const box = document.getElementById('operator-filters');
+  box.innerHTML = meta.operators.map(op => `
+    <label><input type="checkbox" data-operator="${op}" checked> ${op}</label>
+  `).join('');
+  box.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+    if (cb.checked) filterState.operators.add(cb.dataset.operator);
+    else filterState.operators.delete(cb.dataset.operator);
+    refreshVehicles().catch(console.error);
+    refreshStats().catch(console.error);
+  }));
+}
+
+function matchesFilter(operator, shortName) {
+  if (!filterState.operators.has(operator)) return false;
+  if (filterState.lineText && !shortName.toLowerCase().includes(filterState.lineText)) return false;
+  return true;
+}
+
+document.getElementById('line-filter').addEventListener('input', (e) => {
+  filterState.lineText = e.target.value.trim().toLowerCase();
+  refreshVehicles().catch(console.error);
+  refreshStats().catch(console.error);
+});
+
+// --- Favorieten + browser-notificaties -----------------------------------
+const FAVORITES_KEY = 'busmonitor_favorite_routes';
+function getFavorites() {
+  try { return new Set(JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function toggleFavorite(routeId) {
+  const favs = getFavorites();
+  if (favs.has(routeId)) favs.delete(routeId); else favs.add(routeId);
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favs]));
+  refreshStats().catch(console.error);
+}
+
+let seenAlertIds = null; // null = eerste keer, nog niets meldingswaardig
+const notifBtn = document.getElementById('notif-btn');
+function updateNotifBtn() {
+  const granted = window.Notification && Notification.permission === 'granted';
+  notifBtn.textContent = granted ? '🔔 Meldingen staan aan' : '🔔 Meldingen aanzetten';
+  notifBtn.classList.toggle('on', granted);
+}
+notifBtn.addEventListener('click', () => {
+  if (!window.Notification) { alert('Deze browser ondersteunt geen meldingen.'); return; }
+  Notification.requestPermission().then(updateNotifBtn);
+});
+updateNotifBtn();
+
 function delayColor(delay) {
   if (delay === null || delay === undefined) return '#8b93a7';
   if (delay <= 180) return '#35c98d';
   if (delay <= 360) return '#f5a623';
   return '#f0505a';
+}
+
+function delayPillClass(delay) {
+  if (delay === null || delay === undefined) return '';
+  if (delay <= 180) return 'good';
+  if (delay <= 360) return 'warn';
+  return 'bad';
 }
 
 function delayText(delay) {
@@ -163,6 +261,7 @@ async function refreshVehicles() {
   const data = await res.json();
   const seen = new Set();
   for (const v of data.vehicles) {
+    if (!matchesFilter(v.operator, v.route_short_name)) continue;
     const key = v.ident;
     seen.add(key);
     const color = delayColor(v.delay_seconds);
@@ -200,6 +299,21 @@ function effectLabel(effect) {
 async function refreshAlerts() {
   const res = await fetch('/api/alerts');
   const data = await res.json();
+
+  if (window.Notification && Notification.permission === 'granted') {
+    const favs = getFavorites();
+    if (seenAlertIds !== null) {
+      for (const a of data.alerts) {
+        if (seenAlertIds.has(a.alert_id)) continue;
+        if (!a.routes.some(r => favs.has(r.route_id))) continue;
+        new Notification(`${effectLabel(a.effect)}: lijn ${a.routes.map(r => r.short_name).join(', ')}`, {
+          body: a.header || a.description || '',
+        });
+      }
+    }
+    seenAlertIds = new Set(data.alerts.map(a => a.alert_id));
+  }
+
   const el = document.getElementById('alerts');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
   el.innerHTML = data.alerts.map(a => `
@@ -233,11 +347,14 @@ async function refreshStats() {
   }
 
   const rt = document.getElementById('route-stats');
-  if (data.per_route.length === 0) {
+  const favs = getFavorites();
+  const rows = data.per_route.filter(r => matchesFilter(r.operator, r.short_name));
+  if (rows.length === 0) {
     rt.innerHTML = '<div class="empty">Nog geen data verzameld — even geduld tot de collector een paar metingen heeft gedaan.</div>';
   } else {
-    rt.innerHTML = '<table><tr><th>Lijn</th><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th><th>Max vertr.</th><th>Metingen</th></tr>' +
-      data.per_route.map(r => `<tr>
+    rt.innerHTML = '<table><tr><th></th><th>Lijn</th><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th><th>Max vertr.</th><th>Metingen</th></tr>' +
+      rows.map(r => `<tr>
+        <td><span class="fav-star ${favs.has(r.route_id) ? 'active' : ''}" data-route-id="${r.route_id}">★</span></td>
         <td>${r.short_name}</td>
         <td>${r.operator}</td>
         <td><span class="pill ${pillClass(r.on_time_pct)}">${r.on_time_pct}%</span></td>
@@ -245,6 +362,7 @@ async function refreshStats() {
         <td>${Math.round(r.max_delay_seconds/60)} min</td>
         <td>${r.sample_count}</td>
       </tr>`).join('') + '</table>';
+    rt.querySelectorAll('.fav-star').forEach(el => el.addEventListener('click', () => toggleFavorite(el.dataset.routeId)));
   }
 }
 
@@ -259,13 +377,82 @@ async function refreshCancellations() {
   `;
 }
 
+// --- Haltezoeker -----------------------------------------------------------
+let stopMarker = null;
+let selectedStopId = null;
+let stopSearchDebounce = null;
+
+document.getElementById('stop-search-input').addEventListener('input', (e) => {
+  clearTimeout(stopSearchDebounce);
+  const q = e.target.value.trim();
+  stopSearchDebounce = setTimeout(() => searchStops(q), 250);
+});
+
+async function searchStops(q) {
+  const resultsEl = document.getElementById('stop-results');
+  if (!q) { resultsEl.innerHTML = ''; return; }
+  const res = await fetch(`/api/stops?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  if (data.stops.length === 0) {
+    resultsEl.innerHTML = '<div class="empty">Geen haltes gevonden</div>';
+    return;
+  }
+  resultsEl.innerHTML = data.stops.map(s =>
+    `<div class="stop-result" data-stop-id="${s.stop_id}">${s.name}</div>`).join('');
+  resultsEl.querySelectorAll('.stop-result').forEach(el => el.addEventListener('click', () => {
+    selectStop(el.dataset.stopId, data.stops.find(s => s.stop_id === el.dataset.stopId));
+  }));
+}
+
+async function selectStop(stopId, stopHint) {
+  selectedStopId = stopId;
+  document.getElementById('stop-results').innerHTML = '';
+  if (stopHint) {
+    document.getElementById('stop-search-input').value = stopHint.name;
+    if (stopMarker) map.removeLayer(stopMarker);
+    stopMarker = L.marker([stopHint.lat, stopHint.lon]).addTo(map);
+    map.setView([stopHint.lat, stopHint.lon], 15);
+  }
+  await refreshStopDepartures();
+}
+
+async function refreshStopDepartures() {
+  if (!selectedStopId) return;
+  const res = await fetch(`/api/stops/${encodeURIComponent(selectedStopId)}/departures`);
+  const el = document.getElementById('stop-departures');
+  if (!res.ok) {
+    el.innerHTML = '<div class="empty">Halte niet gevonden</div>';
+    return;
+  }
+  const data = await res.json();
+  if (data.departures.length === 0) {
+    el.innerHTML = `<div class="stop-name">${data.stop.name}</div><div class="empty">Geen vertrekken binnen dit venster</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="stop-name">${data.stop.name}</div>` +
+    '<table><tr><th>Lijn</th><th>Richting</th><th>Vertrek</th><th>Status</th></tr>' +
+    data.departures.map(d => {
+      const status = d.delay_seconds === null
+        ? '<span class="pill">dienstregeling</span>'
+        : `<span class="pill ${delayPillClass(d.delay_seconds)}">${delayText(d.delay_seconds)}</span>`;
+      const time = d.estimated_time || d.scheduled_time;
+      return `<tr>
+        <td>${d.short_name}</td>
+        <td>${d.headsign || d.long_name || ''}</td>
+        <td>${time}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('') + '</table>';
+}
+
 function tick() {
   refreshVehicles().catch(console.error);
   refreshAlerts().catch(console.error);
   refreshStats().catch(console.error);
   refreshCancellations().catch(console.error);
+  refreshStopDepartures().catch(console.error);
 }
-tick();
+initMeta().then(tick).catch(console.error);
 setInterval(tick, 15000);
 </script>
 </body>
