@@ -43,6 +43,18 @@ Dit downloadt (indien nog niet aanwezig) de landelijke GTFS-zip
 (dienstregeling per halte, gebruikt door de haltezoeker). Verwijder
 `data/gtfs-nl.zip` handmatig als je een verse download wilt forceren.
 
+## Tests
+
+```powershell
+./venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+./venv/Scripts/python.exe -m pytest tests/
+```
+
+De tests draaien tegen een tijdelijke, lege SQLite-db (nooit tegen
+`data/bus_monitor.db`) en dekken de kernlogica: de "op tijd"-definitie,
+uitvalpercentage-berekening en de dagstatistiek-rollup in
+`collector.cleanup_old_data`.
+
 ## Projectstructuur
 
 - `app/build_static_index.py` — filtert de landelijke GTFS-feed op de U-OV-
@@ -54,7 +66,9 @@ Dit downloadt (indien nog niet aanwezig) de landelijke GTFS-zip
 - `app/db.py` — SQLite-schema en connectie.
 - `app/timetable.py` — haltezoeker en eerstvolgende vertrekken (dienstregeling
   + live vertraging).
-- `app/server.py` — Flask API + dashboard.
+- `app/server.py` — Flask API + dashboard. Bevat ook `/api/health`, dat laat
+  zien hoe recent de collector nog data heeft binnengehaald (handig voor een
+  uptime-check).
 - `templates/index.html` — live dashboard (kaart, haltezoeker, filters,
   favorieten, storingen, statistieken).
 - `templates/trends.html` — trends & analyse (dagtrend, piek/dal, ranglijst

@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, render_template, request
 
 from . import db
-from .collector import RETENTION_DAYS
+from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
 from .timetable import Timetable
 
@@ -79,6 +79,43 @@ def api_meta():
     return jsonify({
         "agencies": agencies, "operators": operators,
         "routes": routes, "route_count": len(routes),
+    })
+
+
+@app.route("/api/health")
+def api_health():
+    """Laat zien hoe recent de collector nog data heeft binnengekregen, zodat
+    een stilgevallen achtergrondverzamelaar (bv. na een OVapi-storing of een
+    gecrashte service) opvalt zonder dat je handmatig journalctl hoeft te
+    bekijken."""
+    now = int(time.time())
+    conn = db.get_conn()
+    try:
+        vp_last = conn.execute("SELECT MAX(fetched_at) AS t FROM vehicle_positions").fetchone()["t"]
+        td_last = conn.execute("SELECT MAX(fetched_at) AS t FROM trip_delays").fetchone()["t"]
+    finally:
+        conn.close()
+
+    def component(last_fetched_at):
+        if last_fetched_at is None:
+            return {"last_fetched_at": None, "seconds_ago": None, "status": "no_data"}
+        seconds_ago = now - last_fetched_at
+        status = "ok" if seconds_ago <= VEHICLE_FRESHNESS_SECONDS else "stale"
+        return {"last_fetched_at": last_fetched_at, "seconds_ago": seconds_ago, "status": status}
+
+    components = {
+        "vehicle_positions": component(vp_last),
+        "trip_delays": component(td_last),
+    }
+    latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
+    overall_status = component(latest)["status"] if latest is not None else "no_data"
+
+    return jsonify({
+        "now": now,
+        "collector_interval_seconds": FETCH_INTERVAL_SECONDS,
+        "stale_after_seconds": VEHICLE_FRESHNESS_SECONDS,
+        "status": overall_status,
+        "components": components,
     })
 
 
