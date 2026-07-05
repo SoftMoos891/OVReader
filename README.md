@@ -38,7 +38,9 @@ dienstregelingswijziging):
 ```
 
 Dit downloadt (indien nog niet aanwezig) de landelijke GTFS-zip
-(`data/gtfs-nl.zip`, ~240 MB) en herbouwt `data/utrecht_*.json`. Verwijder
+(`data/gtfs-nl.zip`, ~240 MB) en herbouwt `data/utrecht_*.json`, inclusief
+`utrecht_calendar.json`, `utrecht_trip_meta.json` en `utrecht_stop_times.json`
+(dienstregeling per halte, gebruikt door de haltezoeker). Verwijder
 `data/gtfs-nl.zip` handmatig als je een verse download wilt forceren.
 
 ## Projectstructuur
@@ -50,5 +52,11 @@ Dit downloadt (indien nog niet aanwezig) de landelijke GTFS-zip
 - `app/collector.py` — achtergrondscheduler die elke 30s data ophaalt en
   opslaat, plus periodieke opschoning.
 - `app/db.py` — SQLite-schema en connectie.
+- `app/timetable.py` — haltezoeker en eerstvolgende vertrekken (dienstregeling
+  + live vertraging).
 - `app/server.py` — Flask API + dashboard.
-- `templates/index.html` — dashboard (kaart, storingen, statistieken).
+- `templates/index.html` — live dashboard (kaart, haltezoeker, filters,
+  favorieten, storingen, statistieken).
+- `templates/trends.html` — trends & analyse (dagtrend, piek/dal, ranglijst
+  slechtste lijnen met drill-down).
+- `templates/cancellations.html` — uitval-dashboard.

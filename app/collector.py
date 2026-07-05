@@ -157,6 +157,29 @@ def cleanup_old_data():
             """,
             (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
         )
+        conn.execute(
+            f"""
+            INSERT INTO route_stats_period_daily (day, route_id, period, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
+            SELECT
+                strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+                route_id,
+                {db.period_hour_sql()} AS period,
+                COUNT(*) AS sample_count,
+                SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
+                AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
+                MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
+            FROM trip_delays
+            WHERE fetched_at < ?
+            GROUP BY day, route_id, period
+            ON CONFLICT(day, route_id, period) DO UPDATE SET
+                sample_count = sample_count + excluded.sample_count,
+                on_time_count = on_time_count + excluded.on_time_count,
+                avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
+                                    / (sample_count + excluded.sample_count),
+                max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
+            """,
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
+        )
         conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (cutoff,))
         conn.execute("DELETE FROM vehicle_positions WHERE fetched_at < ?", (cutoff,))
 

@@ -4,13 +4,16 @@ provincie Utrecht)."""
 import hmac
 import os
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 
 from . import db
+from .collector import RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
+from .timetable import Timetable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 app = Flask(
@@ -19,6 +22,7 @@ app = Flask(
     static_folder=str(PROJECT_ROOT / "static"),
 )
 _index = UtrechtIndex()
+_timetable = Timetable()
 
 ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op tijd"
 ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
@@ -177,32 +181,50 @@ def api_alerts():
 @app.route("/api/stats")
 def api_stats():
     """Punctualiteit per operator en per route, over ruwe data (laatste 14 dagen)
-    aangevuld met opgerolde dagstatistieken voor oudere periodes."""
+    aangevuld met opgerolde dagstatistieken voor oudere periodes. Optioneel
+    ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
+    parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard)."""
+    range_key = request.args.get("range")
+    since_date = until_date = since_ts = until_ts = None
+    if range_key:
+        since_date, until_date = _date_bounds_for_range(range_key)
+        since_ts, until_ts = _range_to_epoch(since_date, until_date)
+
     conn = db.get_conn()
     try:
-        raw = conn.execute(
-            """
+        raw_sql = """
             SELECT route_id,
                    COUNT(*) AS sample_count,
                    SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
                    AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
                    MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
             FROM trip_delays
+            {where}
             GROUP BY route_id
-            """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY),
-        ).fetchall()
-        rolled = conn.execute(
-            """
+        """
+        rolled_sql = """
             SELECT route_id,
                    SUM(sample_count) AS sample_count,
                    SUM(on_time_count) AS on_time_count,
                    AVG(avg_delay_seconds) AS avg_delay_seconds,
                    MAX(max_delay_seconds) AS max_delay_seconds
             FROM route_stats_daily
+            {where}
             GROUP BY route_id
-            """
-        ).fetchall()
+        """
+        if range_key:
+            raw = conn.execute(
+                raw_sql.format(where="WHERE fetched_at >= ? AND fetched_at <= ?"),
+                (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since_ts, until_ts),
+            ).fetchall()
+            rolled = conn.execute(
+                rolled_sql.format(where="WHERE day >= ? AND day <= ?"), (since_date, until_date)
+            ).fetchall()
+        else:
+            raw = conn.execute(
+                raw_sql.format(where=""), (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY)
+            ).fetchall()
+            rolled = conn.execute(rolled_sql.format(where="")).fetchall()
     finally:
         conn.close()
 
@@ -256,12 +278,15 @@ def api_stats():
     return jsonify({
         "on_time_threshold_seconds": ON_TIME_MAX_DELAY,
         "on_time_min_delay_seconds": ON_TIME_MIN_DELAY,
+        "range": range_key,
+        "since_date": since_date,
+        "until_date": until_date,
         "per_operator": operator_stats,
         "per_route": per_route,
     })
 
 
-CANCELLATION_RANGE_DAYS = {"today": 1, "week": 7, "2weeks": 14, "30d": 30}
+RANGE_DAYS = {"today": 1, "week": 7, "2weeks": 14, "30d": 30}
 EARLIEST_POSSIBLE_DATE = "2000-01-01"  # ondergrens voor range=all
 WEEKDAY_NAMES_NL = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"]
 
@@ -271,13 +296,248 @@ def uitval_page():
     return render_template("cancellations.html")
 
 
-def _cancellation_date_bounds(range_key):
+@app.route("/trends")
+def trends_page():
+    return render_template("trends.html")
+
+
+def _date_bounds_for_range(range_key):
+    """Geeft (since_date, until_date) als ISO-datumstrings voor een range-key
+    ('today'/'week'/'2weeks'/'30d'/'all'), gedeeld door de uitval- en
+    statistiek-endpoints."""
     today_str = date.today().isoformat()
     if range_key == "all":
         return EARLIEST_POSSIBLE_DATE, today_str
-    days = CANCELLATION_RANGE_DAYS.get(range_key, 1)
+    days = RANGE_DAYS.get(range_key, 1)
     since_date = (date.today() - timedelta(days=days - 1)).isoformat()
     return since_date, today_str
+
+
+def _range_to_epoch(since_date, until_date):
+    """Zet een (since_date, until_date) ISO-datumrange om in unix-epoch-grenzen
+    (lokale tijd, hele dagen) voor het filteren van raw fetched_at-timestamps."""
+    since_dt = datetime.combine(date.fromisoformat(since_date), dtime.min)
+    until_dt = datetime.combine(date.fromisoformat(until_date), dtime.max)
+    return int(since_dt.timestamp()), int(until_dt.timestamp())
+
+
+def _route_ids_filter(route_id, operator):
+    """Bepaalt op welke route_ids een verzoek beperkt moet worden op basis van
+    de optionele ?route_id=/?operator=-parameters. None betekent: geen filter
+    (alle lijnen in de huidige index)."""
+    if route_id:
+        return {route_id}
+    if operator:
+        return {rid for rid, r in _index.routes.items() if r.get("operator") == operator}
+    return None
+
+
+@app.route("/api/stats/trend")
+def api_stats_trend():
+    """Dagreeks (op-tijd % en gem. vertraging) voor een lijn/operator/alle
+    lijnen, over een gekozen periode -- voor de trendgrafiek op /trends."""
+    range_key = request.args.get("range", "30d")
+    since_date, until_date = _date_bounds_for_range(range_key)
+    since_ts, until_ts = _range_to_epoch(since_date, until_date)
+    route_ids = _route_ids_filter(request.args.get("route_id"), request.args.get("operator"))
+
+    conn = db.get_conn()
+    try:
+        raw = conn.execute(
+            """
+            SELECT strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+                   route_id,
+                   COUNT(*) AS sample_count,
+                   SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
+                   AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds
+            FROM trip_delays
+            WHERE fetched_at >= ? AND fetched_at <= ?
+            GROUP BY day, route_id
+            """,
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since_ts, until_ts),
+        ).fetchall()
+        rolled = conn.execute(
+            """
+            SELECT day, route_id, sample_count, on_time_count, avg_delay_seconds
+            FROM route_stats_daily
+            WHERE day >= ? AND day <= ?
+            """,
+            (since_date, until_date),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_day = {}
+    for r in list(raw) + list(rolled):
+        if not _index.is_relevant_route(r["route_id"]):
+            continue
+        if route_ids is not None and r["route_id"] not in route_ids:
+            continue
+        entry = by_day.setdefault(r["day"], {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0})
+        entry["sample_count"] += r["sample_count"] or 0
+        entry["on_time_count"] += r["on_time_count"] or 0
+        entry["avg_sum"] += (r["avg_delay_seconds"] or 0) * (r["sample_count"] or 0)
+
+    daily = []
+    for day in sorted(by_day):
+        e = by_day[day]
+        if e["sample_count"] == 0:
+            continue
+        daily.append({
+            "date": day,
+            "sample_count": e["sample_count"],
+            "on_time_pct": round(100.0 * e["on_time_count"] / e["sample_count"], 1),
+            "avg_delay_seconds": round(e["avg_sum"] / e["sample_count"], 1),
+        })
+
+    return jsonify({"range": range_key, "since_date": since_date, "until_date": until_date, "daily": daily})
+
+
+@app.route("/api/stats/peak")
+def api_stats_peak():
+    """Punctualiteit gesplitst naar spits (07-09 en 16-18) vs. dal, voor een
+    lijn/operator/alle lijnen, over een gekozen periode."""
+    range_key = request.args.get("range", "30d")
+    since_date, until_date = _date_bounds_for_range(range_key)
+    since_ts, until_ts = _range_to_epoch(since_date, until_date)
+    route_ids = _route_ids_filter(request.args.get("route_id"), request.args.get("operator"))
+
+    conn = db.get_conn()
+    try:
+        raw = conn.execute(
+            f"""
+            SELECT route_id, {db.period_hour_sql()} AS period,
+                   COUNT(*) AS sample_count,
+                   SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
+                   AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds
+            FROM trip_delays
+            WHERE fetched_at >= ? AND fetched_at <= ?
+            GROUP BY route_id, period
+            """,
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since_ts, until_ts),
+        ).fetchall()
+        rolled = conn.execute(
+            """
+            SELECT route_id, period, sample_count, on_time_count, avg_delay_seconds
+            FROM route_stats_period_daily
+            WHERE day >= ? AND day <= ?
+            """,
+            (since_date, until_date),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_period = {
+        "peak": {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0},
+        "offpeak": {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0},
+    }
+    for r in list(raw) + list(rolled):
+        if not _index.is_relevant_route(r["route_id"]):
+            continue
+        if route_ids is not None and r["route_id"] not in route_ids:
+            continue
+        e = by_period[r["period"]]
+        e["sample_count"] += r["sample_count"] or 0
+        e["on_time_count"] += r["on_time_count"] or 0
+        e["avg_sum"] += (r["avg_delay_seconds"] or 0) * (r["sample_count"] or 0)
+
+    periods = []
+    for period in ("peak", "offpeak"):
+        e = by_period[period]
+        if e["sample_count"] == 0:
+            periods.append({"period": period, "sample_count": 0, "on_time_pct": None, "avg_delay_seconds": None})
+            continue
+        periods.append({
+            "period": period,
+            "sample_count": e["sample_count"],
+            "on_time_pct": round(100.0 * e["on_time_count"] / e["sample_count"], 1),
+            "avg_delay_seconds": round(e["avg_sum"] / e["sample_count"], 1),
+        })
+
+    return jsonify({
+        "range": range_key, "since_date": since_date, "until_date": until_date,
+        "peak_hours": sorted(db.PEAK_HOURS),
+        "periods": periods,
+    })
+
+
+@app.route("/api/stats/trips")
+def api_stats_trips():
+    """Drill-down: individuele ritten met hun hoogst waargenomen vertraging,
+    voor een lijn/operator over een gekozen periode. Werkt alleen binnen het
+    raw-retentievenster (zie RETENTION_DAYS in app/collector.py) -- oudere
+    metingen zijn al opgerold tot dagstatistieken en per-rit-detail is dan
+    niet meer beschikbaar."""
+    range_key = request.args.get("range", "week")
+    since_date, until_date = _date_bounds_for_range(range_key)
+    since_ts, until_ts = _range_to_epoch(since_date, until_date)
+    route_id = request.args.get("route_id")
+    operator = request.args.get("operator")
+    route_ids = _route_ids_filter(route_id, operator)
+    min_delay = int(request.args.get("min_delay_seconds", 300))
+    limit = min(int(request.args.get("limit", 100)), 500)
+    offset = max(int(request.args.get("offset", 0)), 0)
+
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT trip_id, route_id,
+                   MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds,
+                   MAX(fetched_at) AS last_seen
+            FROM trip_delays
+            WHERE fetched_at >= ? AND fetched_at <= ?
+            GROUP BY trip_id, route_id
+            HAVING max_delay_seconds >= ?
+            ORDER BY max_delay_seconds DESC
+            """,
+            (since_ts, until_ts, min_delay),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    items = []
+    for r in rows:
+        if not _index.is_relevant_route(r["route_id"]):
+            continue
+        if route_ids is not None and r["route_id"] not in route_ids:
+            continue
+        items.append({
+            "trip_id": r["trip_id"],
+            **route_meta(r["route_id"]),
+            "max_delay_seconds": r["max_delay_seconds"],
+            "last_seen": r["last_seen"],
+        })
+
+    return jsonify({
+        "range": range_key, "since_date": since_date, "until_date": until_date,
+        "raw_retention_days": RETENTION_DAYS,
+        "total": len(items),
+        "limit": limit, "offset": offset,
+        "items": items[offset:offset + limit],
+    })
+
+
+@app.route("/api/stops")
+def api_stops():
+    query = request.args.get("q", "")
+    return jsonify({"stops": _timetable.search_stops(query)})
+
+
+@app.route("/api/stops/<stop_id>/departures")
+def api_stop_departures(stop_id):
+    if stop_id not in _timetable.stops:
+        return jsonify({"error": "Onbekende halte"}), 404
+    window_minutes = min(int(request.args.get("window_minutes", 90)), 240)
+    departures = _timetable.next_departures(stop_id, int(time.time()), window_minutes=window_minutes)
+    for d in departures:
+        d.update(route_meta(d["route_id"]))
+    stop = _timetable.stops[stop_id]
+    return jsonify({
+        "stop": {"stop_id": stop_id, "name": stop.get("name", ""), "lat": stop.get("lat"), "lon": stop.get("lon")},
+        "departures": departures,
+        "count": len(departures),
+    })
 
 
 @app.route("/api/cancellations")
@@ -292,7 +552,7 @@ def api_cancellations():
     range_key = request.args.get("range", "today")
     # Bovengrens op vandaag: agencies melden soms al vervallen ritten voor
     # morgen vooruit, die horen niet thuis in een periode t/m vandaag.
-    since_date, today_str = _cancellation_date_bounds(range_key)
+    since_date, today_str = _date_bounds_for_range(range_key)
 
     conn = db.get_conn()
     try:
@@ -414,7 +674,7 @@ def api_cancellation_trips():
     """Drill-down: individuele vervallen ritten, gepagineerd en optioneel
     gefilterd op lijn/operator, voor wie de ruwe data wil inzien."""
     range_key = request.args.get("range", "today")
-    since_date, today_str = _cancellation_date_bounds(range_key)
+    since_date, today_str = _date_bounds_for_range(range_key)
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
     limit = min(int(request.args.get("limit", 100)), 500)

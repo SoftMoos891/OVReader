@@ -1,0 +1,67 @@
+/* Gedeeld thema voor alle OVReader-pagina's, in de stijl van DVZ Reader:
+   licht als standaard, donker via de .dark-klasse op <html> (toggle +
+   localStorage-key 'ovreader_dark', zie de inline init-snippet in elke
+   pagina). Bestaande variabelenamen (--bg/--panel/--border/--text/--muted/
+   --accent/--good/--warn/--bad) blijven ongewijzigd zodat de paginaspecifieke
+   CSS in index.html/trends.html/cancellations.html niet hoefde te worden
+   herschreven -- alleen de kleurwaarden zijn vervangen. */
+
+:root {
+  --bg:        #e8edf5;
+  --panel:     #ffffff;
+  --panel2:    #f0f4fa;
+  --border:    #c8d3e8;
+  --border2:   #a0b0cc;
+  --text:      #0a0f1e;
+  --muted:     #6b7fa0;
+  --accent:    #1a56db;
+  --accent2:   #1347c4;
+  --good:      #16a34a;
+  --warn:      #d97706;
+  --bad:       #dc2626;
+  --good-bg:   rgba(22,163,74,.12);
+  --warn-bg:   rgba(217,119,6,.12);
+  --bad-bg:    rgba(220,38,38,.12);
+  --accent-bg: rgba(26,86,219,.10);
+}
+
+html.dark {
+  --bg:        #080c15;
+  --panel:     #0f1623;
+  --panel2:    #172030;
+  --border:    #1e2e48;
+  --border2:   #2a3e5c;
+  --text:      #edf2ff;
+  --muted:     #566a88;
+  --accent:    #4096f7;
+  --accent2:   #2b7de9;
+  --good:      #4ade80;
+  --warn:      #fb923c;
+  --bad:       #f87171;
+  --good-bg:   rgba(74,222,128,.12);
+  --warn-bg:   rgba(251,146,60,.12);
+  --bad-bg:    rgba(248,113,113,.12);
+  --accent-bg: rgba(64,150,247,.12);
+}
+
+body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
+
+.theme-toggle-btn {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.theme-toggle-btn:hover { background: var(--panel); border-color: var(--border2); color: var(--text); }
+
+.map-legend {
+  background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6;
+  box-shadow: 0 2px 10px rgba(0,0,0,.12);
+}

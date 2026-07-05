@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Trends &amp; analyse — busvervoer Utrecht</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
+  main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+  .range-toggle { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+               border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all .15s; }
+  .range-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
+  .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-row select, .filter-row input[type=text] {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 13px;
+  }
+  .clear-filter { color: var(--accent); font-size: 12px; cursor: pointer; text-decoration: underline; }
+  .kpi-row { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+  .kpi-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 16px 22px; min-width: 150px; }
+  .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 32px; font-weight: 700; }
+  .kpi-box .num.bad { color: var(--bad); }
+  .kpi-box .num.good { color: var(--good); }
+  .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 14px; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .panel-header h2 { margin: 0; }
+  canvas { max-height: 280px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: var(--text); }
+  th.sorted::after { content: ' \25BE'; }
+  tr:hover td { background: var(--panel2); }
+  tr.clickable { cursor: pointer; }
+  tr.active-row td { background: var(--accent-bg); }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .table-scroll { max-height: 420px; overflow-y: auto; }
+  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .pagination button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .pagination button:disabled { opacity: .4; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📈 Trends &amp; analyse</h1>
+  <span class="sub">Historische punctualiteit, piek/dal-verschillen en ranglijst busvervoer provincie Utrecht</span>
+  <a class="back" href="/">&larr; Terug naar live overzicht</a>
+  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+</header>
+<main>
+  <div class="range-toggle">
+    <button class="range-btn" data-range="today">Vandaag</button>
+    <button class="range-btn" data-range="week">Afgelopen 7 dagen</button>
+    <button class="range-btn active" data-range="2weeks">Afgelopen 14 dagen</button>
+    <button class="range-btn" data-range="30d">Afgelopen 30 dagen</button>
+    <button class="range-btn" data-range="all">Alles (sinds start collector)</button>
+  </div>
+
+  <div class="filter-row">
+    <span style="color:var(--muted);">Lijn/operator:</span>
+    <select id="operator-select"><option value="">Alle operators</option></select>
+    <input type="text" id="route-select-filter" placeholder="Zoek lijn...">
+    <span id="active-route-label"></span>
+    <span class="clear-filter" id="clear-route-filter" style="display:none;">Wis lijnfilter</span>
+  </div>
+
+  <div class="kpi-row" id="kpis"></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Trend per dag</h2>
+      <canvas id="trendChart"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Piek vs. dal <span style="font-weight:400; text-transform:none; color:var(--muted);">(spits: 07-09 &amp; 16-18 uur)</span></h2>
+      <canvas id="peakChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Ranglijst — slechtste lijnen</h2>
+      <input type="text" id="ranking-filter" placeholder="Filter op lijn/operator...">
+    </div>
+    <div class="table-scroll" id="ranking-table"><div class="empty">Laden...</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Individuele ritten met de hoogste vertraging<span id="drilldown-route-label"></span></h2>
+      <span style="color:var(--muted); font-size:12px;" id="drilldown-hint"></span>
+    </div>
+    <div class="table-scroll" id="trips-table"><div class="empty">Klik op een lijn in de ranglijst hierboven om ritten te tonen</div></div>
+    <div class="pagination" id="trips-pagination" style="display:none;">
+      <button id="prev-page">&larr; Vorige</button>
+      <span id="page-info"></span>
+      <button id="next-page">Volgende &rarr;</button>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
+<script>
+let currentRange = '2weeks';
+let selectedRouteId = '';
+let selectedOperator = '';
+let rankingSort = { key: 'on_time_pct', dir: 1 };
+let tripPage = 0;
+const TRIP_PAGE_SIZE = 50;
+const MIN_SAMPLES_FOR_RANKING = 20;
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+const CHART_COLORS = {
+  accent: cssVar('--accent'), bad: cssVar('--bad'), good: cssVar('--good'),
+  warn: cssVar('--warn'), muted: cssVar('--muted'), grid: cssVar('--border'),
+};
+Chart.defaults.color = CHART_COLORS.muted;
+Chart.defaults.borderColor = CHART_COLORS.grid;
+Chart.defaults.font.size = 12;
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+  location.reload(); // simpelste manier om al gerenderde Chart.js-grafieken in het nieuwe thema te tekenen
+}
+
+let trendChart, peakChart;
+let statsData = null;
+
+function fmtDateShort(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
+function pillClass(pct) {
+  if (pct >= 90) return 'good';
+  if (pct >= 75) return 'warn';
+  return 'bad';
+}
+
+async function populateMeta() {
+  const res = await fetch('/api/meta');
+  const meta = await res.json();
+  const sel = document.getElementById('operator-select');
+  sel.innerHTML = '<option value="">Alle operators</option>' +
+    meta.operators.map(op => `<option value="${op}">${op}</option>`).join('');
+}
+
+async function loadAll() {
+  await Promise.all([loadStats(), loadTrend(), loadPeak()]);
+  tripPage = 0;
+  loadTrips();
+}
+
+function statsParams() {
+  const params = new URLSearchParams({ range: currentRange });
+  if (selectedRouteId) params.set('route_id', selectedRouteId);
+  else if (selectedOperator) params.set('operator', selectedOperator);
+  return params;
+}
+
+async function loadStats() {
+  const res = await fetch(`/api/stats?${statsParams()}`);
+  statsData = await res.json();
+  renderKpis();
+  renderRankingTable();
+}
+
+function renderKpis() {
+  const rows = statsData.per_route.filter(r => !selectedRouteId || r.route_id === selectedRouteId);
+  const totalSamples = rows.reduce((s, r) => s + r.sample_count, 0);
+  const onTimeSamples = rows.reduce((s, r) => s + r.sample_count * r.on_time_pct / 100, 0);
+  const avgDelay = totalSamples ? rows.reduce((s, r) => s + r.avg_delay_seconds * r.sample_count, 0) / totalSamples : 0;
+  const onTimePct = totalSamples ? Math.round(onTimeSamples / totalSamples * 1000) / 10 : null;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi-box"><div class="num ${onTimePct !== null && onTimePct < 75 ? 'bad' : 'good'}">${onTimePct !== null ? onTimePct + '%' : '–'}</div><div class="label">Op tijd</div></div>
+    <div class="kpi-box"><div class="num">${Math.round(avgDelay)}s</div><div class="label">Gem. vertraging</div></div>
+    <div class="kpi-box"><div class="num">${totalSamples}</div><div class="label">Metingen</div></div>
+    <div class="kpi-box"><div class="num">${rows.length}</div><div class="label">Lijnen in selectie</div></div>
+  `;
+}
+
+async function loadTrend() {
+  const params = statsParams();
+  const res = await fetch(`/api/stats/trend?${params}`);
+  const data = await res.json();
+  const labels = data.daily.map(x => fmtDateShort(x.date));
+  const onTime = data.daily.map(x => x.on_time_pct);
+  const avgDelay = data.daily.map(x => x.avg_delay_seconds);
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'line', label: 'Op tijd %', data: onTime, borderColor: CHART_COLORS.good, backgroundColor: CHART_COLORS.good, yAxisID: 'y', tension: 0.3 },
+        { type: 'bar', label: 'Gem. vertraging (s)', data: avgDelay, backgroundColor: CHART_COLORS.accent, yAxisID: 'y1' },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: '%' } },
+        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'seconden' } },
+      },
+    },
+  });
+}
+
+async function loadPeak() {
+  const params = statsParams();
+  const res = await fetch(`/api/stats/peak?${params}`);
+  const data = await res.json();
+  const labels = data.periods.map(p => p.period === 'peak' ? 'Spits' : 'Dal');
+  const onTime = data.periods.map(p => p.on_time_pct);
+  const avgDelay = data.periods.map(p => p.avg_delay_seconds);
+  if (peakChart) peakChart.destroy();
+  peakChart = new Chart(document.getElementById('peakChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Op tijd %', data: onTime, backgroundColor: CHART_COLORS.good, yAxisID: 'y' },
+        { type: 'bar', label: 'Gem. vertraging (s)', data: avgDelay, backgroundColor: CHART_COLORS.warn, yAxisID: 'y1' },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: '%' } },
+        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'seconden' } },
+      },
+    },
+  });
+}
+
+function renderRankingTable() {
+  const filterEl = document.getElementById('ranking-filter');
+  const filter = filterEl.value.trim().toLowerCase();
+  let rows = statsData.per_route.filter(r => r.sample_count >= MIN_SAMPLES_FOR_RANKING);
+  if (filter) {
+    rows = rows.filter(r => r.short_name.toLowerCase().includes(filter) || r.operator.toLowerCase().includes(filter));
+  }
+  rows = [...rows].sort((a, b) => (a[rankingSort.key] > b[rankingSort.key] ? 1 : -1) * rankingSort.dir);
+
+  const container = document.getElementById('ranking-table');
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="empty">Geen lijnen met minstens ${MIN_SAMPLES_FOR_RANKING} metingen in deze periode</div>`;
+    return;
+  }
+  const col = (key, label) => `<th data-key="${key}" class="${rankingSort.key === key ? 'sorted' : ''}">${label}</th>`;
+  container.innerHTML = `<table><tr>
+      ${col('short_name', 'Lijn')}${col('operator', 'Operator')}${col('on_time_pct', 'Op tijd')}${col('avg_delay_seconds', 'Gem. vertr.')}${col('max_delay_seconds', 'Max vertr.')}${col('sample_count', 'Metingen')}
+    </tr>` +
+    rows.map(r => `<tr class="clickable ${r.route_id === selectedRouteId ? 'active-row' : ''}" data-route-id="${r.route_id}">
+      <td>${r.short_name}</td>
+      <td>${r.operator}</td>
+      <td><span class="pill ${pillClass(r.on_time_pct)}">${r.on_time_pct}%</span></td>
+      <td>${Math.round(r.avg_delay_seconds)}s</td>
+      <td>${Math.round(r.max_delay_seconds / 60)} min</td>
+      <td>${r.sample_count}</td>
+    </tr>`).join('') + '</table>';
+
+  container.querySelectorAll('th[data-key]').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    rankingSort.dir = (rankingSort.key === key) ? -rankingSort.dir : 1;
+    rankingSort.key = key;
+    renderRankingTable();
+  }));
+  container.querySelectorAll('tr[data-route-id]').forEach(tr => tr.addEventListener('click', () => {
+    selectRoute(tr.dataset.routeId);
+  }));
+}
+
+function selectRoute(routeId) {
+  selectedRouteId = routeId;
+  const meta = statsData.per_route.find(r => r.route_id === routeId);
+  document.getElementById('active-route-label').textContent = meta ? `Lijn ${meta.short_name} (${meta.operator})` : '';
+  document.getElementById('clear-route-filter').style.display = 'inline';
+  document.getElementById('drilldown-route-label').textContent = meta ? ` — lijn ${meta.short_name}` : '';
+  loadAll().catch(console.error);
+}
+
+document.getElementById('clear-route-filter').addEventListener('click', () => {
+  selectedRouteId = '';
+  document.getElementById('active-route-label').textContent = '';
+  document.getElementById('clear-route-filter').style.display = 'none';
+  document.getElementById('drilldown-route-label').textContent = '';
+  loadAll().catch(console.error);
+});
+
+document.getElementById('operator-select').addEventListener('change', (e) => {
+  selectedOperator = e.target.value;
+  selectedRouteId = '';
+  document.getElementById('active-route-label').textContent = '';
+  document.getElementById('clear-route-filter').style.display = 'none';
+  document.getElementById('drilldown-route-label').textContent = '';
+  loadAll().catch(console.error);
+});
+
+document.getElementById('route-select-filter').addEventListener('input', renderRankingTable);
+document.getElementById('ranking-filter').addEventListener('input', renderRankingTable);
+
+async function loadTrips() {
+  const container = document.getElementById('trips-table');
+  const pagination = document.getElementById('trips-pagination');
+  if (!selectedRouteId && !selectedOperator) {
+    container.innerHTML = '<div class="empty">Klik op een lijn in de ranglijst hierboven om ritten te tonen</div>';
+    pagination.style.display = 'none';
+    return;
+  }
+  const params = new URLSearchParams({ range: currentRange, limit: TRIP_PAGE_SIZE, offset: tripPage * TRIP_PAGE_SIZE, min_delay_seconds: 300 });
+  if (selectedRouteId) params.set('route_id', selectedRouteId);
+  else if (selectedOperator) params.set('operator', selectedOperator);
+  const res = await fetch(`/api/stats/trips?${params}`);
+  const data = await res.json();
+
+  document.getElementById('drilldown-hint').textContent =
+    `Alleen ritten binnen de laatste ${data.raw_retention_days} dagen (ruwe data); langer geleden is alleen dagtotaal beschikbaar.`;
+
+  if (data.items.length === 0) {
+    container.innerHTML = '<div class="empty">Geen ritten met &ge;5 min vertraging gevonden voor dit filter/periode</div>';
+    pagination.style.display = 'none';
+    return;
+  }
+  container.innerHTML = '<table><tr><th>Lijn</th><th>Operator</th><th>Max. vertraging</th><th>Laatst gezien</th><th>Rit-ID</th></tr>' +
+    data.items.map(i => `<tr>
+      <td>${i.short_name}</td>
+      <td>${i.operator}</td>
+      <td><span class="pill ${i.max_delay_seconds > 360 ? 'bad' : 'warn'}">+${Math.round(i.max_delay_seconds / 60)} min</span></td>
+      <td>${new Date(i.last_seen * 1000).toLocaleString('nl-NL')}</td>
+      <td style="color:var(--muted)">${i.trip_id}</td>
+    </tr>`).join('') + '</table>';
+
+  const totalPages = Math.max(1, Math.ceil(data.total / TRIP_PAGE_SIZE));
+  pagination.style.display = 'flex';
+  document.getElementById('page-info').textContent = `Pagina ${tripPage + 1} van ${totalPages} (${data.total} ritten)`;
+  document.getElementById('prev-page').disabled = tripPage === 0;
+  document.getElementById('next-page').disabled = tripPage + 1 >= totalPages;
+}
+
+document.querySelectorAll('.range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentRange = btn.dataset.range;
+    loadAll().catch(console.error);
+  });
+});
+document.getElementById('prev-page').addEventListener('click', () => { if (tripPage > 0) { tripPage--; loadTrips(); } });
+document.getElementById('next-page').addEventListener('click', () => { tripPage++; loadTrips(); });
+
+populateMeta().catch(console.error);
+loadAll().catch(console.error);
+setInterval(() => loadAll().catch(console.error), 60000);
+</script>
+</body>
+</html>
