@@ -454,7 +454,7 @@ async function refreshStopDepartures() {
     '<table><tr><th>Lijn</th><th>Richting</th><th>Vertrek</th><th>Status</th></tr>' +
     data.departures.map(d => {
       const status = d.delay_seconds === null
-        ? '<span class="pill">dienstregeling</span>'
+        ? '<span class="pill">op tijd</span>'
         : `<span class="pill ${delayPillClass(d.delay_seconds)}">${delayText(d.delay_seconds)}</span>`;
       const time = d.estimated_time || d.scheduled_time;
       return `<tr>
