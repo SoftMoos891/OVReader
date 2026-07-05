@@ -29,19 +29,24 @@ class Timetable:
         stop_times_path = DATA_DIR / "utrecht_stop_times.json"
         trip_meta_path = DATA_DIR / "utrecht_trip_meta.json"
         calendar_path = DATA_DIR / "utrecht_calendar.json"
+
+        # utrecht_stops.json bestaat al veel langer (gebruikt door UtrechtIndex)
+        # -- laad 'm onafhankelijk zodat de haltezoeker op naam altijd werkt,
+        # ook als de nieuwere dienstregelingbestanden hieronder nog ontbreken.
+        self.stops = json.loads(stops_path.read_text(encoding="utf-8")) if stops_path.exists() else {}
+
         if not stop_times_path.exists():
             # Bestaande installaties hebben deze bestanden pas na een herbouw
-            # van de statische index (build_static_index.py) -- de haltezoeker
-            # geeft tot die tijd gewoon lege resultaten i.p.v. de hele app te
-            # laten crashen.
+            # van de statische index (build_static_index.py) -- eerstvolgende
+            # vertrekken staan tot die tijd uit i.p.v. de hele app te laten crashen.
             print(
-                "[timetable] utrecht_stop_times.json ontbreekt -- haltezoeker "
-                "staat uit totdat app/build_static_index.py opnieuw is gedraaid."
+                "[timetable] utrecht_stop_times.json ontbreekt -- eerstvolgende "
+                "vertrekken staan uit totdat app/build_static_index.py opnieuw is "
+                "gedraaid (haltezoeken op naam werkt al wel)."
             )
-            self.stops, self.stop_times, self.trip_meta, self.calendar = {}, {}, {}, {}
+            self.stop_times, self.trip_meta, self.calendar = {}, {}, {}
             self.loaded_at = time.time()
             return
-        self.stops = json.loads(stops_path.read_text(encoding="utf-8"))
         self.stop_times = json.loads(stop_times_path.read_text(encoding="utf-8"))
         self.trip_meta = json.loads(trip_meta_path.read_text(encoding="utf-8"))
         self.calendar = json.loads(calendar_path.read_text(encoding="utf-8"))
