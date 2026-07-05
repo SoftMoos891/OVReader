@@ -4,6 +4,7 @@ provincie Utrecht)."""
 import hmac
 import os
 import time
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
@@ -619,26 +620,40 @@ def api_cancellations():
     weekday_canceled = [0] * 7
     weekday_ran = [0] * 7
     hour_canceled = [0] * 24
+    # Zelfde tellingen, maar gesplitst per operator (Keolis/Transdev) zodat
+    # het uitval-dashboard een verschil tussen de twee concessies kan tonen.
+    daily_by_op = defaultdict(lambda: defaultdict(lambda: {"canceled": 0, "ran": 0}))
+    weekday_by_op = defaultdict(lambda: {"canceled": [0] * 7, "ran": [0] * 7})
+    hour_by_op = defaultdict(lambda: [0] * 24)
     for r in canceled_rows:
         if not _index.is_relevant_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
+        operator = route_meta(r["route_id"])["operator"]
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["canceled"] += r["cnt"]
+        daily_by_op[operator][r["service_date"]]["canceled"] += r["cnt"]
         route_canceled[r["route_id"]] = route_canceled.get(r["route_id"], 0) + r["cnt"]
-        weekday_canceled[date.fromisoformat(r["service_date"]).weekday()] += r["cnt"]
+        weekday = date.fromisoformat(r["service_date"]).weekday()
+        weekday_canceled[weekday] += r["cnt"]
+        weekday_by_op[operator]["canceled"][weekday] += r["cnt"]
         if r["start_time"]:
             try:
                 hour = int(r["start_time"].split(":")[0]) % 24
                 hour_canceled[hour] += r["cnt"]
+                hour_by_op[operator][hour] += r["cnt"]
             except (ValueError, IndexError):
                 pass
     for r in ran_rows:
         if not _index.is_relevant_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
+        operator = route_meta(r["route_id"])["operator"]
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["ran"] += r["cnt"]
+        daily_by_op[operator][r["service_date"]]["ran"] += r["cnt"]
         route_ran[r["route_id"]] = route_ran.get(r["route_id"], 0) + r["cnt"]
-        weekday_ran[date.fromisoformat(r["service_date"]).weekday()] += r["cnt"]
+        weekday = date.fromisoformat(r["service_date"]).weekday()
+        weekday_ran[weekday] += r["cnt"]
+        weekday_by_op[operator]["ran"][weekday] += r["cnt"]
 
     daily_list = []
     for d in sorted(daily.keys()):
@@ -691,6 +706,39 @@ def api_cancellations():
 
     per_hour = [{"hour": h, "canceled": hour_canceled[h]} for h in range(24)]
 
+    operators_present = sorted(set(daily_by_op) | set(weekday_by_op) | set(hour_by_op))
+
+    daily_by_operator = {}
+    for op in operators_present:
+        rows_by_date = daily_by_op[op]
+        lst = []
+        for d in sorted(rows_by_date.keys()):
+            c, r = rows_by_date[d]["canceled"], rows_by_date[d]["ran"]
+            total_op = c + r
+            lst.append({
+                "date": d, "canceled": c, "ran": r,
+                "cancellation_pct": round(100.0 * c / total_op, 1) if total_op else 0.0,
+            })
+        daily_by_operator[op] = lst
+
+    per_weekday_by_operator = {}
+    for op in operators_present:
+        wk = weekday_by_op[op]
+        lst = []
+        for i, name in enumerate(WEEKDAY_NAMES_NL):
+            c, r = wk["canceled"][i], wk["ran"][i]
+            wtotal = c + r
+            lst.append({
+                "weekday": name, "canceled": c, "ran": r,
+                "cancellation_pct": round(100.0 * c / wtotal, 1) if wtotal else 0.0,
+            })
+        per_weekday_by_operator[op] = lst
+
+    per_hour_by_operator = {
+        op: [{"hour": h, "canceled": hour_by_op[op][h]} for h in range(24)]
+        for op in operators_present
+    }
+
     return jsonify({
         "range": range_key,
         "since_date": since_date,
@@ -699,10 +747,13 @@ def api_cancellations():
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
         "daily": daily_list,
+        "daily_by_operator": daily_by_operator,
         "per_route": per_route,
         "per_operator": per_operator,
         "per_weekday": per_weekday,
+        "per_weekday_by_operator": per_weekday_by_operator,
         "per_hour": per_hour,
+        "per_hour_by_operator": per_hour_by_operator,
     })
 
 
