@@ -64,8 +64,24 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 }
 .theme-toggle-btn:hover { background: var(--panel); border-color: var(--border2); color: var(--text); }
 
-.dvz-logo-link { display: flex; align-items: center; align-self: center; flex-shrink: 0; }
-.dvz-logo-link img { height: 28px; width: auto; display: block; border-radius: 6px; }
+.dvz-logo-badge {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  align-self: center;
+  flex-shrink: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #0f172a;
+  text-decoration: none;
+  user-select: none;
+  transition: filter .15s;
+}
+.dvz-logo-badge:hover { filter: brightness(0.94); }
 
 .map-legend {
   background: var(--panel); border: 1px solid var(--border); color: var(--text);
