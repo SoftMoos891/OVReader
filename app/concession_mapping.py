@@ -22,11 +22,22 @@ lijnnummer.
 Bijwerken: als er een nieuwe lijn bijkomt die hier niet in voorkomt, geeft
 build_static_index.py een waarschuwing ("Onbekend") met het lijnnummer en de
 routebeschrijving -- voeg 'm dan hier toe.
+
+Modaliteit: Transdev exploiteert zowel bus als de U-tram (20/21/22, GTFS
+route_type 0) -- die worden als aparte "operator"-waarden teruggegeven
+("Transdev bus" resp. "Transdev tram") zodat de UI ze uit elkaar kan houden.
+Keolis rijdt geen tram in deze concessie, dus die blijft gewoon "Keolis".
 """
 
 KEOLIS = "Keolis"
-TRANSDEV = "Transdev"
+TRANSDEV_BUS = "Transdev bus"
+TRANSDEV_TRAM = "Transdev tram"
 UNKNOWN = "Onbekend"
+
+# U-tram 20/21/22 (Utrecht Binnen, Transdev) -- lightrail, geen bus. Apart
+# gehouden van UNAMBIGUOUS_TRANSDEV hieronder zodat de UI een expliciet
+# onderscheid kan maken tussen "Transdev bus" en "Transdev tram".
+TRAM_LINES_TRANSDEV = {"20", "21", "22"}
 
 # Lijnnummers die uitsluitend bij Utrecht Buiten (Keolis) horen.
 UNAMBIGUOUS_KEOLIS = {
@@ -69,16 +80,19 @@ AMBIGUOUS_KEYWORDS = {
 
 
 def classify_operator(short_name, long_name):
-    """Bepaalt of een lijn bij Keolis (Utrecht Buiten) of Transdev (Utrecht
-    Binnen) hoort. Geeft UNKNOWN terug als de lijn niet herkend wordt (nieuwe
-    lijn sinds het laatste onderhoud van dit bestand)."""
+    """Bepaalt of een lijn bij Keolis (Utrecht Buiten), Transdev-bus of
+    Transdev-tram (beide Utrecht Binnen) hoort. Geeft UNKNOWN terug als de
+    lijn niet herkend wordt (nieuwe lijn sinds het laatste onderhoud van dit
+    bestand)."""
+    if short_name in TRAM_LINES_TRANSDEV:
+        return TRANSDEV_TRAM
     if short_name in UNAMBIGUOUS_KEOLIS:
         return KEOLIS
     if short_name in UNAMBIGUOUS_TRANSDEV:
-        return TRANSDEV
+        return TRANSDEV_BUS
     if short_name in AMBIGUOUS_KEYWORDS:
         keywords, match_operator = AMBIGUOUS_KEYWORDS[short_name]
-        other_operator = TRANSDEV if match_operator == KEOLIS else KEOLIS
+        other_operator = TRANSDEV_BUS if match_operator == KEOLIS else KEOLIS
         long_lower = (long_name or "").lower()
         if any(kw in long_lower for kw in keywords):
             return match_operator

@@ -1,11 +1,11 @@
 """
 Bouwt een gefilterde index van GTFS statische data voor U-OV: de concessie
-voor het busvervoer in de provincie Utrecht, uitgevoerd door Keolis en
+voor het openbaar vervoer in de provincie Utrecht, uitgevoerd door Keolis en
 Transdev onder de gezamenlijke merknaam U-OV (agency_id "UOV" in de
 landelijke feed).
 
 Downloadt (indien nodig) de landelijke statische GTFS-feed van OVapi, filtert
-routes.txt op agency_id "UOV" en route_type bus, en leidt daaruit de
+routes.txt op agency_id "UOV" en route_type bus of U-tram, en leidt daaruit de
 bijbehorende trips/haltes af. Resultaat wordt weggeschreven als compacte
 JSON-bestanden die de realtime-fetchers gebruiken om alleen U-OV-data te
 verwerken (geen Qbuzz/Connexxion/Arriva/GVB/NS-bussen die toevallig de
@@ -39,6 +39,7 @@ WEEKDAY_FIELDS = ["monday", "tuesday", "wednesday", "thursday", "friday", "satur
 
 TARGET_AGENCY_ID = "UOV"
 BUS_ROUTE_TYPE = "3"
+TRAM_ROUTE_TYPE = "0"  # U-tram 20/21/22 (Transdev, Utrecht Binnen)
 
 csv.field_size_limit(sys.maxsize)
 
@@ -60,13 +61,15 @@ def download_gtfs_zip():
     log("Download klaar.")
 
 
-def find_uov_bus_routes(zf):
-    """Filtert routes.txt op de U-OV-concessie, alleen bus (geen sneltram)."""
+def find_uov_routes(zf):
+    """Filtert routes.txt op de U-OV-concessie: bus (route_type 3) en de
+    U-tram (route_type 0 -- alleen Transdev/Utrecht Binnen rijdt tram in
+    deze concessie)."""
     routes = {}
     with zf.open("routes.txt") as f:
         reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
         for row in reader:
-            if row.get("agency_id") == TARGET_AGENCY_ID and row.get("route_type") == BUS_ROUTE_TYPE:
+            if row.get("agency_id") == TARGET_AGENCY_ID and row.get("route_type") in (BUS_ROUTE_TYPE, TRAM_ROUTE_TYPE):
                 routes[row["route_id"]] = {
                     "agency_id": row["agency_id"],
                     "short_name": row.get("route_short_name", ""),
@@ -194,12 +197,12 @@ def main():
     download_gtfs_zip()
 
     with zipfile.ZipFile(GTFS_ZIP_PATH) as zf:
-        log(f"Filter routes.txt op agency_id={TARGET_AGENCY_ID!r} en bus (route_type=3)...")
-        routes = find_uov_bus_routes(zf)
+        log(f"Filter routes.txt op agency_id={TARGET_AGENCY_ID!r}, bus (route_type=3) + U-tram (route_type=0)...")
+        routes = find_uov_routes(zf)
         agency_name = load_agency_name(zf)
         for r in routes.values():
             r["agency_name"] = agency_name
-        log(f"{len(routes)} U-OV buslijnen gevonden.")
+        log(f"{len(routes)} U-OV lijnen gevonden (bus + tram).")
 
         trip_to_route, trip_meta = find_trips_for_routes(zf, set(routes))
         log(f"{len(trip_to_route):,} trips gevonden voor deze lijnen.")
@@ -224,7 +227,7 @@ def main():
         operator_counts[r["operator"]] = operator_counts.get(r["operator"], 0) + 1
         if r["operator"] == UNKNOWN:
             unknown_lines.append(f"{r['short_name']} ({r['long_name']})")
-    log(f"Verdeling Keolis/Transdev: {operator_counts}")
+    log(f"Verdeling per operator/modaliteit: {operator_counts}")
     if unknown_lines:
         log(
             "WAARSCHUWING: onherkende lijn(en), niet toegewezen aan Keolis of "

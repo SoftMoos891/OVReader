@@ -9,10 +9,10 @@ storingsmeldingen en punctualiteitsstatistieken.
 
 Open, gratis GTFS-Realtime feeds van NDOV/OVapi (`gtfs.ovapi.nl`) — geen
 API-key nodig. Relevante lijnen worden bepaald door de statische GTFS-feed te
-filteren op `agency_id == "UOV"` (bus, geen sneltram) — dus precies de
-officiële U-OV-concessie, geen andere vervoerders die toevallig de provincie
-doorkruisen (Qbuzz, Connexxion, Arriva, GVB, NS-bus e.d. worden bewust
-uitgesloten).
+filteren op `agency_id == "UOV"` en route_type bus of U-tram — dus precies de
+officiële U-OV-concessie (Keolis-bus, Transdev-bus en de Transdev-tram
+20/21/22), geen andere vervoerders die toevallig de provincie doorkruisen
+(Qbuzz, Connexxion, Arriva, GVB, NS-bus e.d. worden bewust uitgesloten).
 
 ## Starten
 
