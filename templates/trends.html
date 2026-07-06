@@ -62,6 +62,21 @@
   .pagination button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 4px 10px; cursor: pointer; }
   .pagination button:disabled { opacity: .4; cursor: default; }
+  .records-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+  .record-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+                 padding: 14px 16px; position: relative; overflow: hidden; }
+  .record-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bad); }
+  .record-card.positive::before { background: var(--good); }
+  .record-card .rc-period { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .record-card .rc-label { font-size: 12.5px; color: var(--text); margin: 4px 0 8px; font-weight: 600; }
+  .record-card .rc-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; }
+  .record-card .rc-value.good { color: var(--good); }
+  .record-card .rc-value.warn { color: var(--warn); }
+  .record-card .rc-value.bad { color: var(--bad); }
+  .record-card .rc-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .record-card.empty-card { color: var(--muted); font-style: italic; font-size: 12px;
+                             display: flex; align-items: center; justify-content: center; min-height: 96px; text-align: center; }
+  .record-card.empty-card::before { background: var(--border); }
 </style>
 </head>
 <body>
@@ -72,6 +87,14 @@
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
 <main>
+  <div class="panel">
+    <div class="panel-header">
+      <h2>🏆 Opvallende dagen (records)</h2>
+      <span style="color:var(--muted); font-size:11px;" id="records-hint"></span>
+    </div>
+    <div class="records-grid" id="records-grid"><div class="empty">Laden...</div></div>
+  </div>
+
   <div class="range-toggle">
     <button class="range-btn" data-range="today">Vandaag</button>
     <button class="range-btn" data-range="week">Afgelopen 7 dagen</button>
@@ -163,6 +186,53 @@ function pillClass(pct) {
   if (pct >= 90) return 'good';
   if (pct >= 75) return 'warn';
   return 'bad';
+}
+
+function recordCard(label, period, rec, opts) {
+  opts = opts || {};
+  if (!rec) {
+    return `<div class="record-card empty-card">${label}<br>(${period.toLowerCase()}) nog niet genoeg data</div>`;
+  }
+  const kind = opts.kind || 'ontime';
+  const isCancellation = kind === 'cancellation';
+  const value = isCancellation ? rec.cancellation_pct : rec.on_time_pct;
+  const valueClass = opts.positive ? 'good' : (isCancellation ? 'bad' : pillClass(value) === 'good' ? 'warn' : pillClass(value));
+  const context = rec.short_name
+    ? `Lijn ${rec.short_name}${rec.operator ? ' · ' + rec.operator : ''}`
+    : (rec.operator || '');
+  const sampleNote = isCancellation
+    ? `${rec.canceled} van ${rec.total} ritten uitgevallen`
+    : `${rec.sample_count} metingen`;
+  return `<div class="record-card ${opts.positive ? 'positive' : ''}">
+    <div class="rc-period">${period}</div>
+    <div class="rc-label">${label}</div>
+    <div class="rc-value ${valueClass}">${value}%</div>
+    <div class="rc-meta">${fmtDateShort(rec.day)}${context ? ' · ' + context : ''}</div>
+    <div class="rc-meta">${sampleNote}</div>
+  </div>`;
+}
+
+async function loadRecords() {
+  const res = await fetch('/api/records');
+  const data = await res.json();
+  const cards = [
+    recordCard('Slechtste dag (op tijd)', 'Ooit', data.network.worst_all_time),
+    recordCard('Slechtste dag (op tijd)', 'Deze maand', data.network.worst_month),
+    recordCard('Slechtste dag (op tijd)', 'Deze week', data.network.worst_week),
+    recordCard('Beste dag (op tijd)', 'Ooit', data.network.best_all_time, { positive: true }),
+    recordCard('Slechtste lijnprestatie', 'Ooit', data.routes.worst_all_time),
+    recordCard('Slechtste lijnprestatie', 'Deze maand', data.routes.worst_month),
+  ];
+  for (const [operator, rec] of Object.entries(data.operators)) {
+    cards.push(recordCard(`Slechtste dag — ${operator}`, 'Ooit', rec.worst_all_time));
+    cards.push(recordCard(`Slechtste dag — ${operator}`, 'Deze maand', rec.worst_month));
+  }
+  cards.push(recordCard('Hoogste uitvalpercentage', 'Ooit', data.cancellations.worst_all_time, { kind: 'cancellation' }));
+  cards.push(recordCard('Hoogste uitvalpercentage', 'Deze maand', data.cancellations.worst_month, { kind: 'cancellation' }));
+
+  document.getElementById('records-grid').innerHTML = cards.join('');
+  document.getElementById('records-hint').textContent =
+    `Op basis van dagen met ≥${data.min_samples.network} (netwerk) / ≥${data.min_samples.route} (lijn) metingen, of ≥${data.min_samples.cancellation_total} ritten (uitval)`;
 }
 
 async function populateMeta() {
@@ -378,7 +448,9 @@ document.getElementById('next-page').addEventListener('click', () => { tripPage+
 
 populateMeta().catch(console.error);
 loadAll().catch(console.error);
+loadRecords().catch(console.error);
 setInterval(() => loadAll().catch(console.error), 60000);
+setInterval(() => loadRecords().catch(console.error), 300000);
 </script>
 </body>
 </html>

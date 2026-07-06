@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 
-from . import db
+from . import db, records
 from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
 from .timetable import Timetable
@@ -554,6 +554,18 @@ def api_stats_trips():
         "limit": limit, "offset": offset,
         "items": items[offset:offset + limit],
     })
+
+
+@app.route("/api/records")
+def api_records():
+    """Curated 'record'-signalering (slechtste/beste dagen, netwerkbreed / per
+    operator / per lijn, op tijd en uitval) -- zie app/records.py."""
+    conn = db.get_conn()
+    try:
+        result, thresholds = records.find_records(conn, _index, route_meta)
+    finally:
+        conn.close()
+    return jsonify({"generated_at": int(time.time()), "min_samples": thresholds, **result})
 
 
 @app.route("/api/stops")
