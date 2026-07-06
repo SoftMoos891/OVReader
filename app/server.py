@@ -83,31 +83,45 @@ def api_meta():
     })
 
 
+CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt sporadisch binnen, geen 30s-heartbeat
+
+
 @app.route("/api/health")
 def api_health():
     """Laat zien hoe recent de collector nog data heeft binnengekregen, zodat
     een stilgevallen achtergrondverzamelaar (bv. na een OVapi-storing of een
     gecrashte service) opvalt zonder dat je handmatig journalctl hoeft te
-    bekijken."""
+    bekijken.
+
+    'trip_delays' zegt alleen iets over vertragingen -- uitval
+    (trip_cancellations) wordt in de collector in een eigen, onafhankelijke
+    try/except verwerkt en kan dus stilzwijgend stuklopen terwijl
+    vertragingen gewoon doorlopen. Daarom een apart component ervoor, met een
+    veel ruimer stale-venster: een dag zonder uitval is normaal, geen teken
+    dat de verwerking kapot is."""
     now = int(time.time())
     conn = db.get_conn()
     try:
         vp_last = conn.execute("SELECT MAX(fetched_at) AS t FROM vehicle_positions").fetchone()["t"]
         td_last = conn.execute("SELECT MAX(fetched_at) AS t FROM trip_delays").fetchone()["t"]
+        cancel_last = conn.execute("SELECT MAX(last_seen) AS t FROM trip_cancellations").fetchone()["t"]
     finally:
         conn.close()
 
-    def component(last_fetched_at):
+    def component(last_fetched_at, stale_after=VEHICLE_FRESHNESS_SECONDS):
         if last_fetched_at is None:
             return {"last_fetched_at": None, "seconds_ago": None, "status": "no_data"}
         seconds_ago = now - last_fetched_at
-        status = "ok" if seconds_ago <= VEHICLE_FRESHNESS_SECONDS else "stale"
+        status = "ok" if seconds_ago <= stale_after else "stale"
         return {"last_fetched_at": last_fetched_at, "seconds_ago": seconds_ago, "status": status}
 
     components = {
         "vehicle_positions": component(vp_last),
         "trip_delays": component(td_last),
+        "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
     }
+    # Uitval telt bewust niet mee in de totaalstatus: dat signaal gaat over
+    # of de collector-loop leeft, niet of er toevallig uitval was.
     latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
 
@@ -115,6 +129,7 @@ def api_health():
         "now": now,
         "collector_interval_seconds": FETCH_INTERVAL_SECONDS,
         "stale_after_seconds": VEHICLE_FRESHNESS_SECONDS,
+        "cancellation_stale_after_seconds": CANCELLATION_STALE_AFTER_SECONDS,
         "status": overall_status,
         "components": components,
     })

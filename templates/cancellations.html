@@ -194,15 +194,19 @@ async function loadHealth() {
     const res = await fetch('/api/health');
     const data = await res.json();
     document.getElementById('healthDot').className = `status-dot ${data.status}`;
+    const cancelNote = data.components.cancellations.status !== 'ok'
+      ? 'Komt sporadisch binnen — dit hoeft geen storing te zijn'
+      : null;
     const rows = [
-      ['Voertuigposities', data.components.vehicle_positions],
-      ['Vertragingen', data.components.trip_delays],
+      ['Voertuigposities', data.components.vehicle_positions, null],
+      ['Vertragingen', data.components.trip_delays, null],
+      ['Uitval', data.components.cancellations, cancelNote],
     ];
-    document.getElementById('healthBody').innerHTML = rows.map(([label, c]) => `
+    document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
       <div class="health-row">
         <div>
           <div class="health-label">${label}</div>
-          <div class="health-sub">${fmtAgo(c.seconds_ago)}</div>
+          <div class="health-sub">${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}</div>
         </div>
         <span class="health-badge ${c.status}">${healthLabel(c.status)}</span>
       </div>`).join('');
