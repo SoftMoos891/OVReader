@@ -60,10 +60,10 @@
   .bus-badge { display: flex; align-items: center; justify-content: center;
                font-weight: 700; font-size: 12px; color: #fff; border-radius: 8px;
                border: 2px solid rgba(255,255,255,.9); box-shadow: 0 1px 4px rgba(0,0,0,.5);
-               white-space: nowrap; padding: 0 5px; line-height: 1; }
+               white-space: nowrap; padding: 0 5px; line-height: 1; will-change: transform; }
   .operator-logo { position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
                     border-radius: 50%; background: #fff; padding: 1.5px; object-fit: contain;
-                    box-shadow: 0 1px 3px rgba(0,0,0,.6); }
+                    box-shadow: 0 1px 3px rgba(0,0,0,.6); will-change: transform; }
   #lastupdate { color: var(--muted); font-size: 12px; font-family: 'IBM Plex Mono', monospace; margin-left: auto; }
   .nav-btn { background: var(--accent); color: #fff; font-weight: 600; text-decoration: none;
              padding: 7px 16px; border-radius: 6px; font-size: 13px; white-space: nowrap; transition: filter .15s; }
@@ -305,6 +305,8 @@ function busIcon(shortName, color, operator) {
   });
 }
 
+const markerState = {}; // ident -> laatst gerenderde {route_short_name, color, operator}
+
 async function refreshVehicles() {
   const res = await fetch('/api/vehicles');
   const data = await res.json();
@@ -319,16 +321,24 @@ async function refreshVehicles() {
                  `Rit ${v.vehicle_id || v.trip_id}`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
-      markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
+      // Het icoon (een hele DOM-subboom: badge + operator-logo) alleen
+      // opnieuw opbouwen als lijn/kleur/operator echt veranderd zijn --
+      // dit was voorheen elke 15s voor élk voertuig, wat de kaart merkbaar
+      // trager maakte (ook tijdens slepen, door de constante DOM-churn).
+      const prev = markerState[key];
+      if (!prev || prev.route_short_name !== v.route_short_name || prev.color !== color || prev.operator !== v.operator) {
+        markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
+      }
       markers[key].setPopupContent(html);
     } else {
       const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
       vehicleLayer.addLayer(m);
       markers[key] = m;
     }
+    markerState[key] = { route_short_name: v.route_short_name, color, operator: v.operator };
   }
   for (const id of Object.keys(markers)) {
-    if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; }
+    if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; delete markerState[id]; }
   }
   document.getElementById('lastupdate').textContent =
     `${data.count} actieve bussen · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
