@@ -322,7 +322,7 @@ async function refreshVehicles() {
     const html = `<b>Lijn ${v.route_short_name}</b> (U-OV, ${v.operator})<br>` +
                  `Status: ${delayText(v.delay_seconds)}<br>` +
                  `Rit ${v.vehicle_id || v.trip_id}` +
-                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor vorige/volgende halte...</em></div>`;
+                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
       // Het icoon (een hele DOM-subboom: badge + operator-logo) alleen
@@ -365,7 +365,7 @@ async function loadNearbyStops(tripId, marker) {
     const prev = data.previous_stop ? data.previous_stop.name : '—';
     const next = data.next_stop ? data.next_stop.name : '—';
     const target = el();
-    if (target) target.innerHTML = `Vorige halte: ${prev}<br>Volgende halte: ${next}`;
+    if (target) target.innerHTML = `Beginpunt: ${prev}<br>Eindpunt: ${next}`;
   } catch (e) {
     const target = el();
     if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';
