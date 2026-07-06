@@ -29,6 +29,24 @@ ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op ti
 ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
 VEHICLE_FRESHNESS_SECONDS = 90
 
+_response_cache = {}
+
+
+def _cached(cache_key, ttl_seconds, compute_fn):
+    """Simpele in-process TTL-cache voor dure aggregatie-endpoints (/api/stats,
+    /api/records) -- voorkomt dat meerdere gelijktijdige bezoekers (of een
+    pollende client) dezelfde zware query binnen een paar seconden/minuten
+    steeds opnieuw laten uitvoeren. Per gunicorn-worker, niet gedeeld tussen
+    workers -- dat hoeft ook niet, het doel is alleen herhaald werk binnen
+    één worker te schelen."""
+    now = time.time()
+    cached = _response_cache.get(cache_key)
+    if cached and now - cached[0] < ttl_seconds:
+        return cached[1]
+    value = compute_fn()
+    _response_cache[cache_key] = (now, value)
+    return value
+
 # HTTP Basic Auth: staat standaard UIT (handig voor lokaal gebruik). Zet de
 # omgevingsvariabele BUS_MONITOR_PASSWORD op de server om dit verplicht te
 # maken -- doe dit altijd voordat de app vanaf het internet bereikbaar is.
@@ -238,6 +256,10 @@ def api_stats():
     ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
     parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard)."""
     range_key = request.args.get("range")
+    return jsonify(_cached(("stats", range_key), 20, lambda: _compute_stats(range_key)))
+
+
+def _compute_stats(range_key):
     since_date = until_date = since_ts = until_ts = None
     if range_key:
         since_date, until_date = _date_bounds_for_range(range_key)
@@ -328,7 +350,7 @@ def api_stats():
     per_route.sort(key=lambda x: -x["sample_count"])
     operator_stats.sort(key=lambda x: -x["sample_count"])
 
-    return jsonify({
+    return {
         "on_time_threshold_seconds": ON_TIME_MAX_DELAY,
         "on_time_min_delay_seconds": ON_TIME_MIN_DELAY,
         "range": range_key,
@@ -336,7 +358,7 @@ def api_stats():
         "until_date": until_date,
         "per_operator": operator_stats,
         "per_route": per_route,
-    })
+    }
 
 
 RANGE_DAYS = {"today": 1, "week": 7, "2weeks": 14, "30d": 30}
@@ -574,13 +596,20 @@ def api_stats_trips():
 @app.route("/api/records")
 def api_records():
     """Curated 'record'-signalering (slechtste/beste dagen, netwerkbreed / per
-    operator / per lijn, op tijd en uitval) -- zie app/records.py."""
-    conn = db.get_conn()
-    try:
-        result, thresholds = records.find_records(conn, _index, route_meta)
-    finally:
-        conn.close()
-    return jsonify({"generated_at": int(time.time()), "min_samples": thresholds, **result})
+    operator / per lijn, op tijd en uitval) -- zie app/records.py. Scant in
+    het slechtste geval de hele historie, dus stevig gecachet (2 min): dit
+    endpoint wordt toch maar om de paar minuten gepolld, en hoeft niet
+    sneller dan dat opnieuw berekend te worden."""
+    def compute():
+        conn = db.get_conn()
+        try:
+            result, thresholds = records.find_records(conn, _index, route_meta)
+        finally:
+            conn.close()
+        return {"min_samples": thresholds, **result}
+
+    data = _cached(("records",), 120, compute)
+    return jsonify({"generated_at": int(time.time()), **data})
 
 
 @app.route("/api/stops")

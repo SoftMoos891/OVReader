@@ -5,7 +5,7 @@
 <title>DVZ OV-MONITOR 1.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
@@ -515,16 +515,21 @@ async function refreshStopDepartures() {
     }).join('') + '</table>';
 }
 
-function tick() {
+// Live kaart blijft op 15s; de rest verandert minder snel en hoeft niet
+// even vaak ververst te worden -- scheelt onnodige serverbelasting.
+function fastTick() {
   refreshVehicles().catch(console.error);
+}
+function slowTick() {
   refreshAlerts().catch(console.error);
   refreshStats().catch(console.error);
   refreshCancellations().catch(console.error);
   refreshStopDepartures().catch(console.error);
   loadHealth().catch(console.error);
 }
-initMeta().then(tick).catch(console.error);
-setInterval(tick, 15000);
+initMeta().then(() => { fastTick(); slowTick(); }).catch(console.error);
+setInterval(fastTick, 15000);
+setInterval(slowTick, 45000);
 
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');

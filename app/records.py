@@ -18,11 +18,23 @@ MIN_SAMPLES_ROUTE = 20
 MIN_SAMPLES_OPERATOR = 50
 MIN_TRIPS_CANCELLATION = 20
 
+# Begrenst hoe ver terug de records-scan gaat. route_stats_daily/
+# trip_cancellations/trips_ran_daily worden nooit (volledig) opgeruimd, dus
+# zonder ondergrens zou deze scan blijven groeien met de leeftijd van de
+# installatie. Twee jaar is ruim genoeg om "records" zinvol te houden zonder
+# de query onbeperkt te laten meegroeien.
+MAX_HISTORY_DAYS = 730
+
+
+def _history_cutoff():
+    return (date.today() - timedelta(days=MAX_HISTORY_DAYS)).isoformat()
+
 
 def _route_ontime_daily(conn, index):
     """Lijst van {day, route_id, ...route_meta, sample_count, on_time_count,
     on_time_pct}, per (dag, lijn) -- raw trip_delays (laatste 14 dagen)
-    aangevuld met opgerolde route_stats_daily voor oudere dagen."""
+    aangevuld met opgerolde route_stats_daily voor oudere dagen (tot
+    MAX_HISTORY_DAYS terug)."""
     raw = conn.execute(
         """
         SELECT strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
@@ -35,7 +47,8 @@ def _route_ontime_daily(conn, index):
         (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY),
     ).fetchall()
     rolled = conn.execute(
-        "SELECT day, route_id, sample_count, on_time_count FROM route_stats_daily"
+        "SELECT day, route_id, sample_count, on_time_count FROM route_stats_daily WHERE day >= ?",
+        (_history_cutoff(),),
     ).fetchall()
 
     by_key = {}
@@ -51,20 +64,24 @@ def _route_ontime_daily(conn, index):
 
 
 def _cancellation_daily(conn, index):
-    """dict: (day, route_id) -> {canceled, ran}, over de volledige historie."""
+    """dict: (day, route_id) -> {canceled, ran}, tot MAX_HISTORY_DAYS terug."""
+    cutoff = _history_cutoff()
     canceled_rows = conn.execute(
-        "SELECT service_date, route_id, COUNT(*) AS cnt FROM trip_cancellations GROUP BY service_date, route_id"
+        "SELECT service_date, route_id, COUNT(*) AS cnt FROM trip_cancellations "
+        "WHERE service_date >= ? GROUP BY service_date, route_id",
+        (cutoff,),
     ).fetchall()
     ran_rows = conn.execute(
         """
         SELECT r.service_date, r.route_id, COUNT(*) AS cnt
         FROM trips_ran_daily r
-        WHERE NOT EXISTS (
+        WHERE r.service_date >= ? AND NOT EXISTS (
             SELECT 1 FROM trip_cancellations c
             WHERE c.trip_id = r.trip_id AND c.service_date = r.service_date
         )
         GROUP BY r.service_date, r.route_id
-        """
+        """,
+        (cutoff,),
     ).fetchall()
 
     by_key = {}
