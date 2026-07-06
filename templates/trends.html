@@ -509,9 +509,16 @@ populateMeta().catch(console.error);
 loadAll().catch(console.error);
 loadRecords().catch(console.error);
 loadHealth().catch(console.error);
-setInterval(() => loadAll().catch(console.error), 60000);
-setInterval(() => loadRecords().catch(console.error), 300000);
-setInterval(() => loadHealth().catch(console.error), 30000);
+setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
+setInterval(() => { if (!document.hidden) loadRecords().catch(console.error); }, 300000);
+setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    loadAll().catch(console.error);
+    loadRecords().catch(console.error);
+    loadHealth().catch(console.error);
+  }
+});
 </script>
 </body>
 </html>

@@ -525,12 +525,16 @@ async function refreshStopDepartures() {
     }).join('') + '</table>';
 }
 
-// Live kaart blijft op 15s; de rest verandert minder snel en hoeft niet
-// even vaak ververst te worden -- scheelt onnodige serverbelasting.
+// De collector haalt de GTFS-RT feed maar elke 30s op (zie
+// FETCH_INTERVAL_SECONDS in app/collector.py) -- vaker dan dat pollen levert
+// dus geen enkele extra actualiteit op, alleen extra belasting. 20s geeft
+// nog ruim voldoende "live"-gevoel. De rest verandert nog trager.
 function fastTick() {
+  if (document.hidden) return;  // niemand kijkt naar een achtergrondtab
   refreshVehicles().catch(console.error);
 }
 function slowTick() {
+  if (document.hidden) return;
   refreshAlerts().catch(console.error);
   refreshStats().catch(console.error);
   refreshCancellations().catch(console.error);
@@ -538,8 +542,13 @@ function slowTick() {
   loadHealth().catch(console.error);
 }
 initMeta().then(() => { fastTick(); slowTick(); }).catch(console.error);
-setInterval(fastTick, 15000);
+setInterval(fastTick, 20000);
 setInterval(slowTick, 45000);
+// Direct verversen zodra het tabblad weer zichtbaar wordt, i.p.v. te wachten
+// tot de volgende geplande tick (die intussen was overgeslagen).
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { fastTick(); slowTick(); }
+});
 
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');
