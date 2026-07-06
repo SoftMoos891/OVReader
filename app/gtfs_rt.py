@@ -7,6 +7,8 @@ from pathlib import Path
 import requests
 from google.transit import gtfs_realtime_pb2
 
+from .concession_mapping import TRANSDEV_TRAM
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 FEED_VEHICLE_POSITIONS = "https://gtfs.ovapi.nl/nl/vehiclePositions.pb"
@@ -51,6 +53,18 @@ class UtrechtIndex:
 
     def is_relevant_route(self, route_id):
         return route_id in self.routes
+
+    def is_bus_route(self, route_id):
+        """True als de route tot de huidige index behoort én geen tram is.
+        De U-tram (Transdev tram) blijft zichtbaar op de kaart, maar de
+        realtime trip-updates feed levert er geen bruikbare vertragingen/
+        uitval voor -- daarom wordt deze check gebruikt om trams buiten de
+        vertragingen- en uitvalstatistieken te houden (zie server.py/
+        records.py), zonder ze uit de rest van de app te filteren."""
+        route = self.routes.get(route_id)
+        if route is None:
+            return False
+        return route.get("operator") != TRANSDEV_TRAM
 
 
 def _fetch_feed(url):

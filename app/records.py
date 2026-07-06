@@ -53,7 +53,7 @@ def _route_ontime_daily(conn, index):
 
     by_key = {}
     for r in list(raw) + list(rolled):
-        if not index.is_relevant_route(r["route_id"]):
+        if not index.is_bus_route(r["route_id"]):
             continue
         key = (r["day"], r["route_id"])
         e = by_key.setdefault(key, {"sample_count": 0, "on_time_count": 0})
@@ -86,12 +86,12 @@ def _cancellation_daily(conn, index):
 
     by_key = {}
     for r in canceled_rows:
-        if not index.is_relevant_route(r["route_id"]):
+        if not index.is_bus_route(r["route_id"]):
             continue
         key = (r["service_date"], r["route_id"])
         by_key.setdefault(key, {"canceled": 0, "ran": 0})["canceled"] += r["cnt"]
     for r in ran_rows:
-        if not index.is_relevant_route(r["route_id"]):
+        if not index.is_bus_route(r["route_id"]):
             continue
         key = (r["service_date"], r["route_id"])
         by_key.setdefault(key, {"canceled": 0, "ran": 0})["ran"] += r["cnt"]

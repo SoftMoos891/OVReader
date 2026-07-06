@@ -306,7 +306,7 @@ def _compute_stats(range_key):
     by_route = {}
     for r in list(raw) + list(rolled):
         rid = r["route_id"]
-        if not _index.is_relevant_route(rid):
+        if not _index.is_bus_route(rid):
             # Historische rijen van lijnen die niet meer in de huidige index
             # zitten (bv. na een scope-wijziging of dienstregelingswijziging).
             continue
@@ -444,7 +444,7 @@ def api_stats_trend():
 
     by_day = {}
     for r in list(raw) + list(rolled):
-        if not _index.is_relevant_route(r["route_id"]):
+        if not _index.is_bus_route(r["route_id"]):
             continue
         if route_ids is not None and r["route_id"] not in route_ids:
             continue
@@ -507,7 +507,7 @@ def api_stats_peak():
         "offpeak": {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0},
     }
     for r in list(raw) + list(rolled):
-        if not _index.is_relevant_route(r["route_id"]):
+        if not _index.is_bus_route(r["route_id"]):
             continue
         if route_ids is not None and r["route_id"] not in route_ids:
             continue
@@ -573,7 +573,7 @@ def api_stats_trips():
 
     items = []
     for r in rows:
-        if not _index.is_relevant_route(r["route_id"]):
+        if not _index.is_bus_route(r["route_id"]):
             continue
         if route_ids is not None and r["route_id"] not in route_ids:
             continue
@@ -682,7 +682,7 @@ def api_cancellations():
     weekday_by_op = defaultdict(lambda: {"canceled": [0] * 7, "ran": [0] * 7})
     hour_by_op = defaultdict(lambda: [0] * 24)
     for r in canceled_rows:
-        if not _index.is_relevant_route(r["route_id"]):
+        if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
         operator = route_meta(r["route_id"])["operator"]
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
@@ -700,7 +700,7 @@ def api_cancellations():
             except (ValueError, IndexError):
                 pass
     for r in ran_rows:
-        if not _index.is_relevant_route(r["route_id"]):
+        if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
         operator = route_meta(r["route_id"])["operator"]
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
@@ -842,7 +842,7 @@ def api_cancellation_trips():
 
     items = []
     for r in rows:
-        if not _index.is_relevant_route(r["route_id"]):
+        if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
         if route_id and r["route_id"] != route_id:
             continue
