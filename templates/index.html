@@ -64,6 +64,7 @@
   .operator-logo { position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
                     border-radius: 50%; background: #fff; padding: 1.5px; object-fit: contain;
                     box-shadow: 0 1px 3px rgba(0,0,0,.6); will-change: transform; }
+  .veh-stops { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
   #lastupdate { color: var(--muted); font-size: 12px; font-family: 'IBM Plex Mono', monospace; margin-left: auto; }
   .nav-btn { background: var(--accent); color: #fff; font-weight: 600; text-decoration: none;
              padding: 7px 16px; border-radius: 6px; font-size: 13px; white-space: nowrap; transition: filter .15s; }
@@ -319,7 +320,8 @@ async function refreshVehicles() {
     const color = delayColor(v.delay_seconds);
     const html = `<b>Lijn ${v.route_short_name}</b> (U-OV, ${v.operator})<br>` +
                  `Status: ${delayText(v.delay_seconds)}<br>` +
-                 `Rit ${v.vehicle_id || v.trip_id}`;
+                 `Rit ${v.vehicle_id || v.trip_id}` +
+                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor vorige/volgende halte...</em></div>`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
       // Het icoon (een hele DOM-subboom: badge + operator-logo) alleen
@@ -331,6 +333,10 @@ async function refreshVehicles() {
         markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
       }
       markers[key].setPopupContent(html);
+      // setPopupContent zet de halte-info terug op de placeholder, ook als
+      // de popup nog openstaat -- meteen opnieuw laden zodat die niet leeg
+      // blijft staan totdat je 'm sluit en opnieuw opent.
+      if (markers[key].isPopupOpen()) loadNearbyStops(v.trip_id, markers[key]);
     } else {
       const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
       vehicleLayer.addLayer(m);
@@ -344,6 +350,33 @@ async function refreshVehicles() {
   document.getElementById('lastupdate').textContent =
     `${data.count} actieve bussen · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
 }
+
+// Alleen opgehaald bij een klik op een voertuig (popupopen), niet standaard
+// voor elk voertuig elke refresh -- dat zou de toch al frequente
+// /api/vehicles-cyclus onnodig zwaarder maken.
+async function loadNearbyStops(tripId, marker) {
+  const popup = marker.getPopup();
+  if (!popup) return;
+  const el = () => popup.getElement()?.querySelector('.veh-stops');
+  try {
+    const res = await fetch(`/api/trips/${encodeURIComponent(tripId)}/nearby-stops`);
+    const data = await res.json();
+    const prev = data.previous_stop ? data.previous_stop.name : '—';
+    const next = data.next_stop ? data.next_stop.name : '—';
+    const target = el();
+    if (target) target.innerHTML = `Vorige halte: ${prev}<br>Volgende halte: ${next}`;
+  } catch (e) {
+    const target = el();
+    if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';
+  }
+}
+map.on('popupopen', (e) => {
+  const el = e.popup.getElement()?.querySelector('.veh-stops');
+  const tripId = el?.dataset.tripId;
+  if (!tripId) return;
+  const marker = Object.values(markers).find(m => m.getPopup() === e.popup);
+  if (marker) loadNearbyStops(tripId, marker);
+});
 
 function effectLabel(effect) {
   const map = {
