@@ -116,8 +116,21 @@
   <span id="lastupdate">–</span>
   <a href="/trends" class="nav-btn">📈 Trends &amp; analyse &rarr;</a>
   <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
+  <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
+
+<div class="modal-overlay" id="healthModal" onclick="if(event.target===this)closeHealthModal()">
+  <div class="modal">
+    <div class="modal-header">
+      Systeemstatus
+      <button class="modal-close" onclick="closeHealthModal()">✕</button>
+    </div>
+    <div class="modal-body" id="healthBody"><div class="empty">Laden...</div></div>
+    <div class="modal-footer">Collector haalt elke <span id="healthInterval">30</span>s nieuwe data op</div>
+  </div>
+</div>
+
 <div id="filter-bar">
   <span style="color:var(--muted);">Filter:</span>
   <div id="operator-filters"></div>
@@ -508,6 +521,7 @@ function tick() {
   refreshStats().catch(console.error);
   refreshCancellations().catch(console.error);
   refreshStopDepartures().catch(console.error);
+  loadHealth().catch(console.error);
 }
 initMeta().then(tick).catch(console.error);
 setInterval(tick, 15000);
@@ -515,6 +529,47 @@ setInterval(tick, 15000);
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');
   localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+}
+
+function openHealthModal() {
+  document.getElementById('healthModal').classList.add('open');
+  loadHealth().catch(console.error);
+}
+function closeHealthModal() {
+  document.getElementById('healthModal').classList.remove('open');
+}
+function fmtAgo(seconds) {
+  if (seconds === null || seconds === undefined) return 'nooit';
+  if (seconds < 60) return `${seconds}s geleden`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min geleden`;
+  return `${Math.floor(m / 60)} u ${m % 60} min geleden`;
+}
+function healthLabel(status) {
+  return { ok: 'OK', stale: 'Verouderd', no_data: 'Geen data' }[status] || status;
+}
+async function loadHealth() {
+  try {
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    document.getElementById('healthDot').className = `status-dot ${data.status}`;
+    const rows = [
+      ['Voertuigposities', data.components.vehicle_positions],
+      ['Vertragingen', data.components.trip_delays],
+    ];
+    document.getElementById('healthBody').innerHTML = rows.map(([label, c]) => `
+      <div class="health-row">
+        <div>
+          <div class="health-label">${label}</div>
+          <div class="health-sub">${fmtAgo(c.seconds_ago)}</div>
+        </div>
+        <span class="health-badge ${c.status}">${healthLabel(c.status)}</span>
+      </div>`).join('');
+    document.getElementById('healthInterval').textContent = data.collector_interval_seconds;
+  } catch (e) {
+    document.getElementById('healthDot').className = 'status-dot no_data';
+    document.getElementById('healthBody').innerHTML = '<div class="empty">Kan status niet ophalen.</div>';
+  }
 }
 </script>
 </body>

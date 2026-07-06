@@ -88,3 +88,46 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6;
   box-shadow: 0 2px 10px rgba(0,0,0,.12);
 }
+
+/* ── Systeemstatus (knop + modal), gedeeld door alle pagina's ── */
+.status-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all .15s; align-self: center; flex-shrink: 0;
+}
+.status-btn:hover { background: var(--panel); border-color: var(--border2); color: var(--text); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.status-dot.ok { background: var(--good); box-shadow: 0 0 5px var(--good); }
+.status-dot.stale { background: var(--warn); box-shadow: 0 0 5px var(--warn); }
+.status-dot.no_data { background: var(--bad); box-shadow: 0 0 5px var(--bad); }
+
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+  z-index: 500; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  width: 100%; max-width: 420px; max-height: 80vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.modal-header {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; font-weight: 700; color: var(--text);
+}
+.modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 18px; overflow-y: auto; flex: 1; }
+.modal-footer { padding: 10px 18px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
+
+.health-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.health-row:last-child { border-bottom: none; }
+.health-label { font-size: 13px; color: var(--text); font-weight: 600; }
+.health-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.health-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.health-badge.ok { background: var(--good-bg); color: var(--good); }
+.health-badge.stale { background: var(--warn-bg); color: var(--warn); }
+.health-badge.no_data { background: var(--bad-bg); color: var(--bad); }
