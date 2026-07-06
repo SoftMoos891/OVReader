@@ -33,6 +33,16 @@
   .alert .routes { color: var(--muted); font-size: 12px; }
   #alerts { max-height: 220px; overflow-y: auto; }
   #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
+  /* Beide operator-tabellen delen dezelfde kolomverdeling (table-layout: auto
+     laat elke tabel anders sizen op basis van eigen inhoud, waardoor twee
+     losse tabellen onder elkaar nooit echt uitlijnen). */
+  #agency-stats table, #agency-cancel-stats table { table-layout: fixed; }
+  #agency-stats th:nth-child(1), #agency-stats td:nth-child(1),
+  #agency-cancel-stats th:nth-child(1), #agency-cancel-stats td:nth-child(1) { width: 46%; }
+  #agency-stats th:nth-child(2), #agency-stats td:nth-child(2),
+  #agency-cancel-stats th:nth-child(2), #agency-cancel-stats td:nth-child(2) { width: 28%; }
+  #agency-stats th:nth-child(3), #agency-stats td:nth-child(3),
+  #agency-cancel-stats th:nth-child(3), #agency-cancel-stats td:nth-child(3) { width: 26%; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
