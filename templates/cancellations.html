@@ -257,7 +257,11 @@ function renderKpis() {
 
 // Vaste kleur per operator (los van de algemene CHART_COLORS-rol), zodat
 // Keolis/Transdev in elke grafiek herkenbaar dezelfde kleur houden.
-const OPERATOR_COLORS = { Keolis: CHART_COLORS.warn, Transdev: CHART_COLORS.accent };
+const OPERATOR_COLORS = {
+  'Keolis': CHART_COLORS.warn,
+  'Transdev bus': CHART_COLORS.accent,
+  'Transdev tram': CHART_COLORS.good,
+};
 function operatorColor(name) { return OPERATOR_COLORS[name] || CHART_COLORS.muted; }
 
 function renderDailyPctChart() {
