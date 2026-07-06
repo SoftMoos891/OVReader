@@ -64,7 +64,7 @@
 <header>
   <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
   <h1>🚫 Uitval-dashboard</h1>
-  <span class="sub">Uitgevallen ritten busvervoer provincie Utrecht — trends, per lijn, per operator, per uur/weekdag</span>
+  <span class="sub">Uitgevallen ritten busvervoer provincie Utrecht (Keolis + Transdev bus) — trends, per lijn, per operator, per uur/weekdag. Excl. U-tram 20/21/22.</span>
   <a class="back" href="/">&larr; Terug naar live overzicht</a>
   <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
@@ -124,6 +124,7 @@
     </div>
     <div class="panel">
       <h2>Per operator</h2>
+      <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Alleen busvervoer — U-tram 20/21/22 niet meegenomen.</div>
       <div id="agency-table"><div class="empty">Laden...</div></div>
     </div>
   </div>
