@@ -23,6 +23,8 @@
   --warn-bg:   rgba(217,119,6,.12);
   --bad-bg:    rgba(220,38,38,.12);
   --accent-bg: rgba(26,86,219,.10);
+  --critical:    #7f1d1d;
+  --critical-bg: rgba(127,29,29,.14);
 }
 
 html.dark {
@@ -42,6 +44,8 @@ html.dark {
   --warn-bg:   rgba(251,146,60,.12);
   --bad-bg:    rgba(248,113,113,.12);
   --accent-bg: rgba(64,150,247,.12);
+  --critical:    #dc2626;
+  --critical-bg: rgba(220,38,38,.18);
 }
 
 body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }

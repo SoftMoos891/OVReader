@@ -29,6 +29,7 @@
              padding: 16px 22px; min-width: 150px; }
   .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 32px; font-weight: 700; }
   .kpi-box .num.bad { color: var(--bad); }
+  .kpi-box .num.critical { color: var(--critical); }
   .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
@@ -49,6 +50,7 @@
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.critical { background: var(--critical-bg); color: var(--critical); }
   input[type=text], select { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 5px 10px; font-size: 13px; }
   .table-scroll { max-height: 420px; overflow-y: auto; }
@@ -163,6 +165,7 @@ function fmtDateShort(iso) {
 }
 
 function pillClass(pct) {
+  if (pct > 25) return 'critical';
   if (pct > 10) return 'bad';
   if (pct > 3) return 'warn';
   return 'good';
@@ -188,7 +191,7 @@ function renderKpis() {
   document.getElementById('kpis').innerHTML = `
     <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
     <div class="kpi-box"><div class="num">${d.total_ran}</div><div class="label">Ritten gereden</div></div>
-    <div class="kpi-box"><div class="num">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
+    <div class="kpi-box"><div class="num ${pillClass(d.cancellation_pct)}">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
     <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
   `;
 }
