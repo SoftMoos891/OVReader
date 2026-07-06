@@ -32,7 +32,7 @@
   .alert .hdr { font-weight: 600; margin-bottom: 3px; }
   .alert .routes { color: var(--muted); font-size: 12px; }
   #alerts { max-height: 220px; overflow-y: auto; }
-  #route-stats, #agency-stats { overflow-x: auto; }
+  #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
@@ -132,6 +132,10 @@
     <div class="section">
       <h2>Punctualiteit per operator</h2>
       <div id="agency-stats"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
+      <h2>Uitval per operator <span style="font-weight:400; text-transform:none; color:var(--muted);">(vandaag)</span></h2>
+      <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
     </div>
   </div>
   <div id="stats">
@@ -406,6 +410,19 @@ async function refreshCancellations() {
     <div class="kpi-box"><div class="num">${data.total_ran}</div><div class="label">Ritten gereden</div></div>
     <div class="kpi-box"><div class="num ${cancellationPillClass(data.cancellation_pct)}">${data.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
   `;
+
+  const ac = document.getElementById('agency-cancel-stats');
+  if (data.per_operator.length === 0) {
+    ac.innerHTML = '<div class="empty">Geen uitval vandaag</div>';
+  } else {
+    ac.innerHTML = '<table><tr><th>Operator</th><th>Uitgevallen</th><th>Gereden</th><th>%</th></tr>' +
+      data.per_operator.map(a => `<tr>
+        <td>${a.operator}</td>
+        <td>${a.canceled}</td>
+        <td>${a.ran}</td>
+        <td><span class="pill ${cancellationPillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
+      </tr>`).join('') + '</table>';
+  }
 }
 
 // --- Haltezoeker -----------------------------------------------------------
