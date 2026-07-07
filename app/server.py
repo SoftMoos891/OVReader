@@ -779,18 +779,21 @@ def api_cancellations():
     per_operator_acc = {}
     for rid in set(route_canceled) | set(route_ran):
         c = route_canceled.get(rid, 0)
-        if c == 0:
-            continue  # alleen lijnen met minstens 1 vervallen rit tonen
         r = route_ran.get(rid, 0)
         meta = route_meta(rid)
+        # Operator-optelling moet over alle lijnen gaan (ook lijnen zonder
+        # uitval die dag), anders wordt het percentage berekend over een
+        # instabiele deelverzameling en klopt het niet met het totaal.
+        agg = per_operator_acc.setdefault(meta["operator"], {"canceled": 0, "ran": 0})
+        agg["canceled"] += c
+        agg["ran"] += r
+        if c == 0:
+            continue  # in de lijnen-tabel alleen lijnen met minstens 1 vervallen rit tonen
         rtotal = c + r
         per_route.append({
             **meta, "canceled": c, "ran": r,
             "cancellation_pct": round(100.0 * c / rtotal, 1) if rtotal else 0.0,
         })
-        agg = per_operator_acc.setdefault(meta["operator"], {"canceled": 0, "ran": 0})
-        agg["canceled"] += c
-        agg["ran"] += r
     per_route.sort(key=lambda x: -x["canceled"])
 
     per_operator = []

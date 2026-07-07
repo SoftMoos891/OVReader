@@ -90,3 +90,13 @@ def test_cancellations_split_by_operator(client, temp_db, monkeypatch):
 
     keolis_hour = data["per_hour_by_operator"]["Keolis"][8]
     assert keolis_hour["canceled"] == 1
+
+    # Transdev had die dag geen enkele vervallen rit (alleen ROUTE_T/t1, dat
+    # gewoon reed) -- moet toch met het juiste 'ran'-aantal in per_operator
+    # staan, niet ontbreken of met een te laag totaal berekend worden.
+    per_op = {a["operator"]: a for a in data["per_operator"]}
+    assert per_op["Transdev"]["canceled"] == 0
+    assert per_op["Transdev"]["ran"] == 1
+    assert per_op["Transdev"]["cancellation_pct"] == 0.0
+    assert per_op["Keolis"]["canceled"] == 1
+    assert per_op["Keolis"]["ran"] == 1
