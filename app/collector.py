@@ -194,11 +194,28 @@ def cleanup_old_data():
     print(f"[collector] opschoning klaar (cutoff={cutoff})")
 
 
+def vacuum_db():
+    """Geeft schijfruimte van verwijderde rijen terug aan het OS.
+
+    SQLite krimpt het databasebestand niet vanzelf na DELETE's -- zonder dit
+    blijft bus_monitor.db onbeperkt groeien ook al ruimt cleanup_old_data()
+    oude rijen netjes op. VACUUM vereist een eigen verbinding zonder open
+    transactie, dus niet hergebruiken binnen een bestaande conn.
+    """
+    conn = db.get_conn()
+    try:
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
+    print("[collector] vacuum klaar")
+
+
 def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
     scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
+    scheduler.add_job(vacuum_db, "interval", hours=24, id="vacuum", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
