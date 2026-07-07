@@ -229,8 +229,13 @@ def api_vehicles():
 def api_alerts():
     conn = db.get_conn()
     try:
+        # first_seen, niet last_seen: de collector stempelt last_seen elke
+        # cyclus voor ALLE actieve meldingen bij (zie collector.py), dus die
+        # kolom onderscheidt niets tussen ze en sorteert in de praktijk op
+        # insertievolgorde -- daarmee zakken net verschenen meldingen naar
+        # onderen in plaats van bovenaan te staan.
         rows = conn.execute(
-            "SELECT * FROM alerts WHERE active=1 ORDER BY last_seen DESC"
+            "SELECT * FROM alerts WHERE active=1 ORDER BY first_seen DESC"
         ).fetchall()
     finally:
         conn.close()
