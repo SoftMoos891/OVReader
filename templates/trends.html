@@ -129,12 +129,23 @@
 
   <div class="grid2">
     <div class="panel">
-      <h2>Trend per dag</h2>
-      <canvas id="trendChart"></canvas>
+      <h2>Op tijd per dag</h2>
+      <canvas id="trendOnTimeChart"></canvas>
     </div>
     <div class="panel">
-      <h2>Piek vs. dal <span style="font-weight:400; text-transform:none; color:var(--muted);">(spits: 07-09 &amp; 16-18 uur)</span></h2>
-      <canvas id="peakChart"></canvas>
+      <h2>Gemiddelde vertraging per dag</h2>
+      <canvas id="trendDelayChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Op tijd: spits vs. dal <span style="font-weight:400; text-transform:none; color:var(--muted);">(spits: 07-09 &amp; 16-18 uur)</span></h2>
+      <canvas id="peakOnTimeChart"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Gem. vertraging: spits vs. dal</h2>
+      <canvas id="peakDelayChart"></canvas>
     </div>
   </div>
 
@@ -234,7 +245,7 @@ async function loadHealth() {
   }
 }
 
-let trendChart, peakChart;
+let trendOnTimeChart, trendDelayChart, peakOnTimeChart, peakDelayChart;
 let statsData = null;
 
 function fmtDateShort(iso) {
@@ -343,22 +354,26 @@ async function loadTrend() {
   const labels = data.daily.map(x => fmtDateShort(x.date));
   const onTime = data.daily.map(x => x.on_time_pct);
   const avgDelay = data.daily.map(x => x.avg_delay_seconds);
-  if (trendChart) trendChart.destroy();
-  trendChart = new Chart(document.getElementById('trendChart'), {
-    data: {
-      labels,
-      datasets: [
-        { type: 'line', label: 'Op tijd %', data: onTime, borderColor: CHART_COLORS.good, backgroundColor: CHART_COLORS.good, yAxisID: 'y', tension: 0.3 },
-        { type: 'bar', label: 'Gem. vertraging (s)', data: avgDelay, backgroundColor: CHART_COLORS.accent, yAxisID: 'y1' },
-      ],
-    },
+
+  if (trendOnTimeChart) trendOnTimeChart.destroy();
+  trendOnTimeChart = new Chart(document.getElementById('trendOnTimeChart'), {
+    type: 'line',
+    data: { labels, datasets: [{ label: 'Op tijd %', data: onTime, borderColor: CHART_COLORS.good, backgroundColor: CHART_COLORS.good, tension: 0.3, borderWidth: 2, pointRadius: 2 }] },
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
-      scales: {
-        y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: '%' } },
-        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'seconden' } },
-      },
+      scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } } },
+    },
+  });
+
+  if (trendDelayChart) trendDelayChart.destroy();
+  trendDelayChart = new Chart(document.getElementById('trendDelayChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Gem. vertraging (s)', data: avgDelay, backgroundColor: CHART_COLORS.accent }] },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'seconden' } } },
     },
   });
 }
@@ -370,22 +385,19 @@ async function loadPeak() {
   const labels = data.periods.map(p => p.period === 'peak' ? 'Spits' : 'Dal');
   const onTime = data.periods.map(p => p.on_time_pct);
   const avgDelay = data.periods.map(p => p.avg_delay_seconds);
-  if (peakChart) peakChart.destroy();
-  peakChart = new Chart(document.getElementById('peakChart'), {
-    data: {
-      labels,
-      datasets: [
-        { type: 'bar', label: 'Op tijd %', data: onTime, backgroundColor: CHART_COLORS.good, yAxisID: 'y' },
-        { type: 'bar', label: 'Gem. vertraging (s)', data: avgDelay, backgroundColor: CHART_COLORS.warn, yAxisID: 'y1' },
-      ],
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: '%' } },
-        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'seconden' } },
-      },
-    },
+
+  if (peakOnTimeChart) peakOnTimeChart.destroy();
+  peakOnTimeChart = new Chart(document.getElementById('peakOnTimeChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Op tijd %', data: onTime, backgroundColor: CHART_COLORS.good }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } } } },
+  });
+
+  if (peakDelayChart) peakDelayChart.destroy();
+  peakDelayChart = new Chart(document.getElementById('peakDelayChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Gem. vertraging (s)', data: avgDelay, backgroundColor: CHART_COLORS.warn }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true, title: { display: true, text: 'seconden' } } } },
   });
 }
 
