@@ -7,7 +7,12 @@ Type=simple
 User=utrechtbus
 WorkingDirectory=/opt/utrecht-bus-monitor
 EnvironmentFile=-/opt/utrecht-bus-monitor/.env
-ExecStart=/opt/utrecht-bus-monitor/venv/bin/gunicorn --preload -w 2 --timeout 120 -b 127.0.0.1:5151 app.wsgi:app
+# --max-requests(-jitter): herstart een worker na ~950-1050 requests, zodat
+# geleidelijke geheugengroei (fragmentatie e.d.) periodiek wordt weggegooid
+# i.p.v. onbeperkt op te bouwen -- vangnet bovenop de gc.freeze()-fix in
+# app/wsgi.py, niet een vervanging ervan. De jitter voorkomt dat beide
+# workers precies gelijktijdig herstarten.
+ExecStart=/opt/utrecht-bus-monitor/venv/bin/gunicorn --preload -w 2 --timeout 120 --max-requests 1000 --max-requests-jitter 100 -b 127.0.0.1:5151 app.wsgi:app
 Restart=on-failure
 RestartSec=5
 
