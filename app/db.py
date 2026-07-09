@@ -136,6 +136,15 @@ def _migrate(conn):
 def init_db():
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = get_conn()
+    # De web- en collector-service roepen init_db() allebei aan bij opstart.
+    # Schema-DDL (CREATE INDEX) houdt een schrijflock vast voor de hele duur
+    # van de index-build -- op een grote trip_delays-tabel kan dat ruim boven
+    # de standaard busy-timeout van get_conn() (30s) duren, waardoor de
+    # service die als tweede start met "database is locked" crasht i.p.v. te
+    # wachten tot de eerste klaar is. Alleen voor deze eenmalige
+    # opstart-migratie een veel ruimere marge; request-handling connecties
+    # (get_conn() elders) houden hun kortere timeout.
+    conn.execute("PRAGMA busy_timeout = 120000")
     conn.executescript(SCHEMA)
     _migrate(conn)
     conn.commit()
