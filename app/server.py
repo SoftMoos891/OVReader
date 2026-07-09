@@ -54,6 +54,36 @@ def _cached(cache_key, ttl_seconds, compute_fn):
     _response_cache[cache_key] = (now, value)
     return value
 
+
+TRENDS_REFRESH_HOUR, TRENDS_REFRESH_MINUTE = 3, 30  # servertijd
+
+
+def _next_daily_boundary(after_ts, hour=TRENDS_REFRESH_HOUR, minute=TRENDS_REFRESH_MINUTE):
+    after_dt = datetime.fromtimestamp(after_ts)
+    boundary = after_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if boundary <= after_dt:
+        boundary += timedelta(days=1)
+    return boundary.timestamp()
+
+
+def _cached_daily(cache_key, compute_fn):
+    """Als _cached(), maar in plaats van een vaste TTL-duur blijft het
+    resultaat geldig tot de eerstvolgende keer dat de klok
+    TRENDS_REFRESH_HOUR:TRENDS_REFRESH_MINUTE slaat -- dus hoogstens één
+    herberekening per dag (per gunicorn-worker), ongeacht hoe laat op de dag
+    de vorige berekening precies plaatsvond. Voor de zware /trends-data, die
+    toch maar eens per nacht hoeft te verversen."""
+    now = time.time()
+    cached = _response_cache.get(cache_key)
+    if cached:
+        cached_at, value = cached
+        if now < _next_daily_boundary(cached_at):
+            return value
+    value = compute_fn()
+    _response_cache[cache_key] = (now, value)
+    return value
+
+
 # HTTP Basic Auth: staat standaard UIT (handig voor lokaal gebruik). Zet de
 # omgevingsvariabele BUS_MONITOR_PASSWORD op de server om dit verplicht te
 # maken -- doe dit altijd voordat de app vanaf het internet bereikbaar is.
@@ -266,9 +296,15 @@ def api_stats():
     """Punctualiteit per operator en per route, over ruwe data (laatste 14 dagen)
     aangevuld met opgerolde dagstatistieken voor oudere periodes. Optioneel
     ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
-    parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard)."""
+    parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard).
+
+    Zonder ?range= (het live dashboard) blijft dit een rollende TTL van
+    STATS_CACHE_TTL_SECONDS. Mét ?range= (alleen gebruikt door /trends) volgt
+    dit de dagelijkse ververscyclus van die pagina, zie _cached_daily()."""
     range_key = request.args.get("range")
-    return jsonify(_cached(("stats", range_key), STATS_CACHE_TTL_SECONDS, lambda: _compute_stats(range_key)))
+    if range_key is None:
+        return jsonify(_cached(("stats", range_key), STATS_CACHE_TTL_SECONDS, lambda: _compute_stats(range_key)))
+    return jsonify(_cached_daily(("stats", range_key), lambda: _compute_stats(range_key)))
 
 
 def _compute_stats(range_key):
@@ -427,7 +463,7 @@ def api_stats_trend():
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
     cache_key = ("stats-trend", range_key, route_id, operator)
-    return jsonify(_cached(cache_key, STATS_CACHE_TTL_SECONDS, lambda: _compute_stats_trend(range_key, route_id, operator)))
+    return jsonify(_cached_daily(cache_key, lambda: _compute_stats_trend(range_key, route_id, operator)))
 
 
 def _compute_stats_trend(range_key, route_id, operator):
@@ -495,7 +531,7 @@ def api_stats_peak():
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
     cache_key = ("stats-peak", range_key, route_id, operator)
-    return jsonify(_cached(cache_key, STATS_CACHE_TTL_SECONDS, lambda: _compute_stats_peak(range_key, route_id, operator)))
+    return jsonify(_cached_daily(cache_key, lambda: _compute_stats_peak(range_key, route_id, operator)))
 
 
 def _compute_stats_peak(range_key, route_id, operator):
@@ -623,9 +659,8 @@ def api_stats_trips():
 def api_records():
     """Curated 'record'-signalering (slechtste/beste dagen, netwerkbreed / per
     operator / per lijn, op tijd en uitval) -- zie app/records.py. Scant in
-    het slechtste geval de hele historie, dus stevig gecachet: dit endpoint
-    wordt toch maar om de paar minuten gepolld, en hoeft niet sneller dan dat
-    opnieuw berekend te worden."""
+    het slechtste geval de hele historie; volgt de dagelijkse ververscyclus
+    van /trends (zie _cached_daily()) i.p.v. een vaste TTL."""
     def compute():
         conn = db.get_conn()
         try:
@@ -634,7 +669,7 @@ def api_records():
             conn.close()
         return {"min_samples": thresholds, **result}
 
-    data = _cached(("records",), STATS_CACHE_TTL_SECONDS, compute)
+    data = _cached_daily(("records",), compute)
     return jsonify({"generated_at": int(time.time()), **data})
 
 
