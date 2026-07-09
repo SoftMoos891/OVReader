@@ -28,6 +28,13 @@ _timetable = Timetable()
 ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op tijd"
 ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
 VEHICLE_FRESHNESS_SECONDS = 90
+# Cache-TTL voor de zware aggregatie-endpoints (/api/stats, /api/stats/trend,
+# /api/stats/peak, /api/records): groeperen over tientallen miljoenen rijen
+# trip_delays en kosten daardoor seconden tot tientallen seconden per call.
+# Punctualiteits-/trendcijfers veranderen sowieso traag, dus verse data elke
+# 30 minuten is ruim vers genoeg -- en voorkomt dat /trends beide cores
+# verzadigt zodra iemand de pagina laadt of ververst.
+STATS_CACHE_TTL_SECONDS = 1800
 
 _response_cache = {}
 
@@ -261,15 +268,7 @@ def api_stats():
     ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
     parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard)."""
     range_key = request.args.get("range")
-    # De parameterloze variant (alle historie) is de zwaarste query en wordt
-    # door het live-dashboard elke 45s gepolld (zie slowTick() in index.html)
-    # -- met de standaard TTL van 20s was de cache dus bij elke poll alweer
-    # verlopen en werd de dure aggregatie gewoon elke keer opnieuw uitgevoerd.
-    # Ruim boven het poll-interval houden zodat de meeste polls uit cache
-    # komen; expliciete ranges (interactief gebruik op /trends) blijven
-    # korter gecachet.
-    ttl = 90 if range_key is None else 20
-    return jsonify(_cached(("stats", range_key), ttl, lambda: _compute_stats(range_key)))
+    return jsonify(_cached(("stats", range_key), STATS_CACHE_TTL_SECONDS, lambda: _compute_stats(range_key)))
 
 
 def _compute_stats(range_key):
@@ -428,7 +427,7 @@ def api_stats_trend():
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
     cache_key = ("stats-trend", range_key, route_id, operator)
-    return jsonify(_cached(cache_key, 60, lambda: _compute_stats_trend(range_key, route_id, operator)))
+    return jsonify(_cached(cache_key, STATS_CACHE_TTL_SECONDS, lambda: _compute_stats_trend(range_key, route_id, operator)))
 
 
 def _compute_stats_trend(range_key, route_id, operator):
@@ -496,7 +495,7 @@ def api_stats_peak():
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
     cache_key = ("stats-peak", range_key, route_id, operator)
-    return jsonify(_cached(cache_key, 60, lambda: _compute_stats_peak(range_key, route_id, operator)))
+    return jsonify(_cached(cache_key, STATS_CACHE_TTL_SECONDS, lambda: _compute_stats_peak(range_key, route_id, operator)))
 
 
 def _compute_stats_peak(range_key, route_id, operator):
@@ -624,9 +623,9 @@ def api_stats_trips():
 def api_records():
     """Curated 'record'-signalering (slechtste/beste dagen, netwerkbreed / per
     operator / per lijn, op tijd en uitval) -- zie app/records.py. Scant in
-    het slechtste geval de hele historie, dus stevig gecachet (2 min): dit
-    endpoint wordt toch maar om de paar minuten gepolld, en hoeft niet
-    sneller dan dat opnieuw berekend te worden."""
+    het slechtste geval de hele historie, dus stevig gecachet: dit endpoint
+    wordt toch maar om de paar minuten gepolld, en hoeft niet sneller dan dat
+    opnieuw berekend te worden."""
     def compute():
         conn = db.get_conn()
         try:
@@ -635,7 +634,7 @@ def api_records():
             conn.close()
         return {"min_samples": thresholds, **result}
 
-    data = _cached(("records",), 120, compute)
+    data = _cached(("records",), STATS_CACHE_TTL_SECONDS, compute)
     return jsonify({"generated_at": int(time.time()), **data})
 
 
