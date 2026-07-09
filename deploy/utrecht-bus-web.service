@@ -6,6 +6,12 @@ After=network.target utrecht-bus-collector.service
 Type=simple
 User=utrechtbus
 WorkingDirectory=/opt/utrecht-bus-monitor
+# utrechtbus is een systeem-account zonder eigen homedir (useradd -r); zonder
+# expliciete HOME probeert gunicorn dingen weg te schrijven naar het
+# niet-bestaande/niet-schrijfbare /home/utrechtbus ("Control server error:
+# Permission denied"). /opt/utrecht-bus-monitor is al van utrechtbus, dus
+# die kan hier gewoon in schrijven.
+Environment=HOME=/opt/utrecht-bus-monitor
 EnvironmentFile=-/opt/utrecht-bus-monitor/.env
 # --max-requests(-jitter): herstart een worker na ~950-1050 requests, zodat
 # geleidelijke geheugengroei (fragmentatie e.d.) periodiek wordt weggegooid
