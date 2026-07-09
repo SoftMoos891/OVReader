@@ -25,18 +25,18 @@ routebeschrijving -- voeg 'm dan hier toe.
 
 Modaliteit: Transdev exploiteert zowel bus als de U-tram (20/21/22, GTFS
 route_type 0) -- die worden als aparte "operator"-waarden teruggegeven
-("Transdev bus" resp. "Transdev tram") zodat de UI ze uit elkaar kan houden.
+("Transdev" resp. "Transdev tram") zodat de UI ze uit elkaar kan houden.
 Keolis rijdt geen tram in deze concessie, dus die blijft gewoon "Keolis".
 """
 
 KEOLIS = "Keolis"
-TRANSDEV_BUS = "Transdev bus"
+TRANSDEV_BUS = "Transdev"
 TRANSDEV_TRAM = "Transdev tram"
 UNKNOWN = "Onbekend"
 
 # U-tram 20/21/22 (Utrecht Binnen, Transdev) -- lightrail, geen bus. Apart
 # gehouden van UNAMBIGUOUS_TRANSDEV hieronder zodat de UI een expliciet
-# onderscheid kan maken tussen "Transdev bus" en "Transdev tram".
+# onderscheid kan maken tussen "Transdev" (bus) en "Transdev tram".
 TRAM_LINES_TRANSDEV = {"20", "21", "22"}
 
 # Lijnnummers die uitsluitend bij Utrecht Buiten (Keolis) horen.
