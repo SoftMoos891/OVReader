@@ -32,9 +32,9 @@ def _history_cutoff():
 
 def _route_ontime_daily(conn, index):
     """Lijst van {day, route_id, ...route_meta, sample_count, on_time_count,
-    on_time_pct}, per (dag, lijn) -- raw trip_delays (laatste 14 dagen)
-    aangevuld met opgerolde route_stats_daily voor oudere dagen (tot
-    MAX_HISTORY_DAYS terug)."""
+    on_time_pct}, per (dag, lijn) -- raw trip_delays (zie RETENTION_DAYS in
+    app/collector.py) aangevuld met opgerolde route_stats_daily voor oudere
+    dagen (tot MAX_HISTORY_DAYS terug)."""
     raw = conn.execute(
         """
         SELECT strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,

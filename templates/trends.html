@@ -314,7 +314,16 @@ async function populateMeta() {
 }
 
 async function loadAll() {
-  await Promise.all([loadStats(), loadTrend(), loadPeak()]);
+  // Na elkaar i.p.v. Promise.all(): dit zijn stuk voor stuk zware
+  // aggregatiequeries (groeperen over de volledige trip_delays-historie).
+  // Alle drie tegelijk afvuren liet ze met 2 gunicorn-workers ook echt
+  // tegelijk op de twee cores draaien, wat de server bij een niet-gecachete
+  // (eerste) load van de dag volledig kon verzadigen. Na elkaar duurt de
+  // volledige load in totaal niet per se korter, maar belast de server nooit
+  // met meer dan één zware query tegelijk.
+  await loadStats();
+  await loadTrend();
+  await loadPeak();
   tripPage = 0;
   loadTrips();
 }
@@ -518,16 +527,17 @@ document.getElementById('prev-page').addEventListener('click', () => { if (tripP
 document.getElementById('next-page').addEventListener('click', () => { tripPage++; loadTrips(); });
 
 populateMeta().catch(console.error);
-loadAll().catch(console.error);
-loadRecords().catch(console.error);
 loadHealth().catch(console.error);
+// records na loadAll (i.p.v. gelijktijdig): ook dit is een zware
+// aggregatie, en bij een niet-gecachete (eerste) load van de dag wil je 'm
+// niet naast stats/trend/peak op de andere core laten meedraaien.
+loadAll().then(() => loadRecords()).catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
 setInterval(() => { if (!document.hidden) loadRecords().catch(console.error); }, 300000);
 setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
-    loadAll().catch(console.error);
-    loadRecords().catch(console.error);
+    loadAll().then(() => loadRecords()).catch(console.error);
     loadHealth().catch(console.error);
   }
 });

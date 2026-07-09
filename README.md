@@ -23,8 +23,9 @@ officiële U-OV-concessie (Keolis-bus, Transdev-bus en de Transdev-tram
 Dashboard: http://127.0.0.1:5151
 
 De app verzamelt elke 30 seconden nieuwe data op de achtergrond en slaat die
-op in `data/bus_monitor.db` (SQLite). Ruwe metingen worden na 14 dagen
-opgerold tot dagstatistieken per lijn, zodat de trendweergave blijft werken
+op in `data/bus_monitor.db` (SQLite). Ruwe metingen worden na een paar dagen
+(`RETENTION_DAYS` in `app/collector.py`) opgerold tot dagstatistieken per
+lijn, zodat de trendweergave blijft werken
 zonder dat de database onbeperkt groeit.
 
 ## Statische data verversen

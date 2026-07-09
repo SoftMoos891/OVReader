@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 User=utrechtbus
 WorkingDirectory=/opt/utrecht-bus-monitor
+# Nodig zodat de nachtelijke /trends-voorverwarming (warm_trends_cache() in
+# app/collector.py) dezelfde Basic Auth-credentials heeft als de webservice
+# -- anders krijgt elke opwarm-request gewoon een 401 terug.
+EnvironmentFile=-/opt/utrecht-bus-monitor/.env
 ExecStart=/opt/utrecht-bus-monitor/venv/bin/python -m app.collector_service
 Restart=on-failure
 RestartSec=5

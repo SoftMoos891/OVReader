@@ -1,7 +1,9 @@
 """Achtergrondtaak die periodiek de realtime feeds ophaalt en in SQLite opslaat."""
+import os
 import time
 import traceback
 
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from . import db
@@ -11,7 +13,17 @@ from .gtfs_rt import (
 )
 
 FETCH_INTERVAL_SECONDS = 30
-RETENTION_DAYS = 14
+# Hoe lang trip_delays/vehicle_positions als RUWE (per-halte/per-fetch) rijen
+# bewaard blijven voordat ze worden opgerold tot dagstatistieken en verwijderd
+# (zie cleanup_old_data()). Was 14 dagen; op productieschaal (tientallen
+# miljoenen rijen) maakte dat elke query die niet volledig buiten dit venster
+# valt - inclusief de standaard "Afgelopen 14 dagen"-weergave op /trends, die
+# daarmee toevallig exact samenviel - een dure scan over de volledige ruwe
+# tabel i.p.v. de veel kleinere, voorgeaggregeerde rolluptabellen. 7 dagen
+# halveert de ruwe tabel en laat elke query die verder terugkijkt grotendeels
+# uit de rollup lezen. Kost: individuele-rit-drilldown (/api/stats/trips)
+# werkt alleen nog binnen dit kortere venster.
+RETENTION_DAYS = 7
 CANCELLATION_HISTORY_RETENTION_DAYS = 400  # ruwweg, deze tabellen zijn al compact (1 rij per rit/dag)
 # "Op tijd" (Dienstregeling): zelfde definitie als in server.py -- tussen 2 min
 # te vroeg en 3 min te laat. Buiten die band telt een rit niet meer als op tijd.
@@ -210,12 +222,49 @@ def vacuum_db():
     print("[collector] vacuum klaar")
 
 
+WEB_BASE_URL = "http://127.0.0.1:5151"
+# Standaardweergave van /trends (currentRange in templates/trends.html) --
+# alleen die view warm maken, niet elke lijn/operator-combinatie (dat zijn er
+# honderden en zou zelf weer een zware nachtelijke belasting worden).
+TRENDS_WARMUP_PATHS = [
+    "/api/stats?range=2weeks",
+    "/api/stats/trend?range=2weeks",
+    "/api/stats/peak?range=2weeks",
+    "/api/records",
+]
+
+
+def warm_trends_cache():
+    """Belast 's nachts alvast de zware /trends-aggregaties voor (zie
+    _cached_daily() in app/server.py, ververst om 03:30), zodat de eerste
+    bezoeker van de dag niet zelf hoeft te wachten. Draait als gewone HTTP-
+    requests naar de lokale webservice i.p.v. de queries hier zelf uit te
+    voeren, want de response-cache leeft in dat (aparte) proces. Met 2
+    gunicorn-workers heeft elk zijn eigen cache -- twee pogingen per pad
+    vergroot de kans dat beide warm starten, een garantie is dat niet."""
+    auth = None
+    password = os.environ.get("BUS_MONITOR_PASSWORD")
+    if password:
+        auth = (os.environ.get("BUS_MONITOR_USER", "admin"), password)
+    for path in TRENDS_WARMUP_PATHS:
+        for _ in range(2):
+            try:
+                requests.get(f"{WEB_BASE_URL}{path}", auth=auth, timeout=120)
+            except requests.RequestException:
+                print(f"[collector] voorverwarmen {path} mislukt:")
+                traceback.print_exc()
+    print("[collector] /trends voorverwarmd")
+
+
 def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
     scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
     scheduler.add_job(vacuum_db, "interval", hours=24, id="vacuum", max_instances=1)
+    # 5 minuten na de cache-boundary in server.py (TRENDS_REFRESH_HOUR:MINUTE
+    # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
+    scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()

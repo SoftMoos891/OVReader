@@ -293,8 +293,9 @@ def api_alerts():
 
 @app.route("/api/stats")
 def api_stats():
-    """Punctualiteit per operator en per route, over ruwe data (laatste 14 dagen)
-    aangevuld met opgerolde dagstatistieken voor oudere periodes. Optioneel
+    """Punctualiteit per operator en per route, over ruwe data (zie RETENTION_DAYS
+    in app/collector.py) aangevuld met opgerolde dagstatistieken voor oudere
+    periodes. Optioneel
     ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
     parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard).
 
