@@ -30,8 +30,17 @@ CREATE TABLE IF NOT EXISTS trip_delays (
     arrival_delay INTEGER,
     departure_delay INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_td_fetched_at ON trip_delays(fetched_at);
-CREATE INDEX IF NOT EXISTS idx_td_route ON trip_delays(route_id);
+-- Samengestelde COVERING indexes (i.p.v. losse enkelvoudige indexen op
+-- fetched_at/route_id): de aggregatiequeries in server.py/records.py lezen
+-- altijd route_id + arrival_delay + departure_delay samen (per route, met of
+-- zonder fetched_at-filter), en de kaart-/haltezoeker-endpoints filteren op
+-- trip_id. Zonder deze covering indexes moet SQLite voor elke rij nog een
+-- keer de tabel raadplegen voor de niet-geindexeerde kolommen -- bij
+-- miljoenen rijen trip_delays was dat het verschil tussen >20s en <2s voor
+-- bijvoorbeeld /api/stats.
+CREATE INDEX IF NOT EXISTS idx_td_route_covering ON trip_delays(route_id, arrival_delay, departure_delay);
+CREATE INDEX IF NOT EXISTS idx_td_fetched_route_covering ON trip_delays(fetched_at, route_id, arrival_delay, departure_delay);
+CREATE INDEX IF NOT EXISTS idx_td_trip_id ON trip_delays(trip_id, fetched_at);
 
 CREATE TABLE IF NOT EXISTS alerts (
     alert_id TEXT PRIMARY KEY,
@@ -114,6 +123,14 @@ def _migrate(conn):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(trip_cancellations)")}
     if "start_time" not in cols:
         conn.execute("ALTER TABLE trip_cancellations ADD COLUMN start_time TEXT")
+
+    # Vervangen door de covering indexes hierboven (idx_td_route_covering /
+    # idx_td_fetched_route_covering dekken elke query die deze twee ook
+    # konden bedienen, en dan zonder de extra tabel-lookup per rij) -- op een
+    # bestaande database blijven de oude indexen anders als dode gewicht
+    # meegesleept bij elke INSERT/DELETE op trip_delays.
+    conn.execute("DROP INDEX IF EXISTS idx_td_fetched_at")
+    conn.execute("DROP INDEX IF EXISTS idx_td_route")
 
 
 def init_db():
