@@ -658,14 +658,13 @@ def api_stats_trips():
 
 @app.route("/api/records")
 def api_records():
-    """Curated 'record'-signalering (slechtste/beste dagen, netwerkbreed / per
-    operator / per lijn, op tijd en uitval) -- zie app/records.py. Scant in
-    het slechtste geval de hele historie; volgt de dagelijkse ververscyclus
-    van /trends (zie _cached_daily()) i.p.v. een vaste TTL."""
+    """Curated 'record'-signalering: netwerkbreed hoogste uitvalpercentage
+    ('ooit'/'deze maand') -- zie app/records.py. Volgt de dagelijkse
+    ververscyclus van /trends (zie _cached_daily()) i.p.v. een vaste TTL."""
     def compute():
         conn = db.get_conn()
         try:
-            result, thresholds = records.find_records(conn, _index, route_meta)
+            result, thresholds = records.find_records(conn, _index)
         finally:
             conn.close()
         return {"min_samples": thresholds, **result}

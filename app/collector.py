@@ -223,13 +223,12 @@ def vacuum_db():
 
 
 WEB_BASE_URL = "http://127.0.0.1:5151"
-# Standaardweergave van /trends (currentRange in templates/trends.html) --
-# alleen die view warm maken, niet elke lijn/operator-combinatie (dat zijn er
-# honderden en zou zelf weer een zware nachtelijke belasting worden).
+# /trends draait sinds de vereenvoudiging (geen 'op tijd'-data meer) alleen
+# nog op /api/records (dagelijks gecachet, zie _cached_daily() in server.py)
+# en /api/cancellations (ongecachet maar intrinsiek goedkoop: trip_cancellations/
+# trips_ran_daily zijn compacte tabellen, geen scan over trip_delays) -- dus
+# alleen /api/records is de moeite van voorverwarmen waard.
 TRENDS_WARMUP_PATHS = [
-    "/api/stats?range=2weeks",
-    "/api/stats/trend?range=2weeks",
-    "/api/stats/peak?range=2weeks",
     "/api/records",
 ]
 
