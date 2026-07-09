@@ -425,9 +425,16 @@ def api_stats_trend():
     """Dagreeks (op-tijd % en gem. vertraging) voor een lijn/operator/alle
     lijnen, over een gekozen periode -- voor de trendgrafiek op /trends."""
     range_key = request.args.get("range", "30d")
+    route_id = request.args.get("route_id")
+    operator = request.args.get("operator")
+    cache_key = ("stats-trend", range_key, route_id, operator)
+    return jsonify(_cached(cache_key, 60, lambda: _compute_stats_trend(range_key, route_id, operator)))
+
+
+def _compute_stats_trend(range_key, route_id, operator):
     since_date, until_date = _date_bounds_for_range(range_key)
     since_ts, until_ts = _range_to_epoch(since_date, until_date)
-    route_ids = _route_ids_filter(request.args.get("route_id"), request.args.get("operator"))
+    route_ids = _route_ids_filter(route_id, operator)
 
     conn = db.get_conn()
     try:
@@ -478,7 +485,7 @@ def api_stats_trend():
             "avg_delay_seconds": round(e["avg_sum"] / e["sample_count"], 1),
         })
 
-    return jsonify({"range": range_key, "since_date": since_date, "until_date": until_date, "daily": daily})
+    return {"range": range_key, "since_date": since_date, "until_date": until_date, "daily": daily}
 
 
 @app.route("/api/stats/peak")
@@ -486,9 +493,16 @@ def api_stats_peak():
     """Punctualiteit gesplitst naar spits (07-09 en 16-18) vs. dal, voor een
     lijn/operator/alle lijnen, over een gekozen periode."""
     range_key = request.args.get("range", "30d")
+    route_id = request.args.get("route_id")
+    operator = request.args.get("operator")
+    cache_key = ("stats-peak", range_key, route_id, operator)
+    return jsonify(_cached(cache_key, 60, lambda: _compute_stats_peak(range_key, route_id, operator)))
+
+
+def _compute_stats_peak(range_key, route_id, operator):
     since_date, until_date = _date_bounds_for_range(range_key)
     since_ts, until_ts = _range_to_epoch(since_date, until_date)
-    route_ids = _route_ids_filter(request.args.get("route_id"), request.args.get("operator"))
+    route_ids = _route_ids_filter(route_id, operator)
 
     conn = db.get_conn()
     try:
@@ -542,11 +556,11 @@ def api_stats_peak():
             "avg_delay_seconds": round(e["avg_sum"] / e["sample_count"], 1),
         })
 
-    return jsonify({
+    return {
         "range": range_key, "since_date": since_date, "until_date": until_date,
         "peak_hours": sorted(db.PEAK_HOURS),
         "periods": periods,
-    })
+    }
 
 
 @app.route("/api/stats/trips")
