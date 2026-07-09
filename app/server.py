@@ -521,6 +521,13 @@ def _compute_stats_trend(range_key, route_id, operator):
     since_ts, until_ts = _range_to_epoch(since_date, until_date)
     route_ids = _route_ids_filter(route_id, operator)
 
+    # route_stats_daily wordt elk uur bijgewerkt tot en met gisteren (zie
+    # collector.rollup_completed_days), dus ruwe trip_delays hoeft alleen nog
+    # voor vandaag doorzocht te worden -- in plaats van de hele gevraagde
+    # periode (tot 30 dagen ruwe data, tientallen miljoenen rijen).
+    today_start_ts = int(datetime.combine(date.today(), dtime.min).timestamp())
+    raw_since_ts = max(since_ts, today_start_ts)
+
     conn = db.get_conn()
     try:
         raw = conn.execute(
@@ -534,7 +541,7 @@ def _compute_stats_trend(range_key, route_id, operator):
             WHERE fetched_at >= ? AND fetched_at <= ?
             GROUP BY day, route_id
             """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since_ts, until_ts),
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, raw_since_ts, until_ts),
         ).fetchall()
         rolled = conn.execute(
             """
@@ -589,6 +596,11 @@ def _compute_stats_peak(range_key, route_id, operator):
     since_ts, until_ts = _range_to_epoch(since_date, until_date)
     route_ids = _route_ids_filter(route_id, operator)
 
+    # Zelfde redenering als _compute_stats_trend: route_stats_period_daily
+    # dekt alles tot en met gisteren, ruwe data hoeft alleen voor vandaag.
+    today_start_ts = int(datetime.combine(date.today(), dtime.min).timestamp())
+    raw_since_ts = max(since_ts, today_start_ts)
+
     conn = db.get_conn()
     try:
         raw = conn.execute(
@@ -601,7 +613,7 @@ def _compute_stats_peak(range_key, route_id, operator):
             WHERE fetched_at >= ? AND fetched_at <= ?
             GROUP BY route_id, period
             """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since_ts, until_ts),
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, raw_since_ts, until_ts),
         ).fetchall()
         rolled = conn.execute(
             """
