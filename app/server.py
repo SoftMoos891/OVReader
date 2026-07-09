@@ -261,7 +261,15 @@ def api_stats():
     ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
     parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard)."""
     range_key = request.args.get("range")
-    return jsonify(_cached(("stats", range_key), 20, lambda: _compute_stats(range_key)))
+    # De parameterloze variant (alle historie) is de zwaarste query en wordt
+    # door het live-dashboard elke 45s gepolld (zie slowTick() in index.html)
+    # -- met de standaard TTL van 20s was de cache dus bij elke poll alweer
+    # verlopen en werd de dure aggregatie gewoon elke keer opnieuw uitgevoerd.
+    # Ruim boven het poll-interval houden zodat de meeste polls uit cache
+    # komen; expliciete ranges (interactief gebruik op /trends) blijven
+    # korter gecachet.
+    ttl = 90 if range_key is None else 20
+    return jsonify(_cached(("stats", range_key), ttl, lambda: _compute_stats(range_key)))
 
 
 def _compute_stats(range_key):
