@@ -195,7 +195,7 @@ async function loadRecords() {
   }
   document.getElementById('records-grid').innerHTML = cards.join('');
   document.getElementById('records-hint').textContent =
-    `Op basis van dagen met ≥${data.min_samples.cancellation_total} ritten`;
+    `Op basis van dagen met ≥${data.min_samples.cancellation_total} ritten waarvan ≥${data.min_samples.cancellation_ran} daadwerkelijk gereden (filtert dagen met een datagat uit)`;
 }
 
 async function loadRanking() {
@@ -239,16 +239,34 @@ function renderRankingTable() {
   }));
 }
 
+// Deeplinks: gekozen periode in de URL (bv. /trends?range=30d), zodat een
+// specifieke weergave te bookmarken/delen is. Zelfde patroon als /uitval.
+function syncUrl() {
+  const qs = currentRange !== '2weeks' ? `?range=${currentRange}` : '';
+  history.replaceState(null, '', qs || location.pathname);
+}
+
+function applyUrlState() {
+  const range = new URLSearchParams(location.search).get('range');
+  if (range && document.querySelector(`.range-btn[data-range="${range}"]`)) {
+    currentRange = range;
+    document.querySelectorAll('.range-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.range === range));
+  }
+}
+
 document.querySelectorAll('.range-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentRange = btn.dataset.range;
+    syncUrl();
     loadRanking().catch(console.error);
   });
 });
 document.getElementById('ranking-filter').addEventListener('input', renderRankingTable);
 
+applyUrlState();
 loadHealth().catch(console.error);
 loadRecords().catch(console.error);
 loadRanking().catch(console.error);

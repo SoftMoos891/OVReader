@@ -32,6 +32,10 @@
   .kpi-box .num.bad { color: var(--bad); }
   .kpi-box .num.warn { color: var(--warn); }
   .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .kpi-box .delta { font-size: 11px; margin-top: 4px; }
+  .kpi-box .delta.up { color: var(--bad); }
+  .kpi-box .delta.down { color: var(--good); }
+  .kpi-box .delta.flat { color: var(--muted); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
@@ -136,10 +140,17 @@
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Uitval per week — per vervoerder</h2>
-    <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Op basis van de gekozen periode hierboven; nieuwste week bovenaan. Alleen busvervoer.</div>
-    <div class="table-scroll" id="week-table"><div class="empty">Laden...</div></div>
+  <div class="grid2">
+    <div class="panel">
+      <h2>Uitval per week — per vervoerder</h2>
+      <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Op basis van de gekozen periode hierboven; nieuwste week bovenaan. Alleen busvervoer.</div>
+      <div class="table-scroll" id="week-table"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="panel">
+      <h2>Uitval per maand — per vervoerder</h2>
+      <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Op basis van de gekozen periode hierboven; nieuwste maand bovenaan. Alleen busvervoer.</div>
+      <div class="table-scroll" id="month-table"><div class="empty">Laden...</div></div>
+    </div>
   </div>
 
   <div class="panel">
@@ -257,23 +268,38 @@ async function loadAll() {
   renderRouteTable();
   renderAgencyTable();
   renderWeekTable();
+  renderMonthTable();
   populateAgencyFilter();
   tripPage = 0;
   loadTrips();
 }
 
+// Klein delta-regeltje onder een KPI-waarde: verschil t.o.v. de vorige
+// periode van gelijke lengte. Stijging = slechter = rood; daling = groen.
+function deltaHtml(current, prev, isPct) {
+  if (prev === null || prev === undefined || current === null || current === undefined) return '';
+  const diff = Math.round((current - prev) * 10) / 10;
+  if (diff === 0) return '<div class="delta flat">gelijk aan vorige periode</div>';
+  const arrow = diff > 0 ? '▲' : '▼';
+  const cls = diff > 0 ? 'up' : 'down';
+  const value = `${diff > 0 ? '+' : ''}${diff}${isPct ? 'pp' : ''}`;
+  return `<div class="delta ${cls}">${arrow} ${value} vs. vorige periode</div>`;
+}
+
 function renderKpis() {
   const d = cancellationData;
+  const prev = d.previous;
   const perOp = Object.fromEntries((d.per_operator || []).map(a => [a.operator, a]));
   const operatorKpiBox = (operatorName, label) => {
     const a = perOp[operatorName];
     const pct = a ? a.cancellation_pct : null;
-    return `<div class="kpi-box"><div class="num ${pct !== null ? pillClass(pct) : ''}">${pct !== null ? pct + '%' : '–'}</div><div class="label">${label}</div></div>`;
+    const prevPct = prev && prev.per_operator[operatorName] ? prev.per_operator[operatorName].cancellation_pct : null;
+    return `<div class="kpi-box"><div class="num ${pct !== null ? pillClass(pct) : ''}">${pct !== null ? pct + '%' : '–'}</div><div class="label">${label}</div>${pct !== null ? deltaHtml(pct, prevPct, true) : ''}</div>`;
   };
   document.getElementById('kpis').innerHTML = `
-    <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
+    <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div>${deltaHtml(d.total_canceled, prev ? prev.total_canceled : null, false)}</div>
     <div class="kpi-box"><div class="num">${d.total_ran}</div><div class="label">Ritten gereden</div></div>
-    <div class="kpi-box"><div class="num ${pillClass(d.cancellation_pct)}">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
+    <div class="kpi-box"><div class="num ${pillClass(d.cancellation_pct)}">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div>${deltaHtml(d.cancellation_pct, prev ? prev.cancellation_pct : null, true)}</div>
     ${operatorKpiBox('Transdev', 'Uitval Transdev')}
     ${operatorKpiBox('Keolis', 'Uitval Keolis')}
     <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
@@ -457,6 +483,44 @@ function renderWeekTable() {
   container.innerHTML = `<table>${header}${body}</table>`;
 }
 
+function fmtMonthLabel(monthKey) {
+  const [year, month] = monthKey.split('-');
+  const name = new Date(`${monthKey}-01T00:00:00`).toLocaleDateString('nl-NL', { month: 'long' });
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${year}`;
+}
+
+function renderMonthTable() {
+  const perOp = cancellationData.per_month_by_operator || {};
+  const operators = Object.keys(perOp).sort();
+  const container = document.getElementById('month-table');
+  if (operators.length === 0 || operators.every(op => perOp[op].length === 0)) {
+    container.innerHTML = '<div class="empty">Geen resultaten</div>';
+    return;
+  }
+
+  const monthKeys = new Set();
+  operators.forEach(op => perOp[op].forEach(m => monthKeys.add(m.month)));
+  const months = [...monthKeys].sort().reverse();
+
+  const rowByOpMonth = {};
+  operators.forEach(op => {
+    rowByOpMonth[op] = Object.fromEntries(perOp[op].map(m => [m.month, m]));
+  });
+
+  const header = `<tr><th>Maand</th>${operators.map(op => `<th>${op}</th>`).join('')}</tr>`;
+  const body = months.map(month => {
+    const cells = operators.map(op => {
+      const m = rowByOpMonth[op][month];
+      if (!m) return '<td style="color:var(--muted);">—</td>';
+      return `<td><span class="pill ${pillClass(m.cancellation_pct)}">${m.cancellation_pct}%</span>
+        <span style="color:var(--muted); font-size:11px;">(${m.canceled}/${m.canceled + m.ran})</span></td>`;
+    }).join('');
+    return `<tr><td>${fmtMonthLabel(month)}</td>${cells}</tr>`;
+  }).join('');
+
+  container.innerHTML = `<table>${header}${body}</table>`;
+}
+
 function populateAgencyFilter() {
   const sel = document.getElementById('agency-drill-filter');
   const current = sel.value;
@@ -503,17 +567,43 @@ async function loadTrips() {
   document.getElementById('next-page').disabled = tripPage + 1 >= totalPages;
 }
 
+// Deeplinks: periode + 'tot nu toe'-toggle in de URL, zodat een specifieke
+// weergave te bookmarken/delen is (bv. /uitval?range=last_month&up_to_now=1).
+// replaceState i.p.v. pushState: elke klik als browsergeschiedenis-stap zou
+// de terugknop onbruikbaar maken.
+function syncUrl() {
+  const params = new URLSearchParams();
+  if (currentRange !== 'week') params.set('range', currentRange);
+  if (upToNow) params.set('up_to_now', '1');
+  const qs = params.toString();
+  history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
+}
+
+function applyUrlState() {
+  const params = new URLSearchParams(location.search);
+  const range = params.get('range');
+  if (range && document.querySelector(`.range-btn[data-range="${range}"]`)) {
+    currentRange = range;
+    document.querySelectorAll('.range-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.range === range));
+  }
+  upToNow = params.get('up_to_now') === '1';
+  document.getElementById('up-to-now-toggle').checked = upToNow;
+}
+
 document.querySelectorAll('.range-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentRange = btn.dataset.range;
     filterRouteId = '';
+    syncUrl();
     loadAll().catch(console.error);
   });
 });
 document.getElementById('up-to-now-toggle').addEventListener('change', (e) => {
   upToNow = e.target.checked;
+  syncUrl();
   loadAll().catch(console.error);
 });
 document.getElementById('route-filter').addEventListener('input', renderRouteTable);
@@ -522,6 +612,7 @@ document.getElementById('trip-search').addEventListener('input', () => { tripPag
 document.getElementById('prev-page').addEventListener('click', () => { if (tripPage > 0) { tripPage--; loadTrips(); } });
 document.getElementById('next-page').addEventListener('click', () => { tripPage++; loadTrips(); });
 
+applyUrlState();
 loadAll().catch(console.error);
 loadHealth().catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);

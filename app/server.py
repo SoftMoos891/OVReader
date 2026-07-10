@@ -770,6 +770,63 @@ def api_trip_nearby_stops(trip_id):
     })
 
 
+def _cancellation_totals(since_date, until_date):
+    """Compacte uitval-samenvatting (totalen + percentage per operator) over
+    een datumrange -- gebruikt voor de vergelijking met de vorige periode in
+    /api/cancellations. Zelfde tel-definitie als daar: vervallen ritten vs.
+    daadwerkelijk waargenomen gereden ritten, alleen buslijnen."""
+    conn = db.get_conn()
+    try:
+        canceled_rows = conn.execute(
+            """SELECT route_id, COUNT(*) AS cnt FROM trip_cancellations
+               WHERE service_date >= ? AND service_date <= ? GROUP BY route_id""",
+            (since_date, until_date),
+        ).fetchall()
+        ran_rows = conn.execute(
+            """SELECT r.route_id, COUNT(*) AS cnt
+               FROM trips_ran_daily r
+               WHERE r.service_date >= ? AND r.service_date <= ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM trip_cancellations c
+                     WHERE c.trip_id = r.trip_id AND c.service_date = r.service_date
+                 )
+               GROUP BY r.route_id""",
+            (since_date, until_date),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    total_canceled = total_ran = 0
+    per_operator = defaultdict(lambda: {"canceled": 0, "ran": 0})
+    for r in canceled_rows:
+        if not _index.is_bus_route(r["route_id"]):
+            continue
+        total_canceled += r["cnt"]
+        per_operator[route_meta(r["route_id"])["operator"]]["canceled"] += r["cnt"]
+    for r in ran_rows:
+        if not _index.is_bus_route(r["route_id"]):
+            continue
+        total_ran += r["cnt"]
+        per_operator[route_meta(r["route_id"])["operator"]]["ran"] += r["cnt"]
+
+    total = total_canceled + total_ran
+    return {
+        "since_date": since_date,
+        "until_date": until_date,
+        "total_canceled": total_canceled,
+        "total_ran": total_ran,
+        "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
+        "per_operator": {
+            op: {
+                "canceled": a["canceled"], "ran": a["ran"],
+                "cancellation_pct": round(100.0 * a["canceled"] / (a["canceled"] + a["ran"]), 1)
+                if (a["canceled"] + a["ran"]) else 0.0,
+            }
+            for op, a in per_operator.items()
+        },
+    }
+
+
 @app.route("/api/cancellations")
 def api_cancellations():
     """Aantal uitgevallen (CANCELED) ritten over een gekozen periode.
@@ -833,6 +890,7 @@ def api_cancellations():
     weekday_by_op = defaultdict(lambda: {"canceled": [0] * 7, "ran": [0] * 7})
     hour_by_op = defaultdict(lambda: [0] * 24)
     week_by_op = defaultdict(lambda: defaultdict(lambda: {"canceled": 0, "ran": 0}))
+    month_by_op = defaultdict(lambda: defaultdict(lambda: {"canceled": 0, "ran": 0}))
     for r in canceled_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
@@ -849,6 +907,7 @@ def api_cancellations():
         weekday_canceled[weekday] += r["cnt"]
         weekday_by_op[operator]["canceled"][weekday] += r["cnt"]
         week_by_op[operator][_iso_week_key(service_date)]["canceled"] += r["cnt"]
+        month_by_op[operator][r["service_date"][:7]]["canceled"] += r["cnt"]
         if r["start_time"]:
             try:
                 hour = int(r["start_time"].split(":")[0]) % 24
@@ -869,6 +928,7 @@ def api_cancellations():
         weekday_ran[weekday] += r["cnt"]
         weekday_by_op[operator]["ran"][weekday] += r["cnt"]
         week_by_op[operator][_iso_week_key(service_date)]["ran"] += r["cnt"]
+        month_by_op[operator][r["service_date"][:7]]["ran"] += r["cnt"]
 
     daily_list = []
     for d in sorted(daily.keys()):
@@ -924,7 +984,9 @@ def api_cancellations():
 
     per_hour = [{"hour": h, "canceled": hour_canceled[h]} for h in range(24)]
 
-    operators_present = sorted(set(daily_by_op) | set(weekday_by_op) | set(hour_by_op) | set(week_by_op))
+    operators_present = sorted(
+        set(daily_by_op) | set(weekday_by_op) | set(hour_by_op) | set(week_by_op) | set(month_by_op)
+    )
 
     daily_by_operator = {}
     for op in operators_present:
@@ -973,6 +1035,38 @@ def api_cancellations():
             })
         per_week_by_operator[op] = lst
 
+    per_month_by_operator = {}
+    for op in operators_present:
+        months = month_by_op[op]
+        lst = []
+        for month_key in sorted(months.keys()):
+            c, r = months[month_key]["canceled"], months[month_key]["ran"]
+            mtotal = c + r
+            lst.append({
+                "month": month_key,
+                "canceled": c, "ran": r,
+                "cancellation_pct": round(100.0 * c / mtotal, 1) if mtotal else 0.0,
+            })
+        per_month_by_operator[op] = lst
+
+    # Vorige periode van gelijke lengte, direct voorafgaand aan de gekozen
+    # periode -- voor de delta's op de KPI-tegels. 'all' heeft geen vorige
+    # periode. NB: up_to_now wordt hier bewust niet toegepast (de vorige
+    # periode ligt volledig in het verleden); bij range=today met up_to_now
+    # vergelijk je dus vandaag-tot-nu-toe met heel gisteren -- een lichte
+    # scheefheid die we accepteren om het simpel te houden.
+    previous = None
+    if range_key != "all":
+        period_days = (date.fromisoformat(until_date) - date.fromisoformat(since_date)).days
+        prev_until = date.fromisoformat(since_date) - timedelta(days=1)
+        prev_since = prev_until - timedelta(days=period_days)
+        previous = _cancellation_totals(prev_since.isoformat(), prev_until.isoformat())
+        if previous["total_canceled"] + previous["total_ran"] == 0:
+            # Helemaal geen data in de vorige periode (bv. de collector
+            # draaide toen nog niet) -- een delta t.o.v. "0%" zou misleidend
+            # zijn, dus dan liever geen delta tonen.
+            previous = None
+
     return jsonify({
         "range": range_key,
         "since_date": since_date,
@@ -990,6 +1084,8 @@ def api_cancellations():
         "per_hour": per_hour,
         "per_hour_by_operator": per_hour_by_operator,
         "per_week_by_operator": per_week_by_operator,
+        "per_month_by_operator": per_month_by_operator,
+        "previous": previous,
     })
 
 

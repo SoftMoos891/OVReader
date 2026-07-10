@@ -15,6 +15,16 @@ from datetime import date, timedelta
 # terwijl het gewoon te weinig data is.
 MIN_TRIPS_CANCELLATION = 20
 
+# Daarnaast: een minimum aan daadwerkelijk GEREDEN ritten op die dag. Als de
+# collector (vrijwel) de hele dag plat lag, registreert hij wel de vooraf
+# aangekondigde uitval (die blijft in de feed staan en wordt bij de eerste
+# fetch alsnog opgepikt) maar nauwelijks gereden ritten -- zo'n dag lijkt dan
+# op "100% uitval" terwijl het gewoon een gat in de eigen data is. Het netwerk
+# rijdt normaal ruim duizend ritten per dag (per operator honderden), dus een
+# dag met minder dan dit aantal waargenomen ritten is vrijwel zeker een
+# datagat, geen echte uitvaldag.
+MIN_RAN_TRIPS_CANCELLATION = 50
+
 # Begrenst hoe ver terug de records-scan gaat. Gelijk aan
 # CANCELLATION_HISTORY_RETENTION_DAYS in app/collector.py (de bewaartermijn
 # van trip_cancellations/trips_ran_daily) -- verder terugkijken dan die
@@ -112,7 +122,11 @@ def find_records(conn, index):
     ]
 
     def cancel_worst(series, min_total, since_day=None):
-        return _extreme(series, "cancellation_pct", "total", min_total, "max", since_day)
+        # Dubbele drempel: genoeg ritten in totaal EN genoeg daadwerkelijk
+        # gereden (zie MIN_RAN_TRIPS_CANCELLATION) -- anders wint een
+        # collector-uitvaldag met schijnbaar "100% uitval" altijd.
+        reliable = [r for r in series if r["ran"] >= MIN_RAN_TRIPS_CANCELLATION]
+        return _extreme(reliable, "cancellation_pct", "total", min_total, "max", since_day)
 
     operators = sorted({op for _day, op in cancel_operator_by_key.keys()})
 
@@ -131,5 +145,8 @@ def find_records(conn, index):
             for op in operators
         },
     }
-    thresholds = {"cancellation_total": MIN_TRIPS_CANCELLATION}
+    thresholds = {
+        "cancellation_total": MIN_TRIPS_CANCELLATION,
+        "cancellation_ran": MIN_RAN_TRIPS_CANCELLATION,
+    }
     return result, thresholds

@@ -109,6 +109,66 @@ def test_cancellations_split_by_operator(client, temp_db, monkeypatch):
     assert transdev_week["canceled"] == 0
     assert transdev_week["ran"] == 1
 
+    month_key = date.today().isoformat()[:7]
+    keolis_month = next(m for m in data["per_month_by_operator"]["Keolis"] if m["month"] == month_key)
+    assert keolis_month["canceled"] == 1
+    assert keolis_month["ran"] == 1
+    assert keolis_month["cancellation_pct"] == 50.0
+
+
+def test_previous_period_delta(client, temp_db, monkeypatch):
+    """Het 'previous'-blok moet de direct voorafgaande periode van gelijke
+    lengte samenvatten, voor de delta's op de KPI-tegels."""
+    from datetime import timedelta
+
+    from app import server
+
+    monkeypatch.setitem(server._index.routes, "ROUTE_K", {"short_name": "1", "operator": "Keolis"})
+
+    today = date.today()
+    conn = temp_db.get_conn()
+    # Vandaag: 1 vervallen, 1 gereden (50%).
+    conn.execute(
+        "INSERT INTO trips_ran_daily (service_date, trip_id, route_id) VALUES (?, 'now1', 'ROUTE_K')",
+        (today.isoformat(),),
+    )
+    conn.execute(
+        """INSERT INTO trip_cancellations
+           (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+           VALUES ('now2', ?, 'ROUTE_K', '00:00:00', 0, 0)""",
+        (today.isoformat(),),
+    )
+    # Gisteren (= de vorige periode bij range=today): 3 gereden, 1 vervallen (25%).
+    yesterday = (today - timedelta(days=1)).isoformat()
+    for i in range(3):
+        conn.execute(
+            "INSERT INTO trips_ran_daily (service_date, trip_id, route_id) VALUES (?, ?, 'ROUTE_K')",
+            (yesterday, f"prev-ran{i}"),
+        )
+    conn.execute(
+        """INSERT INTO trip_cancellations
+           (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+           VALUES ('prev-canceled', ?, 'ROUTE_K', '08:00:00', 0, 0)""",
+        (yesterday,),
+    )
+    conn.commit()
+    conn.close()
+
+    data = client.get("/api/cancellations?range=today").get_json()
+
+    assert data["cancellation_pct"] == 50.0
+    prev = data["previous"]
+    assert prev["since_date"] == yesterday
+    assert prev["until_date"] == yesterday
+    assert prev["total_canceled"] == 1
+    assert prev["total_ran"] == 3
+    assert prev["cancellation_pct"] == 25.0
+    assert prev["per_operator"]["Keolis"]["cancellation_pct"] == 25.0
+
+    # range=all heeft geen vorige periode.
+    data_all = client.get("/api/cancellations?range=all").get_json()
+    assert data_all["previous"] is None
+
 
 def test_up_to_now_excludes_future_start_times_for_today(client, temp_db, monkeypatch):
     """?up_to_now=1 moet een vooraf aangekondigde uitval voor een vertrektijd
