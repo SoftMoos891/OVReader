@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 
 def test_cancellation_percentage(client, temp_db):
@@ -108,3 +108,61 @@ def test_cancellations_split_by_operator(client, temp_db, monkeypatch):
     transdev_week = next(w for w in data["per_week_by_operator"]["Transdev"] if w["week"] == week_key)
     assert transdev_week["canceled"] == 0
     assert transdev_week["ran"] == 1
+
+
+def test_up_to_now_excludes_future_start_times_for_today(client, temp_db, monkeypatch):
+    """?up_to_now=1 moet een vooraf aangekondigde uitval voor een vertrektijd
+    die vandaag nog moet komen negeren, maar een allang verstreken vertrektijd
+    (en alles van eerdere dagen) gewoon meetellen."""
+    from app import server
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 7, 10, 12, 0, 0)  # 'nu' = 12:00 op 10 juli 2026
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 10)
+
+    # datetime.date/datetime.datetime zijn onveranderlijke C-types -- niet
+    # rechtstreeks patchbaar, vandaar deze subclasses die alleen today()/now()
+    # vastzetten en de module-naam in server.py vervangen.
+    monkeypatch.setattr(server, "datetime", FixedDatetime)
+    monkeypatch.setattr(server, "date", FixedDate)
+
+    today = "2026-07-10"
+    yesterday = "2026-07-09"
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO trip_cancellations
+           (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+           VALUES ('past', ?, 'TESTROUTE', '08:00:00', 0, 0)""",
+        (today,),
+    )
+    conn.execute(
+        """INSERT INTO trip_cancellations
+           (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+           VALUES ('future', ?, 'TESTROUTE', '18:00:00', 0, 0)""",
+        (today,),
+    )
+    conn.execute(
+        """INSERT INTO trip_cancellations
+           (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+           VALUES ('yesterday', ?, 'TESTROUTE', '18:00:00', 0, 0)""",
+        (yesterday,),
+    )
+    conn.commit()
+    conn.close()
+
+    whole_day = client.get("/api/cancellations?range=today&up_to_now=0").get_json()
+    assert whole_day["total_canceled"] == 2  # past + future, allebei vandaag
+
+    up_to_now = client.get("/api/cancellations?range=today&up_to_now=1").get_json()
+    assert up_to_now["up_to_now"] is True
+    assert up_to_now["total_canceled"] == 1  # alleen 'past'
+
+    # Gisteren is sowieso al helemaal voorbij -- up_to_now maakt daar geen verschil.
+    up_to_now_week = client.get("/api/cancellations?range=week&up_to_now=1").get_json()
+    assert up_to_now_week["total_canceled"] == 2  # 'past' (vandaag) + 'yesterday'

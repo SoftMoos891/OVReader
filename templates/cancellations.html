@@ -90,6 +90,11 @@
     <button class="range-btn" data-range="all">Alles (sinds start collector)</button>
   </div>
 
+  <label style="display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted); margin-bottom:20px; cursor:pointer;">
+    <input type="checkbox" id="up-to-now-toggle">
+    Tot nu toe (i.p.v. hele dag) — telt voor vandaag alleen ritten mee waarvan de vertrektijd al is verstreken
+  </label>
+
   <div class="kpi-row" id="kpis"></div>
 
   <div class="grid2">
@@ -155,6 +160,7 @@
 <script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
 <script>
 let currentRange = 'week';
+let upToNow = false;
 let cancellationData = null;
 let routeSort = { key: 'canceled', dir: -1 };
 let tripPage = 0;
@@ -238,7 +244,9 @@ function pillClass(pct) {
 }
 
 async function loadAll() {
-  const res = await fetch(`/api/cancellations?range=${currentRange}`);
+  const params = new URLSearchParams({ range: currentRange });
+  if (upToNow) params.set('up_to_now', '1');
+  const res = await fetch(`/api/cancellations?${params}`);
   cancellationData = await res.json();
   renderKpis();
   renderDailyPctChart();
@@ -494,6 +502,10 @@ document.querySelectorAll('.range-btn').forEach(btn => {
     filterRouteId = '';
     loadAll().catch(console.error);
   });
+});
+document.getElementById('up-to-now-toggle').addEventListener('change', (e) => {
+  upToNow = e.target.checked;
+  loadAll().catch(console.error);
 });
 document.getElementById('route-filter').addEventListener('input', renderRouteTable);
 document.getElementById('agency-drill-filter').addEventListener('change', () => { tripPage = 0; loadTrips(); });

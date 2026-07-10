@@ -762,11 +762,23 @@ def api_cancellations():
     gereden), waarbij 'gereden' is afgeleid uit de realtime feed (ritten waarvoor
     we minstens één halte-update zagen). Dit is een praktische benadering op
     basis van wat de realtime feeds daadwerkelijk rapporteren, geen exacte
-    telling tegen de volledige dienstregeling."""
+    telling tegen de volledige dienstregeling.
+
+    Optioneel ?up_to_now=1: vervoerders melden een uitgevallen rit soms al
+    ruim voordat de geplande vertrektijd is verstreken. Zonder deze vlag telt
+    zo'n vooraf aangekondigde uitval voor later vandaag al mee in de teller,
+    terwijl 'gereden' vanzelfsprekend alleen ritten bevat die al daadwerkelijk
+    zijn waargenomen -- dat scheeft het percentage van de nog lopende dag
+    omhoog (uitval hele dag vs. gereden tot nu toe). Met ?up_to_now=1 worden
+    vervallen ritten van VANDAAG met een nog niet verstreken start_time
+    genegeerd, ongeacht welke ?range= is gekozen; voltooide dagen in de
+    periode zijn hoe dan ook al compleet en blijven ongewijzigd."""
     range_key = request.args.get("range", "today")
+    up_to_now = request.args.get("up_to_now") in ("1", "true", "yes")
     # Bovengrens op vandaag: agencies melden soms al vervallen ritten voor
     # morgen vooruit, die horen niet thuis in een periode t/m vandaag.
     since_date, today_str = _date_bounds_for_range(range_key)
+    now_time_str = datetime.now().strftime("%H:%M:%S")
 
     conn = db.get_conn()
     try:
@@ -805,6 +817,9 @@ def api_cancellations():
     for r in canceled_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
+        if (up_to_now and r["service_date"] == today_str
+                and r["start_time"] and r["start_time"] > now_time_str):
+            continue  # vooraf aangekondigde uitval voor een vertrektijd die nog moet komen
         operator = route_meta(r["route_id"])["operator"]
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["canceled"] += r["cnt"]
@@ -943,6 +958,7 @@ def api_cancellations():
         "range": range_key,
         "since_date": since_date,
         "until_date": today_str,
+        "up_to_now": up_to_now,
         "total_canceled": total_canceled,
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
