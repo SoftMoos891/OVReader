@@ -1,7 +1,7 @@
-"""Automatische 'record'-signalering: netwerkbreed hoogste uitvalpercentage,
-op basis van de al opgebouwde trip_cancellations/trips_ran_daily-tellingen --
-zodat je niet zelf door de historie hoeft te spitten om te zien of er iets
-nieuwswaardigs zit.
+"""Automatische 'record'-signalering: hoogste uitvalpercentage, netwerkbreed
+en per operator (Keolis/Transdev), op basis van de al opgebouwde
+trip_cancellations/trips_ran_daily-tellingen -- zodat je niet zelf door de
+historie hoeft te spitten om te zien of er iets nieuwswaardigs zit.
 
 Bevat bewust GEEN 'op tijd'-records meer: dat vereiste een GROUP BY over de
 volledige trip_delays-tabel (op productieschaal tientallen miljoenen rijen),
@@ -77,34 +77,58 @@ def _extreme(series, value_key, threshold_key, min_value, direction, since_day=N
 
 
 def find_records(conn, index):
-    """Bouwt de curated lijst van uitval-records: netwerkbreed, voor 'ooit'
-    en 'deze maand'."""
+    """Bouwt de curated lijst van uitval-records: netwerkbreed en per
+    operator (Keolis/Transdev), voor 'ooit' en 'deze maand'. Transdev tram
+    komt hier nooit in voor -- _cancellation_daily() filtert al op
+    is_bus_route(), consistent met de rest van de uitvalcijfers in de app."""
     month_start = date.today().replace(day=1).isoformat()
 
     cancel_by_route = _cancellation_daily(conn, index)
 
     cancel_network_by_day = {}
+    cancel_operator_by_key = {}
     for (day, route_id), e in cancel_by_route.items():
         total = e["canceled"] + e["ran"]
         if total == 0:
             continue
+        operator = index.routes.get(route_id, {}).get("operator", "Onbekend")
         nd = cancel_network_by_day.setdefault(day, {"canceled": 0, "ran": 0})
         nd["canceled"] += e["canceled"]
         nd["ran"] += e["ran"]
+        ok = cancel_operator_by_key.setdefault((day, operator), {"canceled": 0, "ran": 0})
+        ok["canceled"] += e["canceled"]
+        ok["ran"] += e["ran"]
 
     cancel_network_series = [
         {"day": day, "canceled": e["canceled"], "ran": e["ran"], "total": e["canceled"] + e["ran"],
          "cancellation_pct": round(100.0 * e["canceled"] / (e["canceled"] + e["ran"]), 1)}
         for day, e in cancel_network_by_day.items()
     ]
+    cancel_operator_series = [
+        {"day": day, "operator": operator, "canceled": e["canceled"], "ran": e["ran"],
+         "total": e["canceled"] + e["ran"],
+         "cancellation_pct": round(100.0 * e["canceled"] / (e["canceled"] + e["ran"]), 1)}
+        for (day, operator), e in cancel_operator_by_key.items()
+    ]
 
     def cancel_worst(series, min_total, since_day=None):
         return _extreme(series, "cancellation_pct", "total", min_total, "max", since_day)
+
+    operators = sorted({op for _day, op in cancel_operator_by_key.keys()})
 
     result = {
         "cancellations": {
             "worst_all_time": cancel_worst(cancel_network_series, MIN_TRIPS_CANCELLATION),
             "worst_month": cancel_worst(cancel_network_series, MIN_TRIPS_CANCELLATION, month_start),
+        },
+        "cancellations_by_operator": {
+            op: {
+                "worst_all_time": cancel_worst(
+                    [r for r in cancel_operator_series if r["operator"] == op], MIN_TRIPS_CANCELLATION),
+                "worst_month": cancel_worst(
+                    [r for r in cancel_operator_series if r["operator"] == op], MIN_TRIPS_CANCELLATION, month_start),
+            }
+            for op in operators
         },
     }
     thresholds = {"cancellation_total": MIN_TRIPS_CANCELLATION}

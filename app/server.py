@@ -658,9 +658,10 @@ def api_stats_trips():
 
 @app.route("/api/records")
 def api_records():
-    """Curated 'record'-signalering: netwerkbreed hoogste uitvalpercentage
-    ('ooit'/'deze maand') -- zie app/records.py. Volgt de dagelijkse
-    ververscyclus van /trends (zie _cached_daily()) i.p.v. een vaste TTL."""
+    """Curated 'record'-signalering: hoogste uitvalpercentage, netwerkbreed
+    en per operator ('ooit'/'deze maand') -- zie app/records.py. Volgt de
+    dagelijkse ververscyclus van /trends (zie _cached_daily()) i.p.v. een
+    vaste TTL."""
     def compute():
         conn = db.get_conn()
         try:

@@ -191,6 +191,10 @@ async function loadRecords() {
     recordCard('Hoogste uitvalpercentage', 'Ooit', data.cancellations.worst_all_time),
     recordCard('Hoogste uitvalpercentage', 'Deze maand', data.cancellations.worst_month),
   ];
+  for (const [operator, rec] of Object.entries(data.cancellations_by_operator || {})) {
+    cards.push(recordCard(`Hoogste uitval — ${operator}`, 'Ooit', rec.worst_all_time));
+    cards.push(recordCard(`Hoogste uitval — ${operator}`, 'Deze maand', rec.worst_month));
+  }
   document.getElementById('records-grid').innerHTML = cards.join('');
   document.getElementById('records-hint').textContent =
     `Op basis van dagen met ≥${data.min_samples.cancellation_total} ritten`;
