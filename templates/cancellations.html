@@ -130,6 +130,12 @@
   </div>
 
   <div class="panel">
+    <h2>Uitval per week — per vervoerder</h2>
+    <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Op basis van de gekozen periode hierboven; nieuwste week bovenaan. Alleen busvervoer.</div>
+    <div class="table-scroll" id="week-table"><div class="empty">Laden...</div></div>
+  </div>
+
+  <div class="panel">
     <div class="panel-header">
       <h2>Alle individuele vervallen ritten</h2>
       <div style="display:flex; gap:8px;">
@@ -241,6 +247,7 @@ async function loadAll() {
   renderHourChart();
   renderRouteTable();
   renderAgencyTable();
+  renderWeekTable();
   populateAgencyFilter();
   tripPage = 0;
   loadTrips();
@@ -388,6 +395,49 @@ function renderAgencyTable() {
       <td>${a.ran}</td>
       <td><span class="pill ${pillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
     </tr>`).join('') + '</table>';
+}
+
+function fmtWeekLabel(weekKey, weekStartIso) {
+  const start = new Date(weekStartIso + 'T00:00:00');
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const fmtDay = d => d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  const weekNum = parseInt(weekKey.split('-W')[1], 10);
+  return `Week ${weekNum} (${fmtDay(start)} – ${fmtDay(end)})`;
+}
+
+function renderWeekTable() {
+  const perOp = cancellationData.per_week_by_operator || {};
+  const operators = Object.keys(perOp).sort();
+  const container = document.getElementById('week-table');
+  if (operators.length === 0 || operators.every(op => perOp[op].length === 0)) {
+    container.innerHTML = '<div class="empty">Geen resultaten</div>';
+    return;
+  }
+
+  // Unie van alle weken die bij minstens 1 operator voorkomen -- niet elke
+  // operator hoeft evenveel weken data te hebben.
+  const weekStartByKey = new Map();
+  operators.forEach(op => perOp[op].forEach(w => weekStartByKey.set(w.week, w.week_start)));
+  const weeks = [...weekStartByKey.keys()].sort().reverse();
+
+  const rowByOpWeek = {};
+  operators.forEach(op => {
+    rowByOpWeek[op] = Object.fromEntries(perOp[op].map(w => [w.week, w]));
+  });
+
+  const header = `<tr><th>Week</th>${operators.map(op => `<th>${op}</th>`).join('')}</tr>`;
+  const body = weeks.map(week => {
+    const cells = operators.map(op => {
+      const w = rowByOpWeek[op][week];
+      if (!w) return '<td style="color:var(--muted);">—</td>';
+      return `<td><span class="pill ${pillClass(w.cancellation_pct)}">${w.cancellation_pct}%</span>
+        <span style="color:var(--muted); font-size:11px;">(${w.canceled}/${w.canceled + w.ran})</span></td>`;
+    }).join('');
+    return `<tr><td>${fmtWeekLabel(week, weekStartByKey.get(week))}</td>${cells}</tr>`;
+  }).join('');
+
+  container.innerHTML = `<table>${header}${body}</table>`;
 }
 
 function populateAgencyFilter() {

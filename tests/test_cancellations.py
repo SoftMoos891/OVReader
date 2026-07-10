@@ -100,3 +100,11 @@ def test_cancellations_split_by_operator(client, temp_db, monkeypatch):
     assert per_op["Transdev"]["cancellation_pct"] == 0.0
     assert per_op["Keolis"]["canceled"] == 1
     assert per_op["Keolis"]["ran"] == 1
+
+    week_key = f"{date.today().isocalendar()[0]}-W{date.today().isocalendar()[1]:02d}"
+    keolis_week = next(w for w in data["per_week_by_operator"]["Keolis"] if w["week"] == week_key)
+    assert keolis_week["canceled"] == 1
+    assert keolis_week["ran"] == 1
+    transdev_week = next(w for w in data["per_week_by_operator"]["Transdev"] if w["week"] == week_key)
+    assert transdev_week["canceled"] == 0
+    assert transdev_week["ran"] == 1

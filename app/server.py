@@ -415,6 +415,13 @@ EARLIEST_POSSIBLE_DATE = "2000-01-01"  # ondergrens voor range=all
 WEEKDAY_NAMES_NL = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"]
 
 
+def _iso_week_key(d):
+    """ISO-weeksleutel ('2026-W28') voor een date-object, gedeeld door de
+    per-week-per-operator-uitvalcijfers op /uitval."""
+    iso_year, iso_week, _ = d.isocalendar()
+    return f"{iso_year}-W{iso_week:02d}"
+
+
 @app.route("/uitval")
 def uitval_page():
     return render_template("cancellations.html")
@@ -794,6 +801,7 @@ def api_cancellations():
     daily_by_op = defaultdict(lambda: defaultdict(lambda: {"canceled": 0, "ran": 0}))
     weekday_by_op = defaultdict(lambda: {"canceled": [0] * 7, "ran": [0] * 7})
     hour_by_op = defaultdict(lambda: [0] * 24)
+    week_by_op = defaultdict(lambda: defaultdict(lambda: {"canceled": 0, "ran": 0}))
     for r in canceled_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
@@ -802,9 +810,11 @@ def api_cancellations():
         d["canceled"] += r["cnt"]
         daily_by_op[operator][r["service_date"]]["canceled"] += r["cnt"]
         route_canceled[r["route_id"]] = route_canceled.get(r["route_id"], 0) + r["cnt"]
-        weekday = date.fromisoformat(r["service_date"]).weekday()
+        service_date = date.fromisoformat(r["service_date"])
+        weekday = service_date.weekday()
         weekday_canceled[weekday] += r["cnt"]
         weekday_by_op[operator]["canceled"][weekday] += r["cnt"]
+        week_by_op[operator][_iso_week_key(service_date)]["canceled"] += r["cnt"]
         if r["start_time"]:
             try:
                 hour = int(r["start_time"].split(":")[0]) % 24
@@ -820,9 +830,11 @@ def api_cancellations():
         d["ran"] += r["cnt"]
         daily_by_op[operator][r["service_date"]]["ran"] += r["cnt"]
         route_ran[r["route_id"]] = route_ran.get(r["route_id"], 0) + r["cnt"]
-        weekday = date.fromisoformat(r["service_date"]).weekday()
+        service_date = date.fromisoformat(r["service_date"])
+        weekday = service_date.weekday()
         weekday_ran[weekday] += r["cnt"]
         weekday_by_op[operator]["ran"][weekday] += r["cnt"]
+        week_by_op[operator][_iso_week_key(service_date)]["ran"] += r["cnt"]
 
     daily_list = []
     for d in sorted(daily.keys()):
@@ -878,7 +890,7 @@ def api_cancellations():
 
     per_hour = [{"hour": h, "canceled": hour_canceled[h]} for h in range(24)]
 
-    operators_present = sorted(set(daily_by_op) | set(weekday_by_op) | set(hour_by_op))
+    operators_present = sorted(set(daily_by_op) | set(weekday_by_op) | set(hour_by_op) | set(week_by_op))
 
     daily_by_operator = {}
     for op in operators_present:
@@ -911,6 +923,22 @@ def api_cancellations():
         for op in operators_present
     }
 
+    per_week_by_operator = {}
+    for op in operators_present:
+        weeks = week_by_op[op]
+        lst = []
+        for week_key in sorted(weeks.keys()):
+            c, r = weeks[week_key]["canceled"], weeks[week_key]["ran"]
+            wtotal = c + r
+            iso_year, iso_week = week_key.split("-W")
+            week_start = date.fromisocalendar(int(iso_year), int(iso_week), 1).isoformat()
+            lst.append({
+                "week": week_key, "week_start": week_start,
+                "canceled": c, "ran": r,
+                "cancellation_pct": round(100.0 * c / wtotal, 1) if wtotal else 0.0,
+            })
+        per_week_by_operator[op] = lst
+
     return jsonify({
         "range": range_key,
         "since_date": since_date,
@@ -926,6 +954,7 @@ def api_cancellations():
         "per_weekday_by_operator": per_weekday_by_operator,
         "per_hour": per_hour,
         "per_hour_by_operator": per_hour_by_operator,
+        "per_week_by_operator": per_week_by_operator,
     })
 
 
