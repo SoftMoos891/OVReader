@@ -434,13 +434,29 @@ def trends_page():
 
 def _date_bounds_for_range(range_key):
     """Geeft (since_date, until_date) als ISO-datumstrings voor een range-key
-    ('today'/'week'/'2weeks'/'30d'/'all'), gedeeld door de uitval- en
-    statistiek-endpoints."""
-    today_str = date.today().isoformat()
+    ('today'/'week'/'2weeks'/'30d'/'all'/'this_month'/'last_month'), gedeeld
+    door de uitval- en statistiek-endpoints.
+
+    'this_month'/'last_month' zijn de enige twee ranges waarbij until_date
+    niet per se vandaag is: 'last_month' levert een afgesloten periode terug
+    (1e t/m laatste dag van de vorige kalendermaand), volledig in het
+    verleden. Callers die today_str als variabelenaam gebruikten voor de
+    tweede returnwaarde deden dat omdat until_date voorheen altijd vandaag
+    was -- dat klopt sinds deze uitbreiding niet meer, dus daar waar de
+    daadwerkelijke datum van vandaag nodig is (los van de gekozen range)
+    moet een aparte date.today() gebruikt worden."""
+    today = date.today()
+    today_str = today.isoformat()
     if range_key == "all":
         return EARLIEST_POSSIBLE_DATE, today_str
+    if range_key == "this_month":
+        return today.replace(day=1).isoformat(), today_str
+    if range_key == "last_month":
+        last_day_prev_month = today.replace(day=1) - timedelta(days=1)
+        first_day_prev_month = last_day_prev_month.replace(day=1)
+        return first_day_prev_month.isoformat(), last_day_prev_month.isoformat()
     days = RANGE_DAYS.get(range_key, 1)
-    since_date = (date.today() - timedelta(days=days - 1)).isoformat()
+    since_date = (today - timedelta(days=days - 1)).isoformat()
     return since_date, today_str
 
 
@@ -775,9 +791,12 @@ def api_cancellations():
     periode zijn hoe dan ook al compleet en blijven ongewijzigd."""
     range_key = request.args.get("range", "today")
     up_to_now = request.args.get("up_to_now") in ("1", "true", "yes")
-    # Bovengrens op vandaag: agencies melden soms al vervallen ritten voor
-    # morgen vooruit, die horen niet thuis in een periode t/m vandaag.
-    since_date, today_str = _date_bounds_for_range(range_key)
+    # Bovengrens is niet per se vandaag (bv. 'last_month' is een afgesloten,
+    # volledig verleden periode) -- today_str blijft apart nodig voor de
+    # up_to_now-vergelijking hieronder, die altijd de daadwerkelijke datum
+    # van vandaag bedoelt, ongeacht de gekozen range.
+    since_date, until_date = _date_bounds_for_range(range_key)
+    today_str = date.today().isoformat()
     now_time_str = datetime.now().strftime("%H:%M:%S")
 
     conn = db.get_conn()
@@ -786,7 +805,7 @@ def api_cancellations():
             """SELECT service_date, route_id, start_time, COUNT(*) AS cnt
                FROM trip_cancellations WHERE service_date >= ? AND service_date <= ?
                GROUP BY service_date, route_id, start_time""",
-            (since_date, today_str),
+            (since_date, until_date),
         ).fetchall()
         ran_rows = conn.execute(
             """SELECT r.service_date, r.route_id, COUNT(*) AS cnt
@@ -797,7 +816,7 @@ def api_cancellations():
                      WHERE c.trip_id = r.trip_id AND c.service_date = r.service_date
                  )
                GROUP BY r.service_date, r.route_id""",
-            (since_date, today_str),
+            (since_date, until_date),
         ).fetchall()
     finally:
         conn.close()
@@ -957,7 +976,7 @@ def api_cancellations():
     return jsonify({
         "range": range_key,
         "since_date": since_date,
-        "until_date": today_str,
+        "until_date": until_date,
         "up_to_now": up_to_now,
         "total_canceled": total_canceled,
         "total_ran": total_ran,
@@ -979,7 +998,7 @@ def api_cancellation_trips():
     """Drill-down: individuele vervallen ritten, gepagineerd en optioneel
     gefilterd op lijn/operator, voor wie de ruwe data wil inzien."""
     range_key = request.args.get("range", "today")
-    since_date, today_str = _date_bounds_for_range(range_key)
+    since_date, until_date = _date_bounds_for_range(range_key)
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
     limit = min(int(request.args.get("limit", 100)), 500)
@@ -996,7 +1015,7 @@ def api_cancellation_trips():
                FROM trip_cancellations
                WHERE service_date >= ? AND service_date <= ?
                ORDER BY service_date DESC, start_time DESC""",
-            (since_date, today_str),
+            (since_date, until_date),
         ).fetchall()
     finally:
         conn.close()
