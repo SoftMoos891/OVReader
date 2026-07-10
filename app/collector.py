@@ -24,7 +24,11 @@ FETCH_INTERVAL_SECONDS = 30
 # uit de rollup lezen. Kost: individuele-rit-drilldown (/api/stats/trips)
 # werkt alleen nog binnen dit kortere venster.
 RETENTION_DAYS = 7
-CANCELLATION_HISTORY_RETENTION_DAYS = 400  # ruwweg, deze tabellen zijn al compact (1 rij per rit/dag)
+# In tegenstelling tot trip_delays hierboven is dit GEEN dure tabel: hoogstens
+# 1 rij per rit per dag (geen per-halte/per-fetch-detail), dus jaren aan
+# geschiedenis kost nauwelijks schijfruimte. Ruim gezet zodat uitvaltrends
+# over meerdere jaren zichtbaar blijven i.p.v. na ruim een jaar te verdwijnen.
+CANCELLATION_HISTORY_RETENTION_DAYS = 1825  # 5 jaar
 # "Op tijd" (Dienstregeling): zelfde definitie als in server.py -- tussen 2 min
 # te vroeg en 3 min te laat. Buiten die band telt een rit niet meer als op tijd.
 ON_TIME_MIN_DELAY = -120

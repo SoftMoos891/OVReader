@@ -15,12 +15,11 @@ from datetime import date, timedelta
 # terwijl het gewoon te weinig data is.
 MIN_TRIPS_CANCELLATION = 20
 
-# Begrenst hoe ver terug de records-scan gaat. trip_cancellations/
-# trips_ran_daily worden nooit (volledig) opgeruimd, dus zonder ondergrens
-# zou deze scan blijven groeien met de leeftijd van de installatie. Twee jaar
-# is ruim genoeg om "records" zinvol te houden zonder de query onbeperkt te
-# laten meegroeien.
-MAX_HISTORY_DAYS = 730
+# Begrenst hoe ver terug de records-scan gaat. Gelijk aan
+# CANCELLATION_HISTORY_RETENTION_DAYS in app/collector.py (de bewaartermijn
+# van trip_cancellations/trips_ran_daily) -- verder terugkijken dan die
+# tabellen bewaard blijven heeft toch geen zin.
+MAX_HISTORY_DAYS = 1825  # 5 jaar
 
 
 def _history_cutoff():
