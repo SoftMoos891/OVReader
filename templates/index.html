@@ -51,7 +51,6 @@
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
-  .pill.critical { background: var(--critical-bg); color: var(--critical); }
   #topbar-stats { display: flex; gap: 24px; margin: 8px 0 4px; }
   .kpi { }
   .kpi .num { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; }
@@ -76,8 +75,9 @@
   .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
   .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 700; }
   .kpi-box .label { color: var(--muted); font-size: 12px; }
+  .kpi-box .num.good { color: var(--good); }
+  .kpi-box .num.warn { color: var(--warn); }
   .kpi-box .num.bad { color: var(--bad); }
-  .kpi-box .num.critical { color: var(--critical); }
   #filter-bar { display: flex; align-items: center; gap: 14px; padding: 8px 20px; border-bottom: 1px solid var(--border);
                 flex-wrap: wrap; font-size: 13px; }
   #filter-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
@@ -423,9 +423,8 @@ async function refreshAlerts() {
 }
 
 function cancellationPillClass(pct) {
-  if (pct > 25) return 'critical';
-  if (pct > 10) return 'bad';
-  if (pct > 3) return 'warn';
+  if (pct > 5) return 'bad';
+  if (pct > 2) return 'warn';
   return 'good';
 }
 

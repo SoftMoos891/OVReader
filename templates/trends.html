@@ -39,7 +39,6 @@
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
-  .pill.critical { background: var(--critical-bg); color: var(--critical); }
   input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 5px 10px; font-size: 13px; }
   .table-scroll { max-height: 420px; overflow-y: auto; }
@@ -165,9 +164,8 @@ function fmtDateShort(iso) {
 }
 
 function pillClass(pct) {
-  if (pct > 25) return 'critical';
-  if (pct > 10) return 'bad';
-  if (pct > 3) return 'warn';
+  if (pct > 5) return 'bad';
+  if (pct > 2) return 'warn';
   return 'good';
 }
 
