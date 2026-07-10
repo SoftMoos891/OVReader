@@ -275,9 +275,9 @@ function renderKpis() {
     <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
     <div class="kpi-box"><div class="num">${d.total_ran}</div><div class="label">Ritten gereden</div></div>
     <div class="kpi-box"><div class="num ${pillClass(d.cancellation_pct)}">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
-    <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
     ${operatorKpiBox('Transdev', 'Uitval Transdev')}
     ${operatorKpiBox('Keolis', 'Uitval Keolis')}
+    <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
   `;
 }
 
