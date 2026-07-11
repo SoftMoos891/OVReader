@@ -125,9 +125,17 @@ gigantische ruwe `trip_delays`) naar `data/backups/history_YYYY-MM-DD.db.gz`;
 de laatste 7 blijven staan. Dat beschermt tegen een kapotte database, maar
 niet tegen verlies van de hele VPS -- haal het bestand daarom ook periodiek
 op naar een andere machine. Voorbeeld voor een wekelijkse cronjob elders
-(bv. een andere server): zet dit in een scriptje (niet rechtstreeks in de
-crontab -- cron interpreteert `%` in `date +%F` als regeleinde) en plan het
-in met bv. `30 5 * * 0 /root/bus-backup.sh`:
+(bv. een andere server). Zet de inloggegevens in een netrc-bestand (dan
+staan ze niet in het script, de proceslijst of secret-scanner-triggers):
+
+```
+# /root/.ovreader-netrc, daarna: chmod 600 /root/.ovreader-netrc
+machine ovreader.dvznet.nl login admin password VUL-HIER-IN
+```
+
+Het script zelf (niet rechtstreeks in de crontab -- cron interpreteert `%`
+in `date +%F` als regeleinde); inplannen met bv.
+`30 5 * * 0 /root/bus-backup.sh`:
 
 ```sh
 #!/bin/sh
@@ -135,7 +143,7 @@ set -e  # stop (en laat de cron-taak falen) zodra de download mislukt
 BACKUP_DIR=/root/ovreader-backups
 mkdir -p "$BACKUP_DIR"
 # -f: laat een foutantwoord (401/404) falen i.p.v. een kapot bestand achter
-curl -fsS -u 'admin:JOUW-WACHTWOORD' \
+curl -fsS --netrc-file /root/.ovreader-netrc \
   -o "$BACKUP_DIR/bus-historie-$(date +%F).db.gz" \
   https://ovreader.dvznet.nl/api/backup/latest
 # laatste 8 bewaren
