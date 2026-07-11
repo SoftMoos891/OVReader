@@ -131,10 +131,11 @@ in met bv. `30 5 * * 0 /root/bus-backup.sh`:
 
 ```sh
 #!/bin/sh
+set -e  # stop (en laat de cron-taak falen) zodra de download mislukt
 BACKUP_DIR=/root/ovreader-backups
 mkdir -p "$BACKUP_DIR"
 # -f: laat een foutantwoord (401/404) falen i.p.v. een kapot bestand achter
-curl -fsS -u admin:JOUW-WACHTWOORD \
+curl -fsS -u 'admin:JOUW-WACHTWOORD' \
   -o "$BACKUP_DIR/bus-historie-$(date +%F).db.gz" \
   https://ovreader.dvznet.nl/api/backup/latest
 # laatste 8 bewaren
