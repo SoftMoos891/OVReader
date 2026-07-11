@@ -226,6 +226,53 @@ def vacuum_db():
     print("[collector] vacuum klaar")
 
 
+# Nachtelijke back-up van de ONVERVANGBARE historie: de compacte tabellen
+# waar de langetermijntrends (5 jaar retentie) op draaien. trip_delays/
+# vehicle_positions blijven er bewust buiten -- die zijn gigantisch (GB's),
+# worden toch periodiek opgerold en zijn dus vervangbaar; deze tabellen niet.
+BACKUP_TABLES = [
+    "trip_cancellations", "trips_ran_daily",
+    "route_stats_daily", "route_stats_period_daily", "alerts",
+]
+BACKUP_KEEP = 7  # aantal dagelijkse back-ups dat blijft staan
+
+
+def backup_history():
+    """Schrijft de compacte historie-tabellen naar een gecomprimeerd
+    SQLite-bestand in data/backups/ (history_YYYY-MM-DD.db.gz) en ruimt
+    back-ups ouder dan BACKUP_KEEP dagen op. Lokaal beschermt dit tegen een
+    kapotte database/migratie; haal het bestand ook periodiek van de server
+    af (zie /api/backup/latest en DEPLOY.md) om tegen verlies van de hele
+    VPS beschermd te zijn."""
+    import gzip
+    import shutil
+
+    backup_dir = db.DB_PATH.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    target = backup_dir / f"history_{time.strftime('%Y-%m-%d')}.db.gz"
+    tmp_db = backup_dir / "history_tmp.db"
+    if tmp_db.exists():
+        tmp_db.unlink()
+
+    conn = db.get_conn()
+    try:
+        conn.execute("ATTACH DATABASE ? AS backup", (str(tmp_db),))
+        for table in BACKUP_TABLES:
+            conn.execute(f"CREATE TABLE backup.{table} AS SELECT * FROM {table}")
+        conn.execute("DETACH DATABASE backup")
+    finally:
+        conn.close()
+
+    with open(tmp_db, "rb") as src, gzip.open(target, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    tmp_db.unlink()
+
+    backups = sorted(backup_dir.glob("history_*.db.gz"))
+    for old in backups[:-BACKUP_KEEP]:
+        old.unlink()
+    print(f"[collector] backup klaar: {target.name} ({target.stat().st_size // 1024} KB)")
+
+
 WEB_BASE_URL = "http://127.0.0.1:5151"
 # /trends draait sinds de vereenvoudiging (geen 'op tijd'-data meer) alleen
 # nog op /api/records (dagelijks gecachet, zie _cached_daily() in server.py)
@@ -268,6 +315,7 @@ def start_scheduler():
     # 5 minuten na de cache-boundary in server.py (TRENDS_REFRESH_HOUR:MINUTE
     # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
+    scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()

@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, send_file
 
 from . import db, records
 from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
@@ -188,6 +188,20 @@ def api_health():
         "status": overall_status,
         "components": components,
     })
+
+
+@app.route("/api/backup/latest")
+def api_backup_latest():
+    """Nieuwste nachtelijke back-up van de historie-tabellen (zie
+    backup_history() in app/collector.py), als download. Valt achter dezelfde
+    Basic Auth als de rest van de app -- bedoeld om vanaf een andere machine
+    periodiek op te halen (curl/geplande taak), zodat de langetermijndata
+    ook verlies van de hele VPS overleeft."""
+    backup_dir = db.DB_PATH.parent / "backups"
+    backups = sorted(backup_dir.glob("history_*.db.gz")) if backup_dir.exists() else []
+    if not backups:
+        return jsonify({"error": "Nog geen back-up beschikbaar (draait dagelijks om 04:15)"}), 404
+    return send_file(backups[-1], as_attachment=True)
 
 
 @app.route("/api/vehicles")

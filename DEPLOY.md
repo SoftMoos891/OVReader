@@ -116,3 +116,33 @@ De meegeleverde `deploy/Caddyfile` is al ingesteld op `ovreader.dvznet.nl`.
   gevolgd door `sudo systemctl restart utrecht-bus-collector utrecht-bus-web`.
 - Code-updates: rsync/git pull opnieuw, dan
   `sudo systemctl restart utrecht-bus-collector utrecht-bus-web`.
+
+## Back-ups van de historie
+
+De collector schrijft elke nacht om 04:15 een back-up van de onvervangbare
+historie-tabellen (uitval, gereden ritten, dagstatistieken -- niet de
+gigantische ruwe `trip_delays`) naar `data/backups/history_YYYY-MM-DD.db.gz`;
+de laatste 7 blijven staan. Dat beschermt tegen een kapotte database, maar
+niet tegen verlies van de hele VPS -- haal het bestand daarom ook periodiek
+op naar een andere machine (bv. wekelijks via een geplande taak op je eigen
+pc):
+
+```
+curl -u admin:JOUW-WACHTWOORD -o bus-historie.db.gz \
+  https://ovreader.dvznet.nl/api/backup/latest
+```
+
+Terugzetten: `gunzip history_*.db.gz` geeft een gewone SQLite-database met
+alleen de historie-tabellen. Bij een verse installatie kun je die data
+terugkopieren met bv.:
+
+```
+sqlite3 data/bus_monitor.db "ATTACH 'history_2026-07-11.db' AS b;
+  INSERT OR IGNORE INTO trip_cancellations SELECT * FROM b.trip_cancellations;
+  INSERT OR IGNORE INTO trips_ran_daily SELECT * FROM b.trips_ran_daily;
+  INSERT OR IGNORE INTO route_stats_daily SELECT * FROM b.route_stats_daily;
+  INSERT OR IGNORE INTO route_stats_period_daily SELECT * FROM b.route_stats_period_daily;
+  DETACH b;"
+```
+
+(Draai eerst een keer de app of `python -m app.db` zodat het schema bestaat.)
