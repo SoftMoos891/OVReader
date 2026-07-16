@@ -240,10 +240,14 @@ def api_vehicles():
     # Laatst bekende vertraging per trip erbij zoeken voor kleurcodering op de kaart.
     conn = db.get_conn()
     try:
+        # INDEXED BY afgedwongen: zonder ANALYZE-statistieken koos SQLite hier
+        # idx_td_trip_id (volledige scan van alle 91M+ rijen in trip_delays,
+        # 60+ sec) i.p.v. idx_td_fetched_route_covering, dat via fetched_at
+        # direct naar het relevante tijdvenster springt (0,06 sec).
         delay_rows = conn.execute(
             """
             SELECT trip_id, arrival_delay, departure_delay
-            FROM trip_delays
+            FROM trip_delays INDEXED BY idx_td_fetched_route_covering
             WHERE fetched_at >= ?
             GROUP BY trip_id
             HAVING fetched_at = MAX(fetched_at)
