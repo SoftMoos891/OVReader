@@ -213,10 +213,16 @@ def cleanup_old_data():
 def vacuum_db():
     """Geeft schijfruimte van verwijderde rijen terug aan het OS.
 
-    SQLite krimpt het databasebestand niet vanzelf na DELETE's -- zonder dit
-    blijft bus_monitor.db onbeperkt groeien ook al ruimt cleanup_old_data()
-    oude rijen netjes op. VACUUM vereist een eigen verbinding zonder open
-    transactie, dus niet hergebruiken binnen een bestaande conn.
+    SQLite hergebruikt vrijgekomen pagina's uit DELETE's vanzelf voor nieuwe
+    rijen (freelist), dus bus_monitor.db groeit hierdoor niet onbeperkt door --
+    dit compacteert alleen het bestand zelf terug richting zijn minimale
+    omvang. Niet meer als scheduled job actief (zie start_scheduler): de
+    dagelijkse VACUUM vereist tijdelijk evenveel vrije schijfruimte als de
+    database groot is en faalde daardoor herhaaldelijk met "disk is full",
+    wat cleanup_old_data/collect_once meesleepte in "database is locked"-
+    fouten. Los, handmatig te draaien zodra er genoeg vrije schijfruimte is.
+    VACUUM vereist een eigen verbinding zonder open transactie, dus niet
+    hergebruiken binnen een bestaande conn.
     """
     conn = db.get_conn()
     try:
@@ -311,7 +317,11 @@ def start_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
-    scheduler.add_job(vacuum_db, "interval", hours=24, id="vacuum", max_instances=1)
+    # vacuum_db() is bewust niet meer gescheduled: de dagelijkse VACUUM
+    # vereist tijdelijk ~evenveel vrije schijfruimte als de database groot
+    # is en faalde daardoor elke dag met "disk is full", wat cleanup/collect
+    # meesleepte in "database is locked"-fouten. Handmatig te draaien zodra
+    # er genoeg vrije schijfruimte is.
     # 5 minuten na de cache-boundary in server.py (TRENDS_REFRESH_HOUR:MINUTE
     # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
