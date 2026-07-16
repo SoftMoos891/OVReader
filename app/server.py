@@ -87,8 +87,12 @@ def _cached_daily(cache_key, compute_fn):
 # HTTP Basic Auth: staat standaard UIT (handig voor lokaal gebruik). Zet de
 # omgevingsvariabele BUS_MONITOR_PASSWORD op de server om dit verplicht te
 # maken -- doe dit altijd voordat de app vanaf het internet bereikbaar is.
+# Een tweede account (bv. een read-only kijker) kan via BUS_MONITOR_USER2 /
+# BUS_MONITOR_PASSWORD2 worden ingesteld.
 AUTH_USER = os.environ.get("BUS_MONITOR_USER", "admin")
 AUTH_PASSWORD = os.environ.get("BUS_MONITOR_PASSWORD")
+AUTH_USER2 = os.environ.get("BUS_MONITOR_USER2")
+AUTH_PASSWORD2 = os.environ.get("BUS_MONITOR_PASSWORD2")
 
 
 @app.before_request
@@ -96,10 +100,14 @@ def require_auth():
     if not AUTH_PASSWORD:
         return None
     auth = request.authorization
-    valid = (
-        auth is not None
-        and hmac.compare_digest(auth.username, AUTH_USER)
-        and hmac.compare_digest(auth.password, AUTH_PASSWORD)
+    valid = auth is not None and (
+        (hmac.compare_digest(auth.username, AUTH_USER) and hmac.compare_digest(auth.password, AUTH_PASSWORD))
+        or (
+            AUTH_USER2
+            and AUTH_PASSWORD2
+            and hmac.compare_digest(auth.username, AUTH_USER2)
+            and hmac.compare_digest(auth.password, AUTH_PASSWORD2)
+        )
     )
     if not valid:
         return Response(
