@@ -29,7 +29,9 @@
                  color: var(--muted); margin: 0 0 10px; }
   .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 8px 10px;
            margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
+  .alert.severe { background: var(--bad-bg); border-left-color: var(--bad); }
   .alert .hdr { font-weight: 600; margin-bottom: 3px; }
+  .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; }
   .alert .routes { color: var(--muted); font-size: 12px; }
   #alerts { max-height: 220px; overflow-y: auto; }
   #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
@@ -381,6 +383,17 @@ map.on('popupopen', (e) => {
   if (marker) loadNearbyStops(tripId, marker);
 });
 
+// Sommige meldingen dragen een generiek effect (OTHER_EFFECT/UNKNOWN_EFFECT
+// -> "Melding" via effectLabel hieronder), terwijl de vrije tekst zelf wel
+// aangeeft dat het om iets ernstigers gaat. Volgorde is van belang:
+// "verstoring" bevat toevallig de substring "storing", dus die moet eerder
+// gecontroleerd worden dan "storing" om niet verkeerd gelabeld te worden.
+const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing'];
+function severeAlertKeyword(a) {
+  const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
+  return SEVERE_ALERT_KEYWORDS.find(kw => text.includes(kw)) || null;
+}
+
 function effectLabel(effect) {
   const map = {
     NO_SERVICE: 'Geen dienst', REDUCED_SERVICE: 'Beperkte dienst',
@@ -414,12 +427,16 @@ async function refreshAlerts() {
 
   const el = document.getElementById('alerts');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
-  el.innerHTML = data.alerts.map(a => `
-    <div class="alert">
-      <div class="hdr">${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
+  el.innerHTML = data.alerts.map(a => {
+    const kw = severeAlertKeyword(a);
+    const badge = kw ? `<span class="pill bad">${kw.charAt(0).toUpperCase()}${kw.slice(1)}</span>` : '';
+    return `
+    <div class="alert ${kw ? 'severe' : ''}">
+      <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
       <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function cancellationPillClass(pct) {
