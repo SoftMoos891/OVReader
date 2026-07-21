@@ -1,5 +1,4 @@
 """Achtergrondtaak die periodiek de realtime feeds ophaalt en in SQLite opslaat."""
-import datetime as dt
 import os
 import time
 import traceback
@@ -146,37 +145,24 @@ def collect_once():
     print(f"[collector] fetch klaar op {fetched_at}")
 
 
-def _today_start_epoch():
-    today = dt.date.today()
-    return int(dt.datetime.combine(today, dt.time.min).timestamp())
-
-
-def rollup_completed_days():
-    """Telt volledig afgesloten lokale dagen op bij route_stats_daily /
-    route_stats_period_daily, los van RETENTION_DAYS. Draait vaker dan de
-    opschoning en verwerkt daardoor telkens maar een klein, nieuw stukje van
-    trip_delays (sinds de laatste rollup_watermark) in plaats van dat
-    /api/stats/trend en /api/stats/peak zelf elke keer weken ruwe data
-    moeten doorrekenen."""
-    today_start = _today_start_epoch()
+def cleanup_old_data():
+    """Rolt oude ruwe metingen op tot dagstatistieken per route en verwijdert
+    daarna de ruwe rijen, zodat de database niet onbeperkt groeit."""
+    cutoff = _now() - RETENTION_DAYS * 86400
     conn = db.get_conn()
     try:
-        row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
-        since = row["rolled_through_epoch"] if row else 0
-        if today_start <= since:
-            return
         conn.execute(
             """
             INSERT INTO route_stats_daily (day, route_id, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
             SELECT
-                strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+                date(fetched_at, 'unixepoch') AS day,
                 route_id,
                 COUNT(*) AS sample_count,
                 SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
                 AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
                 MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
             FROM trip_delays
-            WHERE fetched_at >= ? AND fetched_at < ?
+            WHERE fetched_at < ?
             GROUP BY day, route_id
             ON CONFLICT(day, route_id) DO UPDATE SET
                 sample_count = sample_count + excluded.sample_count,
@@ -185,7 +171,7 @@ def rollup_completed_days():
                                     / (sample_count + excluded.sample_count),
                 max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
             """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, today_start),
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
         )
         conn.execute(
             f"""
@@ -199,7 +185,7 @@ def rollup_completed_days():
                 AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
                 MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
             FROM trip_delays
-            WHERE fetched_at >= ? AND fetched_at < ?
+            WHERE fetched_at < ?
             GROUP BY day, route_id, period
             ON CONFLICT(day, route_id, period) DO UPDATE SET
                 sample_count = sample_count + excluded.sample_count,
@@ -208,33 +194,9 @@ def rollup_completed_days():
                                     / (sample_count + excluded.sample_count),
                 max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
             """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, today_start),
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
         )
-        conn.execute(
-            "INSERT INTO rollup_watermark (id, rolled_through_epoch) VALUES (1, ?) "
-            "ON CONFLICT(id) DO UPDATE SET rolled_through_epoch = excluded.rolled_through_epoch",
-            (today_start,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    print(f"[collector] dag-rollup klaar (tot {today_start})")
-
-
-def cleanup_old_data():
-    """Verwijdert ruwe metingen ouder dan RETENTION_DAYS. De dagstatistieken
-    zijn hier al opgeteld door rollup_completed_days(), dus er hoeft hier
-    geen aggregatie meer te gebeuren -- alleen een veilige delete, nooit
-    voorbij de rollup_watermark (om te voorkomen dat nog niet opgetelde
-    ruwe data verdwijnt)."""
-    cutoff = _now() - RETENTION_DAYS * 86400
-    conn = db.get_conn()
-    try:
-        row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
-        watermark = row["rolled_through_epoch"] if row else 0
-        safe_cutoff = min(cutoff, watermark)
-
-        conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (safe_cutoff,))
+        conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (cutoff,))
         conn.execute("DELETE FROM vehicle_positions WHERE fetched_at < ?", (cutoff,))
 
         history_cutoff_date = time.strftime(
@@ -245,7 +207,7 @@ def cleanup_old_data():
         conn.commit()
     finally:
         conn.close()
-    print(f"[collector] opschoning klaar (cutoff={safe_cutoff})")
+    print(f"[collector] opschoning klaar (cutoff={cutoff})")
 
 
 def vacuum_db():
@@ -354,7 +316,6 @@ def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
     scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
-    scheduler.add_job(rollup_completed_days, "interval", hours=1, id="rollup", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
     # vacuum_db() is bewust niet meer gescheduled: de dagelijkse VACUUM
     # vereist tijdelijk ~evenveel vrije schijfruimte als de database groot
@@ -368,7 +329,4 @@ def start_scheduler():
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
-    # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
-    # voordeel heeft van de nieuwe dagstatistieken.
-    rollup_completed_days()
     return scheduler
