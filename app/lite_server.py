@@ -3,9 +3,9 @@ uitvalcijfers, zonder Basic Auth, bedoeld voor breed publiek gebruik naast
 de volledige (met Basic Auth afgeschermde) OV-reader in app/server.py.
 
 Draait als eigen proces/systemd-service (zie deploy/utrecht-bus-lite.service)
-en wordt via Caddy op hetzelfde domein onder /lite ontsloten (zie
-deploy/Caddyfile) -- geen apart subdomein, wel volledige procesisolatie van
-de hoofd-webservice.
+en wordt via de reverse proxy (nginx, zie deploy/nginx-lite.conf) op hetzelfde
+domein onder /lite ontsloten -- geen apart subdomein, wel volledige
+procesisolatie van de hoofd-webservice.
 
 Bewust GEEN import van .server of .gtfs_rt.UtrechtIndex: server.py
 instantieert bij import al een UtrechtIndex() EN een Timetable(), en die
@@ -15,7 +15,7 @@ nooit nodig heeft. Deze module leest daarom alleen het kleine
 utrecht_routes.json (~23 KB) in, zodat het hele proces met een fractie van
 het geheugen van de hoofd-webservice kan draaien."""
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template
@@ -25,6 +25,11 @@ from .concession_mapping import TRANSDEV_TRAM
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
+
+# Aantal dagen voor de "uitvalpercentage per dag"-trendgrafiek op /lite --
+# vast en niet instelbaar (geen ?range=-parameter zoals bij de volledige
+# /uitval-dashboard), consistent met de "basale" lite-scope.
+CHART_DAYS = 14
 
 app = Flask(
     __name__,
@@ -169,6 +174,73 @@ def lite_api_uitval():
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
         "per_operator": per_operator_list,
+    })
+
+
+@app.route("/lite/api/uitval/daily")
+def lite_api_uitval_daily():
+    """Uitvalpercentage per dag (totaal + per operator) over de laatste
+    CHART_DAYS dagen, voor de trendgrafiek op /lite. Zelfde dag-uitsplitsing
+    als server.api_cancellations()'s daily/daily_by_operator-velden, maar
+    zonder de overige (weekday/hour/week/month/previous-period)
+    breakdowns -- dat is precies wat de lite-scope bewust weglaat."""
+    until_date = date.today()
+    since_date = until_date - timedelta(days=CHART_DAYS - 1)
+    since_str, until_str = since_date.isoformat(), until_date.isoformat()
+
+    conn = db.get_conn()
+    try:
+        canceled_rows = conn.execute(
+            "SELECT service_date, route_id, COUNT(*) AS cnt FROM trip_cancellations "
+            "WHERE service_date >= ? AND service_date <= ? GROUP BY service_date, route_id",
+            (since_str, until_str),
+        ).fetchall()
+        ran_rows = conn.execute(
+            """
+            SELECT r.service_date, r.route_id, COUNT(*) AS cnt
+            FROM trips_ran_daily r
+            WHERE r.service_date >= ? AND r.service_date <= ? AND NOT EXISTS (
+                SELECT 1 FROM trip_cancellations c
+                WHERE c.trip_id = r.trip_id AND c.service_date = r.service_date
+            )
+            GROUP BY r.service_date, r.route_id
+            """,
+            (since_str, until_str),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    daily = {}
+    daily_by_op = {}
+    for r in canceled_rows:
+        if not _index.is_bus_route(r["route_id"]):
+            continue
+        daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})["canceled"] += r["cnt"]
+        op = route_meta(r["route_id"])["operator"]
+        daily_by_op.setdefault(op, {}).setdefault(r["service_date"], {"canceled": 0, "ran": 0})["canceled"] += r["cnt"]
+    for r in ran_rows:
+        if not _index.is_bus_route(r["route_id"]):
+            continue
+        daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})["ran"] += r["cnt"]
+        op = route_meta(r["route_id"])["operator"]
+        daily_by_op.setdefault(op, {}).setdefault(r["service_date"], {"canceled": 0, "ran": 0})["ran"] += r["cnt"]
+
+    def pct_list(by_date):
+        out = []
+        for d in sorted(by_date.keys()):
+            c, r = by_date[d]["canceled"], by_date[d]["ran"]
+            total = c + r
+            out.append({
+                "date": d, "canceled": c, "ran": r,
+                "cancellation_pct": round(100.0 * c / total, 1) if total else 0.0,
+            })
+        return out
+
+    return jsonify({
+        "since_date": since_str,
+        "until_date": until_str,
+        "daily": pct_list(daily),
+        "daily_by_operator": {op: pct_list(d) for op, d in daily_by_op.items()},
     })
 
 

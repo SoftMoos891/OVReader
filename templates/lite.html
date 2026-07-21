@@ -18,9 +18,12 @@
   header h1 { font-size: 18px; margin: 0; }
   header .sub { color: var(--muted); font-size: 13px; }
   header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
-  main { padding: 20px; max-width: 700px; margin: 0 auto; }
+  main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; align-items: start; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
   .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
              padding: 16px 18px; margin-bottom: 20px; }
+  .grid2 .section { margin-bottom: 0; }
   .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
                  color: var(--muted); margin: 0 0 12px; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
@@ -30,13 +33,13 @@
   .alert .hdr { font-weight: 600; margin-bottom: 3px; }
   .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; }
   .alert .routes { color: var(--muted); font-size: 12px; }
-  #alerts { max-height: 320px; overflow-y: auto; }
+  #alerts { max-height: 420px; overflow-y: auto; }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
-  #cancel-kpis { display: flex; gap: 28px; margin-bottom: 14px; flex-wrap: wrap; }
-  .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
+  #cancel-kpis { display: flex; gap: 24px; margin-bottom: 14px; flex-wrap: wrap; }
+  .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; }
   .kpi-box .label { color: var(--muted); font-size: 12px; }
   .kpi-box .num.good { color: var(--good); }
   .kpi-box .num.warn { color: var(--warn); }
@@ -44,7 +47,8 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 500; }
-  #lastupdate { color: var(--muted); font-size: 11px; text-align: right; margin-top: -8px; }
+  canvas { max-height: 260px; }
+  #lastupdate { color: var(--muted); font-size: 11px; text-align: right; }
 </style>
 </head>
 <body>
@@ -57,20 +61,28 @@
 </header>
 
 <main>
-  <div class="section">
-    <h2>Actuele storingen &amp; meldingen<span id="alerts-count"></span></h2>
-    <div id="alerts"><div class="empty">Laden...</div></div>
+  <div class="grid2">
+    <div class="section">
+      <h2>Actuele storingen &amp; meldingen<span id="alerts-count"></span></h2>
+      <div id="alerts"><div class="empty">Laden...</div></div>
+    </div>
+
+    <div class="section">
+      <h2>Uitval vandaag</h2>
+      <div id="cancel-kpis"></div>
+      <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+    </div>
   </div>
 
   <div class="section">
-    <h2>Uitval vandaag</h2>
-    <div id="cancel-kpis"></div>
-    <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+    <h2>Uitvalpercentage per dag (laatste 14 dagen)</h2>
+    <canvas id="dailyPctChart"></canvas>
   </div>
 
   <div id="lastupdate">–</div>
 </main>
 
+<script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
 <script>
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');
@@ -144,6 +156,54 @@ async function refreshUitval() {
   }
 }
 
+// --- Uitvalpercentage per dag -- zelfde grafiek als op /uitval, maar over
+// een vaste periode (geen periode-kiezer) en apart ververst (elke 5 min
+// i.p.v. elke 45s): dag-cijfers veranderen sowieso traag. --------------------
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+const CHART_COLORS = {
+  accent: cssVar('--accent'), bad: cssVar('--bad'), good: cssVar('--good'),
+  warn: cssVar('--warn'), muted: cssVar('--muted'), grid: cssVar('--border'),
+};
+Chart.defaults.color = CHART_COLORS.muted;
+Chart.defaults.borderColor = CHART_COLORS.grid;
+Chart.defaults.font.size = 12;
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+const OPERATOR_COLORS = { 'Keolis': CHART_COLORS.warn, 'Transdev': CHART_COLORS.accent };
+function operatorColor(name) { return OPERATOR_COLORS[name] || CHART_COLORS.muted; }
+
+function fmtDateShort(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
+let dailyPctChart;
+async function refreshDailyChart() {
+  const res = await fetch('/lite/api/uitval/daily');
+  const data = await res.json();
+  const labels = data.daily.map(x => fmtDateShort(x.date));
+  const dateKeys = data.daily.map(x => x.date);
+  const datasets = Object.entries(data.daily_by_operator || {}).map(([op, rows]) => {
+    const pctByDate = Object.fromEntries(rows.map(r => [r.date, r.cancellation_pct]));
+    return {
+      label: op, data: dateKeys.map(d => pctByDate[d] ?? null),
+      borderColor: operatorColor(op), backgroundColor: operatorColor(op),
+      borderWidth: 2, pointRadius: 2, tension: 0.3, spanGaps: true,
+    };
+  });
+  if (dailyPctChart) dailyPctChart.destroy();
+  dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } },
+    },
+  });
+}
+
 function refreshAll() {
   refreshAlerts().catch(console.error);
   refreshUitval().catch(console.error);
@@ -152,8 +212,12 @@ function refreshAll() {
 }
 
 refreshAll();
+refreshDailyChart().catch(console.error);
 setInterval(() => { if (!document.hidden) refreshAll(); }, 45000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(); });
+setInterval(() => { if (!document.hidden) refreshDailyChart().catch(console.error); }, 300000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { refreshAll(); refreshDailyChart().catch(console.error); }
+});
 </script>
 </body>
 </html>
