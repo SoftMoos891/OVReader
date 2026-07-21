@@ -17,3 +17,4 @@ data/backups/
 # data/provincies.geojson blijft WEL in git: klein (27KB), statisch, en
 # build_static_index.py verwacht 'm zonder auto-download.
 .dev-venv/
+.ssh/
