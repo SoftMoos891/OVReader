@@ -19,7 +19,7 @@
   header .sub { color: var(--muted); font-size: 13px; }
   header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
   main { padding: 20px; max-width: 1100px; margin: 0 auto; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; align-items: start; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
   .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
              padding: 16px 18px; margin-bottom: 20px; }
@@ -27,6 +27,10 @@
   .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
                  color: var(--muted); margin: 0 0 12px; }
   .section h2.chart-heading { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .section-header { display: flex; align-items: center; justify-content: space-between;
+                     gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+  .section-header h2 { margin: 0; }
+  .pill.muted { background: var(--panel2); color: var(--muted); }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
   .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 8px 10px;
            margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
@@ -69,7 +73,10 @@
     </div>
 
     <div class="section">
-      <h2>Uitval vandaag</h2>
+      <div class="section-header">
+        <h2>Uitval vandaag</h2>
+        <span class="pill" id="summer-schedule-pill"></span>
+      </div>
       <div id="cancel-kpis"></div>
       <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
       <h2 class="chart-heading">Uitvalpercentage per dag (laatste 14 dagen)</h2>
@@ -176,6 +183,34 @@ function fmtDateShort(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
 
+// Zomerdienstregeling 2026: 12 juli t/m 29 augustus -- zelfde vaste periode
+// en pill-weergave als op /uitval, relevant hier omdat het aantal geplande
+// ritten (en dus het uitvalpercentage) in die periode structureel lager ligt.
+const SUMMER_SCHEDULE_START = '2026-07-12';
+const SUMMER_SCHEDULE_END = '2026-08-29';
+const SUMMER_SCHEDULE_START_LABEL = '12 juli 2026';
+const SUMMER_SCHEDULE_END_LABEL = '29 augustus 2026';
+
+function renderSchedulePill() {
+  const el = document.getElementById('summer-schedule-pill');
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const startShort = fmtDateShort(SUMMER_SCHEDULE_START);
+  const endShort = fmtDateShort(SUMMER_SCHEDULE_END);
+  if (todayIso < SUMMER_SCHEDULE_START) {
+    el.className = 'pill warn';
+    el.textContent = `Zomerdienstregeling vanaf ${startShort}`;
+    el.title = `Zomerdienstregeling gaat in op ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+  } else if (todayIso <= SUMMER_SCHEDULE_END) {
+    el.className = 'pill warn';
+    el.textContent = `Zomerdienstregeling actief · t/m ${endShort}`;
+    el.title = `Zomerdienstregeling actief sinds ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+  } else {
+    el.className = 'pill muted';
+    el.textContent = `Zomerdienstregeling liep t/m ${endShort}`;
+    el.title = `Zomerdienstregeling liep van ${SUMMER_SCHEDULE_START_LABEL} t/m ${SUMMER_SCHEDULE_END_LABEL}`;
+  }
+}
+
 let dailyPctChart;
 async function refreshDailyChart() {
   const res = await fetch('/lite/api/uitval/daily');
@@ -211,6 +246,7 @@ function refreshAll() {
 
 refreshAll();
 refreshDailyChart().catch(console.error);
+renderSchedulePill();
 setInterval(() => { if (!document.hidden) refreshAll(); }, 45000);
 setInterval(() => { if (!document.hidden) refreshDailyChart().catch(console.error); }, 300000);
 document.addEventListener('visibilitychange', () => {
