@@ -19,7 +19,8 @@
   header .sub { color: var(--muted); font-size: 13px; }
   header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
   main { padding: 20px; max-width: 1400px; margin: 0 auto; }
-  .range-toggle { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  .range-toggle { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  .schedule-pill { margin-left: auto; }
   .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
                border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all .15s; }
   .range-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
@@ -55,6 +56,7 @@
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.muted { background: var(--panel2); color: var(--muted); }
   input[type=text], select { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 5px 10px; font-size: 13px; }
   .table-scroll { max-height: 420px; overflow-y: auto; }
@@ -62,10 +64,6 @@
   .pagination button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 4px 10px; cursor: pointer; }
   .pagination button:disabled { opacity: .4; cursor: default; }
-  .schedule-banner { display: inline-flex; align-items: center; gap: 8px; background: var(--warn-bg);
-        color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 8px 14px;
-        font-size: 13px; font-weight: 600; margin-bottom: 20px; }
-  .schedule-banner.past { background: var(--panel2); color: var(--muted); border-color: var(--border); font-weight: 500; }
 </style>
 </head>
 <body>
@@ -98,9 +96,8 @@
     <button class="range-btn" data-range="this_month">Deze kalendermaand</button>
     <button class="range-btn" data-range="last_month">Vorige kalendermaand</button>
     <button class="range-btn" data-range="all">Alles (sinds start collector)</button>
+    <span class="pill schedule-pill" id="summer-schedule-banner"></span>
   </div>
-
-  <div class="schedule-banner" id="summer-schedule-banner"></div>
 
   <label style="display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted); margin-bottom:20px; cursor:pointer;">
     <input type="checkbox" id="up-to-now-toggle">
@@ -258,18 +255,25 @@ const SUMMER_SCHEDULE_END = '2026-08-29';
 const SUMMER_SCHEDULE_START_LABEL = '12 juli 2026';
 const SUMMER_SCHEDULE_END_LABEL = '29 augustus 2026';
 
+// Compacte pill i.p.v. een los, opvallend gekleurd banner-blok -- sluit aan
+// bij de rest van de pagina, die statusinfo altijd als kleine .pill toont.
 function renderScheduleBanner() {
   const el = document.getElementById('summer-schedule-banner');
   const todayIso = new Date().toISOString().slice(0, 10);
+  const startShort = fmtDateShort(SUMMER_SCHEDULE_START);
+  const endShort = fmtDateShort(SUMMER_SCHEDULE_END);
   if (todayIso < SUMMER_SCHEDULE_START) {
-    el.className = 'schedule-banner upcoming';
-    el.innerHTML = `🌞 Zomerdienstregeling gaat in op <strong>${SUMMER_SCHEDULE_START_LABEL}</strong> (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+    el.className = 'pill warn schedule-pill';
+    el.textContent = `Zomerdienstregeling vanaf ${startShort}`;
+    el.title = `Zomerdienstregeling gaat in op ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
   } else if (todayIso <= SUMMER_SCHEDULE_END) {
-    el.className = 'schedule-banner active';
-    el.innerHTML = `🌞 Zomerdienstregeling <strong>actief</strong> sinds ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+    el.className = 'pill warn schedule-pill';
+    el.textContent = `Zomerdienstregeling actief · t/m ${endShort}`;
+    el.title = `Zomerdienstregeling actief sinds ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
   } else {
-    el.className = 'schedule-banner past';
-    el.innerHTML = `🌞 Zomerdienstregeling liep van ${SUMMER_SCHEDULE_START_LABEL} t/m ${SUMMER_SCHEDULE_END_LABEL}`;
+    el.className = 'pill muted schedule-pill';
+    el.textContent = `Zomerdienstregeling liep t/m ${endShort}`;
+    el.title = `Zomerdienstregeling liep van ${SUMMER_SCHEDULE_START_LABEL} t/m ${SUMMER_SCHEDULE_END_LABEL}`;
   }
 }
 
