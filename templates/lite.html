@@ -26,6 +26,7 @@
   .grid2 .section { margin-bottom: 0; }
   .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
                  color: var(--muted); margin: 0 0 12px; }
+  .section h2.chart-heading { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
   .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 8px 10px;
            margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
@@ -71,12 +72,9 @@
       <h2>Uitval vandaag</h2>
       <div id="cancel-kpis"></div>
       <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+      <h2 class="chart-heading">Uitvalpercentage per dag (laatste 14 dagen)</h2>
+      <canvas id="dailyPctChart"></canvas>
     </div>
-  </div>
-
-  <div class="section">
-    <h2>Uitvalpercentage per dag (laatste 14 dagen)</h2>
-    <canvas id="dailyPctChart"></canvas>
   </div>
 
   <div id="lastupdate">–</div>
