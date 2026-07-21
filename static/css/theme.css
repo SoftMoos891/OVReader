@@ -131,3 +131,11 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 .health-badge.ok { background: var(--good-bg); color: var(--good); }
 .health-badge.stale { background: var(--warn-bg); color: var(--warn); }
 .health-badge.no_data { background: var(--bad-bg); color: var(--bad); }
+
+.site-footer {
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
