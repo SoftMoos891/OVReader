@@ -29,9 +29,10 @@
                  color: var(--muted); margin: 0 0 10px; }
   .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 8px 10px;
            margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
-  .alert.severe { background: var(--bad-bg); border-left-color: var(--bad); }
+  .alert.severe { background: var(--bad-bg); border-left: 4px solid var(--bad); }
   .alert .hdr { font-weight: 600; margin-bottom: 3px; }
-  .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; }
+  .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; background: var(--bad); color: #fff;
+                       text-transform: uppercase; letter-spacing: .02em; }
   .alert .routes { color: var(--muted); font-size: 12px; }
   #alerts { max-height: 220px; overflow-y: auto; }
   #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
@@ -388,10 +389,17 @@ map.on('popupopen', (e) => {
 // aangeeft dat het om iets ernstigers gaat. Volgorde is van belang:
 // "verstoring" bevat toevallig de substring "storing", dus die moet eerder
 // gecontroleerd worden dan "storing" om niet verkeerd gelabeld te worden.
+// ADDITIONAL_SERVICE ("Extra dienst") wordt door de vervoerder(s) in de
+// praktijk ook gebruikt voor urgente/onvoorziene meldingen (bv. een
+// afgesloten halte na een ongeval) i.p.v. daadwerkelijk extra dienst --
+// telt daarom altijd als ernstig, los van de tekstuele keywords.
 const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing'];
-function severeAlertKeyword(a) {
+function severeAlertLabel(a) {
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
-  return SEVERE_ALERT_KEYWORDS.find(kw => text.includes(kw)) || null;
+  const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
+  if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
+  if (a.effect === 'ADDITIONAL_SERVICE') return 'Extra dienst';
+  return null;
 }
 
 function effectLabel(effect) {
@@ -427,11 +435,14 @@ async function refreshAlerts() {
 
   const el = document.getElementById('alerts');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
-  el.innerHTML = data.alerts.map(a => {
-    const kw = severeAlertKeyword(a);
-    const badge = kw ? `<span class="pill bad">${kw.charAt(0).toUpperCase()}${kw.slice(1)}</span>` : '';
+  // Ernstige meldingen bovenaan: sort() is stabiel, dus binnen elke groep
+  // (ernstig/niet) blijft de first_seen-DESC-volgorde van de server intact.
+  const withSeverity = data.alerts.map(a => ({ a, label: severeAlertLabel(a) }));
+  withSeverity.sort((x, y) => (y.label ? 1 : 0) - (x.label ? 1 : 0));
+  el.innerHTML = withSeverity.map(({ a, label }) => {
+    const badge = label ? `<span class="pill bad">⚠ ${label}</span>` : '';
     return `
-    <div class="alert ${kw ? 'severe' : ''}">
+    <div class="alert ${label ? 'severe' : ''}">
       <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
       <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}</div>
