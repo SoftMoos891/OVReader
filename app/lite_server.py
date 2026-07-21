@@ -15,12 +15,14 @@ nooit nodig heeft. Deze module leest daarom alleen het kleine
 utrecht_routes.json (~23 KB) in, zodat het hele proces met een fractie van
 het geheugen van de hoofd-webservice kan draaien."""
 import json
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template
 
 from . import db
+from .collector import FETCH_INTERVAL_SECONDS
 from .concession_mapping import TRANSDEV_TRAM
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +32,10 @@ DATA_DIR = PROJECT_ROOT / "data"
 # vast en niet instelbaar (geen ?range=-parameter zoals bij de volledige
 # /uitval-dashboard), consistent met de "basale" lite-scope.
 CHART_DAYS = 14
+
+# Zelfde definitie als app/server.py's /api/health.
+VEHICLE_FRESHNESS_SECONDS = 90
+CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt sporadisch binnen, geen 30s-heartbeat
 
 app = Flask(
     __name__,
@@ -81,6 +87,44 @@ def route_meta(route_id):
 @app.route("/lite")
 def lite_index():
     return render_template("lite.html")
+
+
+@app.route("/lite/api/health")
+def lite_api_health():
+    """Zelfde vorm en logica als het volledige /api/health in app/server.py,
+    zodat de statusknop op /lite exact hetzelfde gedrag vertoont."""
+    now = int(time.time())
+    conn = db.get_conn()
+    try:
+        vp_last = conn.execute("SELECT MAX(fetched_at) AS t FROM vehicle_positions").fetchone()["t"]
+        td_last = conn.execute("SELECT MAX(fetched_at) AS t FROM trip_delays").fetchone()["t"]
+        cancel_last = conn.execute("SELECT MAX(last_seen) AS t FROM trip_cancellations").fetchone()["t"]
+    finally:
+        conn.close()
+
+    def component(last_fetched_at, stale_after=VEHICLE_FRESHNESS_SECONDS):
+        if last_fetched_at is None:
+            return {"last_fetched_at": None, "seconds_ago": None, "status": "no_data"}
+        seconds_ago = now - last_fetched_at
+        status = "ok" if seconds_ago <= stale_after else "stale"
+        return {"last_fetched_at": last_fetched_at, "seconds_ago": seconds_ago, "status": status}
+
+    components = {
+        "vehicle_positions": component(vp_last),
+        "trip_delays": component(td_last),
+        "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
+    }
+    latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
+    overall_status = component(latest)["status"] if latest is not None else "no_data"
+
+    return jsonify({
+        "now": now,
+        "collector_interval_seconds": FETCH_INTERVAL_SECONDS,
+        "stale_after_seconds": VEHICLE_FRESHNESS_SECONDS,
+        "cancellation_stale_after_seconds": CANCELLATION_STALE_AFTER_SECONDS,
+        "status": overall_status,
+        "components": components,
+    })
 
 
 @app.route("/lite/api/alerts")

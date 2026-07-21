@@ -63,8 +63,20 @@
   <h1>OV Monitor Utrecht lite</h1>
   <span class="sub">Actuele storingen &amp; uitval — U-OV busvervoer (Keolis &amp; Transdev)</span>
   <a href="/" class="back">Volledige versie (let op: inlog vereist) &rarr;</a>
+  <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
+
+<div class="modal-overlay" id="healthModal" onclick="if(event.target===this)closeHealthModal()">
+  <div class="modal">
+    <div class="modal-header">
+      Systeemstatus
+      <button class="modal-close" onclick="closeHealthModal()">✕</button>
+    </div>
+    <div class="modal-body" id="healthBody"><div class="empty">Laden...</div></div>
+    <div class="modal-footer">Collector haalt elke <span id="healthInterval">30</span>s nieuwe data op</div>
+  </div>
+</div>
 
 <main>
   <div class="grid2">
@@ -255,8 +267,54 @@ async function refreshDailyChart() {
 function refreshAll() {
   refreshAlerts().catch(console.error);
   refreshUitval().catch(console.error);
+  loadHealth().catch(console.error);
   document.getElementById('lastupdate').textContent =
     `bijgewerkt ${new Date().toLocaleTimeString('nl-NL')}`;
+}
+
+function openHealthModal() {
+  document.getElementById('healthModal').classList.add('open');
+  loadHealth().catch(console.error);
+}
+function closeHealthModal() {
+  document.getElementById('healthModal').classList.remove('open');
+}
+function fmtAgo(seconds) {
+  if (seconds === null || seconds === undefined) return 'nooit';
+  if (seconds < 60) return `${seconds}s geleden`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min geleden`;
+  return `${Math.floor(m / 60)} u ${m % 60} min geleden`;
+}
+function healthLabel(status) {
+  return { ok: 'OK', stale: 'Verouderd', no_data: 'Geen data' }[status] || status;
+}
+async function loadHealth() {
+  try {
+    const res = await fetch('/lite/api/health');
+    const data = await res.json();
+    document.getElementById('healthDot').className = `status-dot ${data.status}`;
+    const cancelNote = data.components.cancellations.status !== 'ok'
+      ? 'Komt sporadisch binnen — dit hoeft geen storing te zijn'
+      : null;
+    const rows = [
+      ['Voertuigposities', data.components.vehicle_positions, null],
+      ['Vertragingen', data.components.trip_delays, null],
+      ['Uitval', data.components.cancellations, cancelNote],
+    ];
+    document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
+      <div class="health-row">
+        <div>
+          <div class="health-label">${label}</div>
+          <div class="health-sub">${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}</div>
+        </div>
+        <span class="health-badge ${c.status}">${healthLabel(c.status)}</span>
+      </div>`).join('');
+    document.getElementById('healthInterval').textContent = data.collector_interval_seconds;
+  } catch (e) {
+    document.getElementById('healthDot').className = 'status-dot no_data';
+    document.getElementById('healthBody').innerHTML = '<div class="empty">Kan status niet ophalen.</div>';
+  }
 }
 
 refreshAll();
