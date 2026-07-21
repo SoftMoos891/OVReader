@@ -62,6 +62,10 @@
   .pagination button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 4px 10px; cursor: pointer; }
   .pagination button:disabled { opacity: .4; cursor: default; }
+  .schedule-banner { display: inline-flex; align-items: center; gap: 8px; background: var(--warn-bg);
+        color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 8px 14px;
+        font-size: 13px; font-weight: 600; margin-bottom: 20px; }
+  .schedule-banner.past { background: var(--panel2); color: var(--muted); border-color: var(--border); font-weight: 500; }
 </style>
 </head>
 <body>
@@ -95,6 +99,8 @@
     <button class="range-btn" data-range="last_month">Vorige kalendermaand</button>
     <button class="range-btn" data-range="all">Alles (sinds start collector)</button>
   </div>
+
+  <div class="schedule-banner" id="summer-schedule-banner"></div>
 
   <label style="display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted); margin-bottom:20px; cursor:pointer;">
     <input type="checkbox" id="up-to-now-toggle">
@@ -245,6 +251,71 @@ async function loadHealth() {
 
 let dailyPctChart, dailyCountChart, weekdayChart, hourChart;
 
+// Zomerdienstregeling 2026: 12 juli t/m 29 augustus. Vast ingegeven (geen
+// API-veld) omdat dit een dienstregelingsfeit is, geen afgeleide statistiek.
+const SUMMER_SCHEDULE_START = '2026-07-12';
+const SUMMER_SCHEDULE_END = '2026-08-29';
+const SUMMER_SCHEDULE_START_LABEL = '12 juli 2026';
+const SUMMER_SCHEDULE_END_LABEL = '29 augustus 2026';
+
+function renderScheduleBanner() {
+  const el = document.getElementById('summer-schedule-banner');
+  const todayIso = new Date().toISOString().slice(0, 10);
+  if (todayIso < SUMMER_SCHEDULE_START) {
+    el.className = 'schedule-banner upcoming';
+    el.innerHTML = `🌞 Zomerdienstregeling gaat in op <strong>${SUMMER_SCHEDULE_START_LABEL}</strong> (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+  } else if (todayIso <= SUMMER_SCHEDULE_END) {
+    el.className = 'schedule-banner active';
+    el.innerHTML = `🌞 Zomerdienstregeling <strong>actief</strong> sinds ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+  } else {
+    el.className = 'schedule-banner past';
+    el.innerHTML = `🌞 Zomerdienstregeling liep van ${SUMMER_SCHEDULE_START_LABEL} t/m ${SUMMER_SCHEDULE_END_LABEL}`;
+  }
+}
+
+// Chart.js-plugin: arceert de zomerdienstregeling-periode op de dag-grafieken
+// (indien zichtbaar in de gekozen periode), zodat een knik in de uitvalcijfers
+// rond de ingangsdatum meteen opvalt. Grafieken zonder dateKeys-optie (bv. de
+// weekdag/uur-grafieken) worden door deze plugin genegeerd.
+const summerSchedulePlugin = {
+  id: 'summerSchedule',
+  beforeDraw(chart) {
+    const cfg = chart.options.plugins && chart.options.plugins.summerSchedule;
+    const dateKeys = cfg && cfg.dateKeys;
+    if (!dateKeys || dateKeys.length === 0) return;
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales.x) return;
+
+    const startIdx = dateKeys.findIndex(d => d >= SUMMER_SCHEDULE_START);
+    if (startIdx === -1) return; // periode ligt volledig na de weergegeven data
+    let endIdx = -1;
+    for (let i = dateKeys.length - 1; i >= 0; i--) {
+      if (dateKeys[i] <= SUMMER_SCHEDULE_END) { endIdx = i; break; }
+    }
+    if (endIdx === -1 || endIdx < startIdx) return; // periode ligt volledig voor de weergegeven data
+
+    const step = dateKeys.length > 1
+      ? scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0)
+      : chartArea.right - chartArea.left;
+    const x1 = Math.max(chartArea.left, scales.x.getPixelForValue(startIdx) - step / 2);
+    const x2 = Math.min(chartArea.right, scales.x.getPixelForValue(endIdx) + step / 2);
+    if (x2 <= x1) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+    ctx.clip();
+    ctx.fillStyle = CHART_COLORS.warn + '26';
+    ctx.fillRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
+    ctx.fillStyle = CHART_COLORS.warn;
+    ctx.font = "11px 'Inter', sans-serif";
+    ctx.textBaseline = 'top';
+    ctx.fillText('zomerdienstregeling', x1 + 4, chartArea.top + 4);
+    ctx.restore();
+  },
+};
+Chart.register(summerSchedulePlugin);
+
 function fmtDateShort(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
@@ -334,6 +405,7 @@ function renderDailyPctChart() {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } },
+      plugins: { summerSchedule: { dateKeys } },
     },
   });
 }
@@ -356,6 +428,7 @@ function renderDailyCountChart() {
         x: { stacked: true },
         y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Aantal' } },
       },
+      plugins: { summerSchedule: { dateKeys } },
     },
   });
 }
@@ -613,6 +686,7 @@ document.getElementById('prev-page').addEventListener('click', () => { if (tripP
 document.getElementById('next-page').addEventListener('click', () => { tripPage++; loadTrips(); });
 
 applyUrlState();
+renderScheduleBanner();
 loadAll().catch(console.error);
 loadHealth().catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
