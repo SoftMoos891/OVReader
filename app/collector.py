@@ -1,4 +1,5 @@
 """Achtergrondtaak die periodiek de realtime feeds ophaalt en in SQLite opslaat."""
+import datetime as dt
 import os
 import time
 import traceback
@@ -145,58 +146,129 @@ def collect_once():
     print(f"[collector] fetch klaar op {fetched_at}")
 
 
+def _today_start_epoch():
+    today = dt.date.today()
+    return int(dt.datetime.combine(today, dt.time.min).timestamp())
+
+
+_ROLLUP_UPSERT_DAILY = """
+    INSERT INTO route_stats_daily (day, route_id, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
+    SELECT
+        strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+        route_id,
+        COUNT(*) AS sample_count,
+        SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
+        AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
+        MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
+    FROM trip_delays
+    WHERE fetched_at >= ? AND fetched_at < ?
+    GROUP BY day, route_id
+    ON CONFLICT(day, route_id) DO UPDATE SET
+        sample_count = sample_count + excluded.sample_count,
+        on_time_count = on_time_count + excluded.on_time_count,
+        avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
+                            / (sample_count + excluded.sample_count),
+        max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
+"""
+
+
+def _rollup_upsert_period_daily():
+    return f"""
+    INSERT INTO route_stats_period_daily (day, route_id, period, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
+    SELECT
+        strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+        route_id,
+        {db.period_hour_sql()} AS period,
+        COUNT(*) AS sample_count,
+        SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
+        AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
+        MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
+    FROM trip_delays
+    WHERE fetched_at >= ? AND fetched_at < ?
+    GROUP BY day, route_id, period
+    ON CONFLICT(day, route_id, period) DO UPDATE SET
+        sample_count = sample_count + excluded.sample_count,
+        on_time_count = on_time_count + excluded.on_time_count,
+        avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
+                            / (sample_count + excluded.sample_count),
+        max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
+"""
+
+
+def rollup_completed_days():
+    """Telt volledig afgesloten lokale dagen op bij route_stats_daily/
+    route_stats_period_daily, los van RETENTION_DAYS. Draait vaker dan de
+    opschoning en verwerkt daardoor telkens maar een klein, nieuw stukje van
+    trip_delays (sinds de laatste rollup_watermark) in plaats van dat
+    /api/stats/trend en /api/stats/peak zelf elke keer dagen ruwe data
+    moeten doorrekenen.
+
+    Verwerkt hooguit EEN dag per transactie/commit, in een lus. Een eerdere
+    versie deed de hele achterstand in een enkele transactie -- bij de
+    allereerste run (watermark nog niet gezet) kan die achterstand oplopen
+    tot RETENTION_DAYS dagen ruwe data (tientallen miljoenen rijen), en zo'n
+    query hield de schrijflock zo lang vast dat collect_once() (elke 30s,
+    eigen korte busy_timeout) minutenlang stukliep op "database is locked".
+    Door na elke dag te committen -- en de watermark meteen bij te werken --
+    duurt een schrijflock-venster hooguit zo lang als een dag kost, en kan
+    een onderbroken rollup (bv. door een herstart) altijd hervatten waar hij
+    gebleven was i.p.v. van voren af aan te beginnen.
+
+    Zonder bestaande watermark-rij (verse deploy/migratie) begint dit NIET
+    bij epoch 0: dat zou de lus door tientallen jaren lege dagen laten lopen
+    voordat er echte data wordt bereikt. In plaats daarvan begint hij bij de
+    oudste ruwe rij die daadwerkelijk aanwezig is (normaliter hooguit
+    RETENTION_DAYS oud, want cleanup_old_data() ruimt daarbuiten toch al op)
+    -- zo wordt nooit data overgeslagen, ook niet als opschoning een keer
+    een tijdje heeft stilgelegen.
+
+    Bestaat de watermark-rij al, dan wordt die waarde vertrouwd zonder
+    ondergrens: dit is de enige plek die hem zet, en hij loopt bij normaal
+    gebruik altijd monotoon vooruit. Handmatig terugzetten naar een oudere
+    waarde telt dezelfde periode dubbel (sample_count e.d. worden additief
+    bijgewerkt) tenzij de bijbehorende rijen in route_stats_daily/
+    route_stats_period_daily ook worden teruggedraaid -- dat is bewust geen
+    ondersteund pad, niet iets om automatisch achter aan te klemmen."""
+    today_start = _today_start_epoch()
+    while True:
+        conn = db.get_conn()
+        try:
+            row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
+            if row:
+                since = row["rolled_through_epoch"]
+            else:
+                earliest = conn.execute("SELECT MIN(fetched_at) AS m FROM trip_delays").fetchone()["m"]
+                since = today_start if earliest is None else earliest
+            if since >= today_start:
+                return
+            day_end = min(since + 86400, today_start)
+            conn.execute(_ROLLUP_UPSERT_DAILY, (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, day_end))
+            conn.execute(_rollup_upsert_period_daily(), (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, day_end))
+            conn.execute(
+                "INSERT INTO rollup_watermark (id, rolled_through_epoch) VALUES (1, ?) "
+                "ON CONFLICT(id) DO UPDATE SET rolled_through_epoch = excluded.rolled_through_epoch",
+                (day_end,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        print(f"[collector] dag-rollup klaar (tot {day_end})")
+
+
 def cleanup_old_data():
-    """Rolt oude ruwe metingen op tot dagstatistieken per route en verwijdert
-    daarna de ruwe rijen, zodat de database niet onbeperkt groeit."""
+    """Verwijdert ruwe metingen ouder dan RETENTION_DAYS. De dagstatistieken
+    zijn hier al opgeteld door rollup_completed_days(), dus er hoeft hier
+    geen aggregatie meer te gebeuren -- alleen een veilige delete, nooit
+    voorbij de rollup_watermark (om te voorkomen dat nog niet opgetelde
+    ruwe data verdwijnt)."""
     cutoff = _now() - RETENTION_DAYS * 86400
     conn = db.get_conn()
     try:
-        conn.execute(
-            """
-            INSERT INTO route_stats_daily (day, route_id, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
-            SELECT
-                date(fetched_at, 'unixepoch') AS day,
-                route_id,
-                COUNT(*) AS sample_count,
-                SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
-                AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
-                MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
-            FROM trip_delays
-            WHERE fetched_at < ?
-            GROUP BY day, route_id
-            ON CONFLICT(day, route_id) DO UPDATE SET
-                sample_count = sample_count + excluded.sample_count,
-                on_time_count = on_time_count + excluded.on_time_count,
-                avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
-                                    / (sample_count + excluded.sample_count),
-                max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
-            """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
-        )
-        conn.execute(
-            f"""
-            INSERT INTO route_stats_period_daily (day, route_id, period, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
-            SELECT
-                strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
-                route_id,
-                {db.period_hour_sql()} AS period,
-                COUNT(*) AS sample_count,
-                SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
-                AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
-                MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
-            FROM trip_delays
-            WHERE fetched_at < ?
-            GROUP BY day, route_id, period
-            ON CONFLICT(day, route_id, period) DO UPDATE SET
-                sample_count = sample_count + excluded.sample_count,
-                on_time_count = on_time_count + excluded.on_time_count,
-                avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
-                                    / (sample_count + excluded.sample_count),
-                max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
-            """,
-            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, cutoff),
-        )
-        conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (cutoff,))
+        row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
+        watermark = row["rolled_through_epoch"] if row else 0
+        safe_cutoff = min(cutoff, watermark)
+
+        conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (safe_cutoff,))
         conn.execute("DELETE FROM vehicle_positions WHERE fetched_at < ?", (cutoff,))
 
         history_cutoff_date = time.strftime(
@@ -207,7 +279,7 @@ def cleanup_old_data():
         conn.commit()
     finally:
         conn.close()
-    print(f"[collector] opschoning klaar (cutoff={cutoff})")
+    print(f"[collector] opschoning klaar (cutoff={safe_cutoff})")
 
 
 def vacuum_db():
@@ -316,6 +388,7 @@ def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
     scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
+    scheduler.add_job(rollup_completed_days, "interval", hours=1, id="rollup", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
     # vacuum_db() is bewust niet meer gescheduled: de dagelijkse VACUUM
     # vereist tijdelijk ~evenveel vrije schijfruimte als de database groot
@@ -329,4 +402,10 @@ def start_scheduler():
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
+    # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
+    # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
+    # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen
+    # in kleine, losse transacties (zie aldaar), dus dit blokkeert hoogstens
+    # een paar korte lock-vensters i.p.v. een enkele, minutenlange transactie.
+    rollup_completed_days()
     return scheduler
