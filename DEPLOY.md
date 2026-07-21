@@ -6,9 +6,13 @@ pas `apt` aan naar jouw distro indien anders) en dat je SSH-toegang hebt.
 ## 0. Vooraf
 
 - DNS: zorg dat `ovreader.dvznet.nl` een A-record heeft dat naar het
-  IP-adres van je VPS wijst. Caddy (stap 6) regelt HTTPS automatisch zodra
-  dit klopt.
+  IP-adres van je VPS wijst.
 - Poorten 80 en 443 moeten open staan in je firewall (bv. `ufw allow 80,443/tcp`).
+- Dit document gaat ervan uit dat de VPS met **HestiaCP** beheerd wordt en
+  het domein daar al is aangemaakt (webdomein + Let's Encrypt-certificaat),
+  met nginx als reverse proxy naar de gunicorn-app op poort 5151 -- zie
+  stap 6. Het eenmalig aanmaken van een nieuw webdomein in Hestia zelf valt
+  buiten dit document; zie de HestiaCP-documentatie.
 
 ## 1. Code naar de server krijgen
 
@@ -89,29 +93,48 @@ sudo systemctl status utrecht-bus-collector utrecht-bus-web utrecht-bus-lite
 
 Logs bekijken: `sudo journalctl -u utrecht-bus-collector -f` (of `-web`/`-lite`).
 
-## 6. HTTPS via Caddy (reverse proxy)
+## 6. Reverse proxy: nginx via HestiaCP
 
-Caddy regelt automatisch een geldig SSL-certificaat (Let's Encrypt) zodra
-het domein naar dit IP wijst -- geen handmatige certbot-toestanden nodig.
+Deze server draait **nginx** (beheerd via HestiaCP), niet Caddy -- eerdere
+versies van dit document gingen daar ten onrechte van uit. HTTPS/Let's
+Encrypt en de basisroutering (`/` naar poort 5151, `/static/` als directe
+disk-alias) zijn al geregeld via het HestiaCP-webdomein en staan in
+`/etc/nginx/conf.d/domains/<domein>.conf(.ssl)`.
 
-```bash
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install -y caddy
+**Bewerk die gegenereerde bestanden nooit rechtstreeks** -- HestiaCP
+overschrijft ze zodra je iets via het paneel wijzigt of het certificaat
+vernieuwt. Voor eigen aanvullingen (zoals de `/lite`-route) is er een
+include-hook die altijd blijft staan en elk bijpassend bestand automatisch
+meeneemt:
 
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+```
+/home/hestiaadmin/conf/web/<domein>/nginx.conf_*      (HTTP-serverblok)
+/home/hestiaadmin/conf/web/<domein>/nginx.ssl.conf_*  (SSL-serverblok -- dit bedient het echte verkeer)
 ```
 
-De meegeleverde `deploy/Caddyfile` is al ingesteld op `ovreader.dvznet.nl`,
-inclusief de `/lite`-routing naar de lite-service (poort 5152).
+Om de publieke lite-service te ontsluiten:
+
+```bash
+sudo cp deploy/nginx-lite.conf /home/hestiaadmin/conf/web/ovreader.dvznet.nl/nginx.conf_lite
+sudo cp deploy/nginx-lite.conf /home/hestiaadmin/conf/web/ovreader.dvznet.nl/nginx.ssl.conf_lite
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`nginx -t` test de configuratie zonder 'm te laden -- controleer dat die
+"successful" meldt voordat je `reload` draait. Zie ook `deploy/nginx-lite.conf`
+voor de precieze proxy-instellingen.
+
+(Draait jouw server toch los nginx of Caddy zonder HestiaCP? Dan is het
+equivalent gewoon een `location /lite { proxy_pass http://127.0.0.1:5152; ... }`
+-blok resp. `handle /lite* { reverse_proxy 127.0.0.1:5152 }` in je eigen
+config, met dezelfde proxy-headers als in `deploy/nginx-lite.conf`.)
 
 ## 7. Testen
 
 - https://ovreader.dvznet.nl/ moet om inloggegevens vragen (Basic Auth) en
   daarna het live dashboard tonen.
-- Wil  voor het uitval-dashboard.
+- https://ovreader.dvznet.nl/uitval moet (ook achter Basic Auth) het
+  uitval-dashboard tonen.
 - https://ovreader.dvznet.nl/lite moet zonder inloggegevens direct de
   publieke lite-versie (storingen + uitval) tonen.
 - `sudo journalctl -u utrecht-bus-collector -f` moet elke 30s een regel
