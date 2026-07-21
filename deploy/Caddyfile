@@ -1,3 +1,12 @@
 ovreader.dvznet.nl {
-	reverse_proxy 127.0.0.1:5151
+	# Publieke lite-versie (app/lite_server.py, geen Basic Auth) op een eigen
+	# proces/poort, ontsloten als pad i.p.v. apart subdomein. handle-blokken
+	# zijn hier bewust mutually-exclusive (eerste match wint) i.p.v. twee
+	# losse reverse_proxy-directives, om dubbelzinnige routing te voorkomen.
+	handle /lite* {
+		reverse_proxy 127.0.0.1:5152
+	}
+	handle {
+		reverse_proxy 127.0.0.1:5151
+	}
 }

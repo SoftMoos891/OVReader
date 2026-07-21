@@ -69,20 +69,25 @@ zonder login.
 
 ## 5. systemd-services installeren
 
-Er zijn twee aparte services: één die op de achtergrond data verzamelt, één
-die het dashboard serveert. Dat voorkomt dat de realtime feeds dubbel
-bevraagd worden als de webserver met meerdere workers draait.
+Er zijn drie aparte services: één die op de achtergrond data verzamelt, één
+die het volledige (met Basic Auth afgeschermde) dashboard serveert, en één
+die de publieke lite-versie serveert (alleen storingen + uitval, geen auth --
+zie `app/lite_server.py`). Gescheiden services voorkomen dat de realtime
+feeds dubbel bevraagd worden, en isoleren de publieke, ongeauthenticeerde
+lite-pagina van je eigen dashboard (los proces, eigen geheugenlimiet).
 
 ```bash
 sudo cp deploy/utrecht-bus-collector.service /etc/systemd/system/
 sudo cp deploy/utrecht-bus-web.service /etc/systemd/system/
+sudo cp deploy/utrecht-bus-lite.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now utrecht-bus-collector
 sudo systemctl enable --now utrecht-bus-web
-sudo systemctl status utrecht-bus-collector utrecht-bus-web
+sudo systemctl enable --now utrecht-bus-lite
+sudo systemctl status utrecht-bus-collector utrecht-bus-web utrecht-bus-lite
 ```
 
-Logs bekijken: `sudo journalctl -u utrecht-bus-collector -f` (of `-web`).
+Logs bekijken: `sudo journalctl -u utrecht-bus-collector -f` (of `-web`/`-lite`).
 
 ## 6. HTTPS via Caddy (reverse proxy)
 
@@ -99,13 +104,16 @@ sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-De meegeleverde `deploy/Caddyfile` is al ingesteld op `ovreader.dvznet.nl`.
+De meegeleverde `deploy/Caddyfile` is al ingesteld op `ovreader.dvznet.nl`,
+inclusief de `/lite`-routing naar de lite-service (poort 5152).
 
 ## 7. Testen
 
 - https://ovreader.dvznet.nl/ moet om inloggegevens vragen (Basic Auth) en
   daarna het live dashboard tonen.
 - Wil  voor het uitval-dashboard.
+- https://ovreader.dvznet.nl/lite moet zonder inloggegevens direct de
+  publieke lite-versie (storingen + uitval) tonen.
 - `sudo journalctl -u utrecht-bus-collector -f` moet elke 30s een regel
   "fetch klaar op ..." laten zien.
 
@@ -113,9 +121,11 @@ De meegeleverde `deploy/Caddyfile` is al ingesteld op `ovreader.dvznet.nl`.
 
 - Statische dienstregeling verversen (maandelijks, of na een grote wijziging):
   `sudo -u utrechtbus ./venv/bin/python -m app.build_static_index`
-  gevolgd door `sudo systemctl restart utrecht-bus-collector utrecht-bus-web`.
+  gevolgd door
+  `sudo systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite`
+  (de lite-service leest ook `utrecht_routes.json`, dus wel meenemen).
 - Code-updates: rsync/git pull opnieuw, dan
-  `sudo systemctl restart utrecht-bus-collector utrecht-bus-web`.
+  `sudo systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite`.
 
 ## Back-ups van de historie
 

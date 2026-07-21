@@ -1,0 +1,28 @@
+[Unit]
+Description=Utrecht bus monitor - publieke lite-versie (storingen + uitval)
+After=network.target utrecht-bus-collector.service
+
+[Service]
+Type=simple
+User=utrechtbus
+WorkingDirectory=/opt/utrecht-bus-monitor
+# utrechtbus is een systeem-account zonder eigen homedir (useradd -r); zonder
+# expliciete HOME probeert gunicorn dingen weg te schrijven naar het
+# niet-bestaande/niet-schrijfbare /home/utrechtbus.
+Environment=HOME=/opt/utrecht-bus-monitor
+# Bewust GEEN --preload/gc.freeze() zoals bij utrecht-bus-web.service: die
+# truc lost alleen op dat de grote dienstregeling niet per worker
+# gedupliceerd wordt (zie app/wsgi.py) -- app/lite_server.py laadt die data
+# juist bewust nooit (alleen het kleine utrecht_routes.json), dus meerdere
+# workers kosten hier nauwelijks extra geheugen.
+ExecStart=/opt/utrecht-bus-monitor/venv/bin/gunicorn -w 2 --timeout 60 -b 127.0.0.1:5152 app.lite_server:app
+Restart=on-failure
+RestartSec=5
+# Harde geheugenlimiet: dit proces is expres lichtgewicht (geen dienstregeling,
+# geen zware trip_delays-queries) -- een kale Flask+gunicorn-worker zit al
+# gauw op 30-50 MB, 160M geeft ruime marge zonder dat de publieke,
+# ongeauthenticeerde pagina ooit significant geheugen kan opeisen.
+MemoryMax=160M
+
+[Install]
+WantedBy=multi-user.target

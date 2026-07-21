@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>OV Utrecht — storingen &amp; uitval</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
+  main { padding: 20px; max-width: 700px; margin: 0 auto; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 16px 18px; margin-bottom: 20px; }
+  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+                 color: var(--muted); margin: 0 0 12px; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
+  .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 8px 10px;
+           margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
+  .alert.severe { background: var(--bad-bg); border-left-color: var(--bad); }
+  .alert .hdr { font-weight: 600; margin-bottom: 3px; }
+  .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; }
+  .alert .routes { color: var(--muted); font-size: 12px; }
+  #alerts { max-height: 320px; overflow-y: auto; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  #cancel-kpis { display: flex; gap: 28px; margin-bottom: 14px; flex-wrap: wrap; }
+  .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
+  .kpi-box .label { color: var(--muted); font-size: 12px; }
+  .kpi-box .num.good { color: var(--good); }
+  .kpi-box .num.warn { color: var(--warn); }
+  .kpi-box .num.bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  #lastupdate { color: var(--muted); font-size: 11px; text-align: right; margin-top: -8px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
+  <h1>OV Utrecht</h1>
+  <span class="sub">Actuele storingen &amp; uitval — U-OV busvervoer (Keolis &amp; Transdev)</span>
+  <a href="/" class="back">Volledige versie &rarr;</a>
+  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+</header>
+
+<main>
+  <div class="section">
+    <h2>Actuele storingen &amp; meldingen<span id="alerts-count"></span></h2>
+    <div id="alerts"><div class="empty">Laden...</div></div>
+  </div>
+
+  <div class="section">
+    <h2>Uitval vandaag</h2>
+    <div id="cancel-kpis"></div>
+    <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+  </div>
+
+  <div id="lastupdate">–</div>
+</main>
+
+<script>
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+}
+
+function effectLabel(effect) {
+  const map = {
+    NO_SERVICE: 'Geen dienst', REDUCED_SERVICE: 'Beperkte dienst',
+    SIGNIFICANT_DELAYS: 'Grote vertraging', DETOUR: 'Omleiding',
+    ADDITIONAL_SERVICE: 'Extra dienst', MODIFIED_SERVICE: 'Aangepaste dienst',
+    STOP_MOVED: 'Halte verplaatst', ACCESSIBILITY_ISSUE: 'Toegankelijkheid',
+    OTHER_EFFECT: 'Melding', UNKNOWN_EFFECT: 'Melding', NO_EFFECT: 'Melding',
+  };
+  return map[effect] || 'Melding';
+}
+
+// Zelfde detectie als op het volledige dashboard (index.html): het GTFS-RT
+// effect-veld is voor veel meldingen te generiek, terwijl de vrije tekst vaak
+// wel aangeeft dat het om iets ernstigers gaat. "verstoring" bevat toevallig
+// de substring "storing", dus die moet eerder gecontroleerd worden.
+const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing'];
+function severeAlertKeyword(a) {
+  const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
+  return SEVERE_ALERT_KEYWORDS.find(kw => text.includes(kw)) || null;
+}
+
+async function refreshAlerts() {
+  const res = await fetch('/lite/api/alerts');
+  const data = await res.json();
+  document.getElementById('alerts-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+  const el = document.getElementById('alerts');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
+  el.innerHTML = data.alerts.map(a => {
+    const kw = severeAlertKeyword(a);
+    const badge = kw ? `<span class="pill bad">${kw.charAt(0).toUpperCase()}${kw.slice(1)}</span>` : '';
+    return `
+    <div class="alert ${kw ? 'severe' : ''}">
+      <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
+      <div>${a.description || ''}</div>
+      <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}</div>
+    </div>`;
+  }).join('');
+}
+
+function cancellationPillClass(pct) {
+  if (pct > 5) return 'bad';
+  if (pct > 2) return 'warn';
+  return 'good';
+}
+
+async function refreshUitval() {
+  const res = await fetch('/lite/api/uitval');
+  const data = await res.json();
+  document.getElementById('cancel-kpis').innerHTML = `
+    <div class="kpi-box"><div class="num bad">${data.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
+    <div class="kpi-box"><div class="num">${data.total_ran}</div><div class="label">Ritten gereden</div></div>
+    <div class="kpi-box"><div class="num ${cancellationPillClass(data.cancellation_pct)}">${data.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
+  `;
+
+  const ac = document.getElementById('agency-cancel-stats');
+  if (data.per_operator.length === 0) {
+    ac.innerHTML = '<div class="empty">Geen uitval vandaag</div>';
+  } else {
+    ac.innerHTML = '<table><tr><th>Operator</th><th>Uitval</th><th>Ritten</th></tr>' +
+      data.per_operator.map(a => `<tr>
+        <td>${a.operator}</td>
+        <td><span class="pill ${cancellationPillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
+        <td>${a.canceled}/${a.canceled + a.ran}</td>
+      </tr>`).join('') + '</table>';
+  }
+}
+
+function refreshAll() {
+  refreshAlerts().catch(console.error);
+  refreshUitval().catch(console.error);
+  document.getElementById('lastupdate').textContent =
+    `bijgewerkt ${new Date().toLocaleTimeString('nl-NL')}`;
+}
+
+refreshAll();
+setInterval(() => { if (!document.hidden) refreshAll(); }, 45000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(); });
+</script>
+</body>
+</html>
