@@ -419,7 +419,9 @@ function effectLabel(effect) {
 }
 
 function fmtAlertTime(ts) {
-  return new Date(ts * 1000).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  return new Date(ts * 1000).toLocaleString('nl-NL', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
 }
 
 async function refreshAlerts() {
