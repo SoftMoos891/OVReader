@@ -127,6 +127,36 @@ def lite_api_health():
     })
 
 
+@app.route("/lite/api/rail-alerts")
+def lite_api_rail_alerts():
+    """Zelfde vorm als het volledige /api/rail-alerts in app/server.py --
+    storingen op het spoor (NS) binnen de provincie Utrecht."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM rail_alerts WHERE active=1 ORDER BY first_seen DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    alerts = [
+        {
+            "alert_id": r["alert_id"],
+            "disruption_type": r["disruption_type"],
+            "type_label": r["type_label"],
+            "title": r["title"],
+            "description": r["description"],
+            "start_time": r["start_time"],
+            "end_time": r["end_time"],
+            "impact": r["impact"],
+            "stations": [s for s in (r["stations"] or "").split(",") if s],
+            "first_seen": r["first_seen"],
+            "last_seen": r["last_seen"],
+        }
+        for r in rows
+    ]
+    return jsonify({"alerts": alerts, "count": len(alerts)})
+
+
 @app.route("/lite/api/alerts")
 def lite_api_alerts():
     """Zelfde vorm als het bestaande /api/alerts in app/server.py, zodat de

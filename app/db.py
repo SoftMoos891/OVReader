@@ -53,6 +53,21 @@ CREATE TABLE IF NOT EXISTS alerts (
     active INTEGER DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS rail_alerts (
+    alert_id TEXT PRIMARY KEY,
+    first_seen INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    disruption_type TEXT,
+    type_label TEXT,
+    title TEXT,
+    description TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    impact INTEGER,
+    stations TEXT,
+    active INTEGER DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS route_stats_daily (
     day TEXT NOT NULL,
     route_id TEXT NOT NULL,

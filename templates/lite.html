@@ -102,6 +102,12 @@
     </div>
   </div>
 
+  <div class="section">
+    <h2>Storingen op het spoor (NS)<span id="rail-alerts-count"></span></h2>
+    <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen storingen die een station in de provincie Utrecht raken</div>
+    <div id="rail-alerts"><div class="empty">Laden...</div></div>
+  </div>
+
   <div id="lastupdate">–</div>
 </main>
 
@@ -167,6 +173,34 @@ async function refreshAlerts() {
       <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
       <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}
+        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}</div>
+    </div>`;
+  }).join('');
+}
+
+// NS-storingen op het spoor: aparte databron (zie /lite/api/rail-alerts en
+// app/ns_rail_alerts.py), al vooraf op de server gefilterd tot storingen die
+// een station in de provincie Utrecht raken. impact.value loopt bij NS van
+// 1 (licht) t/m 3 (trein rijdt niet) -- vanaf 3, of het type CALAMITY, tonen
+// we 'm net als de ernstige bus/tram-meldingen met de rode badge.
+function railAlertSeverity(a) {
+  return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
+}
+
+async function refreshRailAlerts() {
+  const res = await fetch('/lite/api/rail-alerts');
+  const data = await res.json();
+  document.getElementById('rail-alerts-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+  const el = document.getElementById('rail-alerts');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen op het spoor</div>'; return; }
+  el.innerHTML = data.alerts.map(a => {
+    const severe = railAlertSeverity(a);
+    const badge = `<span class="pill ${severe ? 'bad' : 'warn'}">${a.type_label}</span>`;
+    return `
+    <div class="alert ${severe ? 'severe' : ''}">
+      <div class="hdr">${badge}${a.title}</div>
+      <div>${a.description || ''}</div>
+      <div class="routes">Stations: ${a.stations.join(', ') || '—'}
         &middot; Gemeld om ${fmtAlertTime(a.first_seen)}</div>
     </div>`;
   }).join('');
@@ -322,6 +356,7 @@ async function refreshDailyChart() {
 
 function refreshAll() {
   refreshAlerts().catch(console.error);
+  refreshRailAlerts().catch(console.error);
   refreshUitval().catch(console.error);
   loadHealth().catch(console.error);
   document.getElementById('lastupdate').textContent =

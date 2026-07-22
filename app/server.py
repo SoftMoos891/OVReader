@@ -317,6 +317,38 @@ def api_alerts():
     return jsonify({"alerts": alerts, "count": len(alerts)})
 
 
+@app.route("/api/rail-alerts")
+def api_rail_alerts():
+    """Storingen op het spoor (NS) binnen de provincie Utrecht -- aparte
+    databron t.o.v. /api/alerts (zie app/ns_rail_alerts.py). Leeg (niet een
+    fout) als NS_API_KEY niet is ingesteld: de collector slaat die bron dan
+    stilzwijgend over."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM rail_alerts WHERE active=1 ORDER BY first_seen DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    alerts = [
+        {
+            "alert_id": r["alert_id"],
+            "disruption_type": r["disruption_type"],
+            "type_label": r["type_label"],
+            "title": r["title"],
+            "description": r["description"],
+            "start_time": r["start_time"],
+            "end_time": r["end_time"],
+            "impact": r["impact"],
+            "stations": [s for s in (r["stations"] or "").split(",") if s],
+            "first_seen": r["first_seen"],
+            "last_seen": r["last_seen"],
+        }
+        for r in rows
+    ]
+    return jsonify({"alerts": alerts, "count": len(alerts)})
+
+
 @app.route("/api/stats")
 def api_stats():
     """Punctualiteit per operator en per route, over ruwe data (zie RETENTION_DAYS

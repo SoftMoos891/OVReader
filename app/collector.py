@@ -12,6 +12,7 @@ from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
     parse_trip_delays, parse_cancellations, fetch_alerts,
 )
+from .ns_rail_alerts import fetch_utrecht_rail_alerts
 
 FETCH_INTERVAL_SECONDS = 30
 # Hoe lang trip_delays/vehicle_positions als RUWE (per-halte/per-fetch) rijen
@@ -384,6 +385,65 @@ def warm_trends_cache():
     print("[collector] /trends voorverwarmd")
 
 
+def fetch_rail_alerts_job():
+    """Haalt NS-storingen op het spoor binnen de provincie Utrecht op (zie
+    ns_rail_alerts.py) en synchroniseert ze naar de rail_alerts-tabel, met
+    dezelfde first_seen/last_seen/active-boekhouding als de alerts-sync
+    hierboven. Draait op een eigen, veel rustiger interval dan collect_once()
+    (elke 30s): de NS API is -- in tegenstelling tot de vrije NDOV-feed --
+    een gemeten abonnement, en storingen op het spoor duren doorgaans uren,
+    dus elke 5 minuten is ruim actueel genoeg.
+
+    Zonder NS_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen --
+    de rest van de app blijft gewoon werken."""
+    api_key = os.environ.get("NS_API_KEY")
+    if not api_key:
+        return
+    fetched_at = _now()
+    conn = db.get_conn()
+    try:
+        rail_alerts = fetch_utrecht_rail_alerts(api_key)
+        seen_ids = [a["alert_id"] for a in rail_alerts]
+        for a in rail_alerts:
+            conn.execute(
+                """INSERT INTO rail_alerts
+                   (alert_id, first_seen, last_seen, disruption_type, type_label,
+                    title, description, start_time, end_time, impact, stations, active)
+                   VALUES (:alert_id, :now, :now, :disruption_type, :type_label,
+                           :title, :description, :start_time, :end_time, :impact, :stations, 1)
+                   ON CONFLICT(alert_id) DO UPDATE SET
+                       last_seen=:now, disruption_type=:disruption_type, type_label=:type_label,
+                       title=:title, description=:description, start_time=:start_time,
+                       end_time=:end_time, impact=:impact, stations=:stations, active=1""",
+                {
+                    "alert_id": a["alert_id"],
+                    "now": fetched_at,
+                    "disruption_type": a["disruption_type"],
+                    "type_label": a["type_label"],
+                    "title": a["title"],
+                    "description": a["description"],
+                    "start_time": a["start_time"],
+                    "end_time": a["end_time"],
+                    "impact": a["impact"],
+                    "stations": ",".join(a["stations"]),
+                },
+            )
+        if seen_ids:
+            placeholders = ",".join("?" * len(seen_ids))
+            conn.execute(
+                f"UPDATE rail_alerts SET active=0 WHERE active=1 AND alert_id NOT IN ({placeholders})",
+                seen_ids,
+            )
+        else:
+            conn.execute("UPDATE rail_alerts SET active=0 WHERE active=1")
+        conn.commit()
+    except Exception:
+        print("[collector] fout bij ophalen NS-spoorstoringen:")
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+
 def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
@@ -399,9 +459,11 @@ def start_scheduler():
     # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
+    scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=5, id="rail_alerts", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
+    fetch_rail_alerts_job()
     # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
     # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
     # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen

@@ -71,6 +71,11 @@ sudo chmod 600 .env
 Zonder dit bestand is het dashboard voor iedereen op internet toegankelijk
 zonder login.
 
+Vul in datzelfde `.env`-bestand ook `NS_API_KEY` in (zie apiportal.ns.nl)
+als je storingen op het spoor binnen de provincie Utrecht wilt tonen (zie
+app/ns_rail_alerts.py). Optioneel: zonder deze key blijft de rest van de
+app gewoon werken, alleen die sectie blijft leeg.
+
 ## 5. systemd-services installeren
 
 Er zijn drie aparte services: één die op de achtergrond data verzamelt, één
