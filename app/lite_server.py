@@ -31,7 +31,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 # Aantal dagen voor de "uitvalpercentage per dag"-trendgrafiek op /lite --
 # vast en niet instelbaar (geen ?range=-parameter zoals bij de volledige
 # /uitval-dashboard), consistent met de "basale" lite-scope.
-CHART_DAYS = 14
+CHART_DAYS = 30
 
 # Zelfde definitie als app/server.py's /api/health.
 VEHICLE_FRESHNESS_SECONDS = 90

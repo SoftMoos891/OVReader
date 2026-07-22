@@ -92,7 +92,7 @@
       </div>
       <div id="cancel-kpis"></div>
       <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
-      <h2 class="chart-heading">Uitvalpercentage per dag (laatste 14 dagen)</h2>
+      <h2 class="chart-heading">Uitvalpercentage per dag (laatste 30 dagen)</h2>
       <canvas id="dailyPctChart"></canvas>
     </div>
   </div>
@@ -217,6 +217,49 @@ function fmtDateShort(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
 
+// Chart.js-plugin: arceert de zomerdienstregeling-periode op de dag-grafiek
+// (indien zichtbaar in de getoonde 30 dagen), zodat een knik in de
+// uitvalcijfers rond de ingangsdatum meteen opvalt. Zelfde plugin als op
+// /uitval (cancellations.html).
+const summerSchedulePlugin = {
+  id: 'summerSchedule',
+  beforeDraw(chart) {
+    const cfg = chart.options.plugins && chart.options.plugins.summerSchedule;
+    const dateKeys = cfg && cfg.dateKeys;
+    if (!dateKeys || dateKeys.length === 0) return;
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales.x) return;
+
+    const startIdx = dateKeys.findIndex(d => d >= SUMMER_SCHEDULE_START);
+    if (startIdx === -1) return; // periode ligt volledig na de weergegeven data
+    let endIdx = -1;
+    for (let i = dateKeys.length - 1; i >= 0; i--) {
+      if (dateKeys[i] <= SUMMER_SCHEDULE_END) { endIdx = i; break; }
+    }
+    if (endIdx === -1 || endIdx < startIdx) return; // periode ligt volledig voor de weergegeven data
+
+    const step = dateKeys.length > 1
+      ? scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0)
+      : chartArea.right - chartArea.left;
+    const x1 = Math.max(chartArea.left, scales.x.getPixelForValue(startIdx) - step / 2);
+    const x2 = Math.min(chartArea.right, scales.x.getPixelForValue(endIdx) + step / 2);
+    if (x2 <= x1) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+    ctx.clip();
+    ctx.fillStyle = CHART_COLORS.warn + '26';
+    ctx.fillRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
+    ctx.fillStyle = CHART_COLORS.warn;
+    ctx.font = "11px 'Inter', sans-serif";
+    ctx.textBaseline = 'top';
+    ctx.fillText('zomerdienstregeling', x1 + 4, chartArea.top + 4);
+    ctx.restore();
+  },
+};
+Chart.register(summerSchedulePlugin);
+
 // Zomerdienstregeling 2026: 12 juli t/m 29 augustus -- zelfde vaste periode
 // en pill-weergave als op /uitval, relevant hier omdat het aantal geplande
 // ritten (en dus het uitvalpercentage) in die periode structureel lager ligt.
@@ -267,6 +310,7 @@ async function refreshDailyChart() {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } },
+      plugins: { summerSchedule: { dateKeys } },
     },
   });
 }
