@@ -418,6 +418,10 @@ function effectLabel(effect) {
   return map[effect] || 'Melding';
 }
 
+function fmtAlertTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+}
+
 async function refreshAlerts() {
   const res = await fetch('/api/alerts');
   const data = await res.json();
@@ -450,7 +454,8 @@ async function refreshAlerts() {
     <div class="alert ${label ? 'severe' : ''}">
       <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
-      <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}</div>
+      <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}
+        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}${a.last_seen !== a.first_seen ? ` (laatste update ${fmtAlertTime(a.last_seen)})` : ''}</div>
     </div>`;
   }).join('');
 }
