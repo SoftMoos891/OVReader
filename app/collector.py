@@ -389,10 +389,11 @@ def fetch_rail_alerts_job():
     """Haalt NS-storingen op het spoor binnen de provincie Utrecht op (zie
     ns_rail_alerts.py) en synchroniseert ze naar de rail_alerts-tabel, met
     dezelfde first_seen/last_seen/active-boekhouding als de alerts-sync
-    hierboven. Draait op een eigen, veel rustiger interval dan collect_once()
+    hierboven. Draait op een eigen, rustiger interval dan collect_once()
     (elke 30s): de NS API is -- in tegenstelling tot de vrije NDOV-feed --
-    een gemeten abonnement, en storingen op het spoor duren doorgaans uren,
-    dus elke 5 minuten is ruim actueel genoeg.
+    een gemeten abonnement (limiet: 300 requests per 5 minuten). Elke 2
+    minuten (30/5 min) blijft daar ruim onder, en de respons zelf heeft
+    toch een Cache-Control max-age van 60s -- vaker heeft dus geen zin.
 
     Zonder NS_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen --
     de rest van de app blijft gewoon werken."""
@@ -459,7 +460,7 @@ def start_scheduler():
     # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
-    scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=5, id="rail_alerts", max_instances=1)
+    scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
