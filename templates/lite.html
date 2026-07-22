@@ -17,7 +17,10 @@
            align-items: center; gap: 14px; flex-wrap: wrap; }
   header h1 { font-size: 18px; margin: 0; }
   header .sub { color: var(--muted); font-size: 13px; }
-  header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
+  header a.nav-btn { margin-left: auto; background: var(--accent); color: #fff; font-weight: 600;
+                     text-decoration: none; padding: 7px 16px; border-radius: 6px; font-size: 13px;
+                     white-space: nowrap; transition: filter .15s; }
+  header a.nav-btn:hover { filter: brightness(1.08); }
   main { padding: 20px; max-width: 1100px; margin: 0 auto; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
@@ -62,7 +65,7 @@
   <a href="https://ovreader.dvznet.nl/lite" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
   <h1>OV Monitor Utrecht lite</h1>
   <span class="sub">Actuele uitvalcijfers U-OV busvervoer en verstoringen bus en tram (Keolis en Transdev)</span>
-  <a href="/" class="back">Volledige versie (let op: inlog vereist) &rarr;</a>
+  <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist)">🔎 DVZ Reader &rarr;</a>
   <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
