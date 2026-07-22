@@ -68,6 +68,19 @@ CREATE TABLE IF NOT EXISTS rail_alerts (
     active INTEGER DEFAULT 1
 );
 
+-- Los van rail_alerts zelf: die tabel krijgt alleen nieuwe/bijgewerkte rijen
+-- zolang er ook daadwerkelijk een actieve NS-storing in Utrecht is, dus
+-- "geen storingen al dagen" en "de NS-fetch-job is stukgelopen" zijn dan
+-- niet van elkaar te onderscheiden via MAX(last_seen). Deze tabel houdt
+-- apart bij wanneer de job voor het laatst succesvol resp. met een fout
+-- afrondde, ongeacht of er iets te tonen was.
+CREATE TABLE IF NOT EXISTS ns_fetch_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS route_stats_daily (
     day TEXT NOT NULL,
     route_id TEXT NOT NULL,

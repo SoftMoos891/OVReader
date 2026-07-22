@@ -437,10 +437,21 @@ def fetch_rail_alerts_job():
             )
         else:
             conn.execute("UPDATE rail_alerts SET active=0 WHERE active=1")
+        conn.execute(
+            """INSERT INTO ns_fetch_status (id, last_success_at) VALUES (1, :now)
+               ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
+            {"now": fetched_at},
+        )
         conn.commit()
-    except Exception:
+    except Exception as e:
         print("[collector] fout bij ophalen NS-spoorstoringen:")
         traceback.print_exc()
+        conn.execute(
+            """INSERT INTO ns_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
+               ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
+            {"now": fetched_at, "err": str(e)[:500]},
+        )
+        conn.commit()
     finally:
         conn.close()
 

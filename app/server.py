@@ -147,6 +147,10 @@ def api_meta():
 
 
 CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt sporadisch binnen, geen 30s-heartbeat
+# fetch_rail_alerts_job() draait elke 2 minuten (zie collector.py); 10
+# minuten geeft ruimte voor een paar gemiste cycli (bv. een tijdelijke
+# NS-API-hik) voordat dit als stilgevallen wordt gemeld.
+RAIL_ALERTS_STALE_AFTER_SECONDS = 600
 
 
 @app.route("/api/health")
@@ -161,13 +165,24 @@ def api_health():
     try/except verwerkt en kan dus stilzwijgend stuklopen terwijl
     vertragingen gewoon doorlopen. Daarom een apart component ervoor, met een
     veel ruimer stale-venster: een dag zonder uitval is normaal, geen teken
-    dat de verwerking kapot is."""
+    dat de verwerking kapot is.
+
+    'rail_alerts' (NS) is nog een aparte bron: rail_alerts zelf krijgt alleen
+    nieuwe rijen zolang er een actieve storing is, dus MAX(last_seen) daarop
+    zou "geen storingen" en "de job is stukgelopen" niet uit elkaar houden.
+    ns_fetch_status (zie collector.py) houdt daarom apart bij wanneer de job
+    voor het laatst succesvol/met een fout afrondde, los van of er iets te
+    tonen viel. Zonder NS_API_KEY draait die job niet en blijft
+    ns_fetch_status leeg -- status 'not_configured', geen storing."""
     now = int(time.time())
     conn = db.get_conn()
     try:
         vp_last = conn.execute("SELECT MAX(fetched_at) AS t FROM vehicle_positions").fetchone()["t"]
         td_last = conn.execute("SELECT MAX(fetched_at) AS t FROM trip_delays").fetchone()["t"]
         cancel_last = conn.execute("SELECT MAX(last_seen) AS t FROM trip_cancellations").fetchone()["t"]
+        ns_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM ns_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -178,13 +193,20 @@ def api_health():
         status = "ok" if seconds_ago <= stale_after else "stale"
         return {"last_fetched_at": last_fetched_at, "seconds_ago": seconds_ago, "status": status}
 
+    if ns_status is None:
+        rail_alerts_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
+    else:
+        rail_alerts_component = component(ns_status["last_success_at"], stale_after=RAIL_ALERTS_STALE_AFTER_SECONDS)
+
     components = {
         "vehicle_positions": component(vp_last),
         "trip_delays": component(td_last),
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
+        "rail_alerts": rail_alerts_component,
     }
-    # Uitval telt bewust niet mee in de totaalstatus: dat signaal gaat over
-    # of de collector-loop leeft, niet of er toevallig uitval was.
+    # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
+    # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
+    # over deze aanvullende, onafhankelijke bronnen.
     latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
 
@@ -193,6 +215,7 @@ def api_health():
         "collector_interval_seconds": FETCH_INTERVAL_SECONDS,
         "stale_after_seconds": VEHICLE_FRESHNESS_SECONDS,
         "cancellation_stale_after_seconds": CANCELLATION_STALE_AFTER_SECONDS,
+        "rail_alerts_stale_after_seconds": RAIL_ALERTS_STALE_AFTER_SECONDS,
         "status": overall_status,
         "components": components,
     })

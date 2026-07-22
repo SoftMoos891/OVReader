@@ -680,7 +680,7 @@ function fmtAgo(seconds) {
   return `${Math.floor(m / 60)} u ${m % 60} min geleden`;
 }
 function healthLabel(status) {
-  return { ok: 'OK', stale: 'Verouderd', no_data: 'Geen data' }[status] || status;
+  return { ok: 'OK', stale: 'Verouderd', no_data: 'Geen data', not_configured: 'Niet ingesteld' }[status] || status;
 }
 async function loadHealth() {
   try {
@@ -690,10 +690,14 @@ async function loadHealth() {
     const cancelNote = data.components.cancellations.status !== 'ok'
       ? 'Komt sporadisch binnen — dit hoeft geen storing te zijn'
       : null;
+    const railNote = data.components.rail_alerts.status === 'not_configured'
+      ? 'NS_API_KEY niet ingesteld op de server'
+      : null;
     const rows = [
       ['Voertuigposities', data.components.vehicle_positions, null],
       ['Vertragingen', data.components.trip_delays, null],
       ['Uitval', data.components.cancellations, cancelNote],
+      ['Spoorstoringen (NS)', data.components.rail_alerts, railNote],
     ];
     document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
       <div class="health-row">

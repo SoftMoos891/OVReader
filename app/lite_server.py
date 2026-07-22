@@ -36,6 +36,7 @@ CHART_DAYS = 30
 # Zelfde definitie als app/server.py's /api/health.
 VEHICLE_FRESHNESS_SECONDS = 90
 CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt sporadisch binnen, geen 30s-heartbeat
+RAIL_ALERTS_STALE_AFTER_SECONDS = 600  # zelfde marge als in app/server.py (job draait elke 2 min)
 
 app = Flask(
     __name__,
@@ -99,6 +100,9 @@ def lite_api_health():
         vp_last = conn.execute("SELECT MAX(fetched_at) AS t FROM vehicle_positions").fetchone()["t"]
         td_last = conn.execute("SELECT MAX(fetched_at) AS t FROM trip_delays").fetchone()["t"]
         cancel_last = conn.execute("SELECT MAX(last_seen) AS t FROM trip_cancellations").fetchone()["t"]
+        ns_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM ns_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -109,10 +113,16 @@ def lite_api_health():
         status = "ok" if seconds_ago <= stale_after else "stale"
         return {"last_fetched_at": last_fetched_at, "seconds_ago": seconds_ago, "status": status}
 
+    if ns_status is None:
+        rail_alerts_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
+    else:
+        rail_alerts_component = component(ns_status["last_success_at"], stale_after=RAIL_ALERTS_STALE_AFTER_SECONDS)
+
     components = {
         "vehicle_positions": component(vp_last),
         "trip_delays": component(td_last),
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
+        "rail_alerts": rail_alerts_component,
     }
     latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
@@ -122,6 +132,7 @@ def lite_api_health():
         "collector_interval_seconds": FETCH_INTERVAL_SECONDS,
         "stale_after_seconds": VEHICLE_FRESHNESS_SECONDS,
         "cancellation_stale_after_seconds": CANCELLATION_STALE_AFTER_SECONDS,
+        "rail_alerts_stale_after_seconds": RAIL_ALERTS_STALE_AFTER_SECONDS,
         "status": overall_status,
         "components": components,
     })
