@@ -130,7 +130,7 @@ function effectLabel(effect) {
 // praktijk ook gebruikt voor urgente/onvoorziene meldingen (bv. een
 // afgesloten halte na een ongeval) i.p.v. daadwerkelijk extra dienst --
 // telt daarom altijd als ernstig, los van de tekstuele keywords.
-const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing', 'brand', 'hulpdiensten', 'politie'];
+const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
 function severeAlertLabel(a) {
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
