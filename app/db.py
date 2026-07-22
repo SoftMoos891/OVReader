@@ -93,6 +93,16 @@ CREATE TABLE IF NOT EXISTS trips_ran_daily (
     PRIMARY KEY (service_date, trip_id)
 );
 CREATE INDEX IF NOT EXISTS idx_ran_date ON trips_ran_daily(service_date);
+
+-- Onthoudt tot welk tijdstip (unix-epoch, exclusief) volledig afgesloten
+-- lokale dagen al zijn opgeteld in route_stats_daily/route_stats_period_daily.
+-- Losstaand van RETENTION_DAYS, zodat /trends niet elke keer de volledige
+-- ruwe trip_delays-tabel hoeft te scannen om dagen te kunnen tonen die nog
+-- niet buiten de retentie zijn gevallen.
+CREATE TABLE IF NOT EXISTS rollup_watermark (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    rolled_through_epoch INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
