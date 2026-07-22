@@ -101,12 +101,19 @@ def parse_rail_alerts(disruptions):
             continue
         timespans = d.get("timespans") or []
         situation = timespans[0].get("situation") if timespans else None
+        title = d.get("title", "")
+        description = situation["label"] if situation else ""
+        # Internationale trajecten (bv. Amsterdam - München) lopen soms toevallig
+        # via een Utrecht-station, maar zijn voor deze provinciale monitor geen
+        # relevante lokale storing -- eruit filteren op verzoek.
+        if "internationale" in f"{title} {description}".lower():
+            continue
         results.append({
             "alert_id": d["id"],
             "disruption_type": d.get("type", "DISRUPTION"),
             "type_label": _TYPE_LABELS.get(d.get("type"), "Melding"),
-            "title": d.get("title", ""),
-            "description": situation["label"] if situation else "",
+            "title": title,
+            "description": description,
             "start_time": d.get("start"),
             "end_time": d.get("end"),
             "impact": (d.get("impact") or {}).get("value"),
