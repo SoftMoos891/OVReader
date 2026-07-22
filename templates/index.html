@@ -457,7 +457,7 @@ async function refreshAlerts() {
       <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
       <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}
-        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}${a.last_seen !== a.first_seen ? ` (laatste update ${fmtAlertTime(a.last_seen)})` : ''}</div>
+        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}</div>
     </div>`;
   }).join('');
 }
