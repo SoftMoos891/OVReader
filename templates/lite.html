@@ -137,17 +137,20 @@ function effectLabel(effect) {
 // effect-veld is voor veel meldingen te generiek, terwijl de vrije tekst vaak
 // wel aangeeft dat het om iets ernstigers gaat. "verstoring" bevat toevallig
 // de substring "storing", dus die moet eerder gecontroleerd worden.
-// ADDITIONAL_SERVICE ("Extra dienst") wordt door de vervoerder(s) in de
-// praktijk ook gebruikt voor urgente/onvoorziene meldingen (bv. een
-// afgesloten halte na een ongeval) i.p.v. daadwerkelijk extra dienst --
-// telt daarom altijd als ernstig, los van de tekstuele keywords.
+//
+// ADDITIONAL_SERVICE ("Extra dienst") kreeg hier ooit altijd de ernstig-badge,
+// omdat vervoerders dat effect soms voor urgente/onvoorziene meldingen
+// gebruiken i.p.v. daadwerkelijk extra dienst. In de praktijk (zie historie
+// in alerts-tabel) is verreweg de meeste ADDITIONAL_SERVICE-melding gewoon
+// een routine "halte vervalt i.v.m. Werkzaamheden/Optocht" -- geen incident.
+// De écht urgente gevallen (bv. "i.v.m. een ongeval", "Oorzaak: Stremming")
+// worden al gewoon door de keywords hieronder gedekt, dus de blanket-regel
+// gaf alleen valse ernstig-meldingen zonder iets extra's te vangen.
 const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
 function severeAlertLabel(a) {
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
-  if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
-  if (a.effect === 'ADDITIONAL_SERVICE') return 'Extra dienst';
-  return null;
+  return kw ? kw.charAt(0).toUpperCase() + kw.slice(1) : null;
 }
 
 function fmtAlertTime(ts) {
