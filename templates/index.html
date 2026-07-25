@@ -394,6 +394,12 @@ async function loadNearbyStops(tripId, marker) {
 // de toch al drukke kaart met vertragingskleuren en operator-logo's al snel
 // te veel worden. Net als loadNearbyStops() alleen opgehaald bij een klik,
 // niet standaard voor elk voertuig.
+// Kleur bewust NIET de app-accentkleur (die is blauw, zelfde tint als water/
+// wegen op de OSM-tiles en viel daardoor nauwelijks op) en ook geen van de
+// vertragingskleuren (groen/oranje/rood, dat zou verwarrend zijn met de
+// legenda). Een dikkere witte "halo" onder een felle magenta lijn geeft
+// contrast tegen elke ondergrond, ongeacht licht/donker thema van de app zelf
+// (de kaarttegels blijven altijd dezelfde OSM-stijl).
 async function loadRouteShape(routeId) {
   routeShapeLayer.clearLayers();
   if (!routeId) return;
@@ -401,7 +407,8 @@ async function loadRouteShape(routeId) {
     const res = await fetch(`/api/routes/${encodeURIComponent(routeId)}/shape`);
     const data = await res.json();
     for (const shape of data.shapes) {
-      L.polyline(shape, { color: cssVar('--accent'), weight: 4, opacity: 0.55 }).addTo(routeShapeLayer);
+      L.polyline(shape, { color: '#fff', weight: 8, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(routeShapeLayer);
+      L.polyline(shape, { color: '#d6006c', weight: 4, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }).addTo(routeShapeLayer);
     }
   } catch (e) {
     // stil negeren -- dit is een visuele extra, geen kernfunctie
