@@ -83,11 +83,13 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 }
 .dvz-logo-badge:hover { filter: brightness(0.94); }
 
-/* Officiële lijnkleur (GTFS route_color) naast een lijnnummer in tabellen --
-   los van de vertragingskleur op de kaart, die functioneel blijft. */
-.line-swatch {
-  display: inline-block; width: 10px; height: 10px; border-radius: 3px;
-  margin-right: 6px; vertical-align: middle;
+/* Officiële lijnkleur (GTFS route_color) als badge om het lijnnummer in
+   tabellen -- los van de vertragingskleur op de kaart, die functioneel
+   blijft. Achtergrond/tekstkleur komen als inline style mee (per lijn uit
+   de GTFS-feed), dit levert alleen de vorm. */
+.line-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 12px; font-weight: 700;
   border: 1px solid rgba(128, 128, 128, .35);
 }
 
