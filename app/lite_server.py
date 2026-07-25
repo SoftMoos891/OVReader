@@ -290,6 +290,7 @@ def lite_rss_uitval():
     percentage weer onder de grens zakt (of de dag omslaat) verdwijnt de
     melding vanzelf uit de eerstvolgende feed-ophaal."""
     today, per_operator = _uitval_per_operator_vandaag()
+    today_display = date.fromisoformat(today).strftime("%d-%m-%Y")
 
     items = []
     for operator, a in sorted(per_operator.items()):
@@ -299,7 +300,7 @@ def lite_rss_uitval():
         pct = 100.0 * a["canceled"] / total
         if pct <= CANCELLATION_ALERT_THRESHOLD_PCT:
             continue
-        title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today})"
+        title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today_display})"
         description = (
             f"{operator} heeft vandaag een uitvalpercentage van {pct:.1f}% "
             f"({a['canceled']} van de {total} ritten), boven de "
