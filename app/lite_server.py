@@ -303,7 +303,8 @@ def lite_rss_uitval():
         description = (
             f"{operator} heeft vandaag een uitvalpercentage van {pct:.1f}% "
             f"({a['canceled']} van de {total} ritten), boven de "
-            f"{CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%-signaleringsgrens."
+            f"{CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%-signaleringsgrens. "
+            f"Klik hier voor meer data."
         )
         items.append(f"""
     <item>
