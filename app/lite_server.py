@@ -21,7 +21,7 @@ from email.utils import format_datetime
 from xml.sax.saxutils import escape as xml_escape
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template
+from flask import Flask, Response, jsonify, render_template, request
 
 from . import db
 from .collector import FETCH_INTERVAL_SECONDS
@@ -204,17 +204,25 @@ def lite_api_alerts():
     return jsonify({"alerts": alerts, "count": len(alerts)})
 
 
-def _uitval_per_operator_vandaag():
+def _uitval_per_operator_vandaag(up_to_now=False):
     """Rauwe canceled/ran-telling per operator voor vandaag -- gedeeld door
     lite_api_uitval() en de RSS-feed hieronder, zodat er maar één plek is die
     de trip_cancellations/trips_ran_daily-query en de is_bus_route-filter
-    kent."""
+    kent.
+
+    up_to_now=True: zelfde correctie als ?up_to_now=1 op het volledige
+    /api/cancellations (server.py) -- vervoerders melden een uitgevallen rit
+    soms al ruim voordat de geplande vertrektijd is verstreken, wat het
+    percentage van de nog lopende dag omhoog scheeft (uitval hele dag vs.
+    gereden tot nu toe). Genegeerd: vervallen ritten van vandaag met een nog
+    niet verstreken start_time."""
     today = date.today().isoformat()
+    now_time_str = datetime.now().strftime("%H:%M:%S")
     conn = db.get_conn()
     try:
         canceled_rows = conn.execute(
-            "SELECT route_id, COUNT(*) AS cnt FROM trip_cancellations "
-            "WHERE service_date = ? GROUP BY route_id",
+            "SELECT route_id, start_time, COUNT(*) AS cnt FROM trip_cancellations "
+            "WHERE service_date = ? GROUP BY route_id, start_time",
             (today,),
         ).fetchall()
         ran_rows = conn.execute(
@@ -236,6 +244,8 @@ def _uitval_per_operator_vandaag():
     for r in canceled_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue
+        if up_to_now and r["start_time"] and r["start_time"] > now_time_str:
+            continue  # vooraf aangekondigde uitval voor een vertrektijd die nog moet komen
         op = per_operator.setdefault(route_meta(r["route_id"])["operator"], {"canceled": 0, "ran": 0})
         op["canceled"] += r["cnt"]
     for r in ran_rows:
@@ -252,8 +262,12 @@ def lite_api_uitval():
     Bewust geen ?range=/weekday/hour/week/month-opsplitsing zoals
     server.api_cancellations() -- dat is precies wat de lite-scope weglaat.
     Leunt op de bestaande indexen idx_cancel_date/idx_ran_date (zie app/db.py),
-    geen nieuwe index nodig."""
-    today, per_operator = _uitval_per_operator_vandaag()
+    geen nieuwe index nodig.
+
+    Optioneel ?up_to_now=1: zelfde correctie als op het volledige
+    /api/cancellations, zie _uitval_per_operator_vandaag()."""
+    up_to_now = request.args.get("up_to_now") in ("1", "true", "yes")
+    today, per_operator = _uitval_per_operator_vandaag(up_to_now=up_to_now)
     total_canceled = sum(a["canceled"] for a in per_operator.values())
     total_ran = sum(a["ran"] for a in per_operator.values())
 
@@ -272,6 +286,7 @@ def lite_api_uitval():
     total = total_canceled + total_ran
     return jsonify({
         "date": today,
+        "up_to_now": up_to_now,
         "total_canceled": total_canceled,
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
@@ -288,8 +303,12 @@ def lite_rss_uitval():
     stabiel, zodat feedlezers 'm niet als "nieuw" blijven zien zolang de dag
     en het feit dat de grens overschreden is niet veranderen. Zodra het
     percentage weer onder de grens zakt (of de dag omslaat) verdwijnt de
-    melding vanzelf uit de eerstvolgende feed-ophaal."""
-    today, per_operator = _uitval_per_operator_vandaag()
+    melding vanzelf uit de eerstvolgende feed-ophaal.
+
+    Gebruikt up_to_now=True: zonder die correctie kan een vooraf aangekondigde
+    uitval voor later vandaag het percentage al opblazen voordat de bijbehorende
+    vertrektijd is verstreken, wat een voortijdige/onterechte melding zou geven."""
+    today, per_operator = _uitval_per_operator_vandaag(up_to_now=True)
     today_display = date.fromisoformat(today).strftime("%d-%m-%Y")
 
     items = []
