@@ -16,10 +16,12 @@ utrecht_routes.json (~23 KB) in, zodat het hele proces met een fractie van
 het geheugen van de hoofd-webservice kan draaien."""
 import json
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from email.utils import format_datetime
+from xml.sax.saxutils import escape as xml_escape
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, Response, jsonify, render_template
 
 from . import db
 from .collector import FETCH_INTERVAL_SECONDS
@@ -32,6 +34,11 @@ DATA_DIR = PROJECT_ROOT / "data"
 # vast en niet instelbaar (geen ?range=-parameter zoals bij de volledige
 # /uitval-dashboard), consistent met de "basale" lite-scope.
 CHART_DAYS = 30
+
+# Vanaf welk uitvalpercentage (van vandaag, per vervoerder) de RSS-feed
+# hieronder een melding opneemt.
+CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
+LITE_BASE_URL = "https://ovreader.dvznet.nl/lite"
 
 # Zelfde definitie als app/server.py's /api/health.
 VEHICLE_FRESHNESS_SECONDS = 90
@@ -197,13 +204,11 @@ def lite_api_alerts():
     return jsonify({"alerts": alerts, "count": len(alerts)})
 
 
-@app.route("/lite/api/uitval")
-def lite_api_uitval():
-    """Basale uitvalcijfers voor vandaag: totaal + per-operator-uitsplitsing.
-    Bewust geen ?range=/weekday/hour/week/month-opsplitsing zoals
-    server.api_cancellations() -- dat is precies wat de lite-scope weglaat.
-    Leunt op de bestaande indexen idx_cancel_date/idx_ran_date (zie app/db.py),
-    geen nieuwe index nodig."""
+def _uitval_per_operator_vandaag():
+    """Rauwe canceled/ran-telling per operator voor vandaag -- gedeeld door
+    lite_api_uitval() en de RSS-feed hieronder, zodat er maar één plek is die
+    de trip_cancellations/trips_ran_daily-query en de is_bus_route-filter
+    kent."""
     today = date.today().isoformat()
     conn = db.get_conn()
     try:
@@ -228,19 +233,29 @@ def lite_api_uitval():
         conn.close()
 
     per_operator = {}
-    total_canceled = total_ran = 0
     for r in canceled_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue
         op = per_operator.setdefault(route_meta(r["route_id"])["operator"], {"canceled": 0, "ran": 0})
         op["canceled"] += r["cnt"]
-        total_canceled += r["cnt"]
     for r in ran_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue
         op = per_operator.setdefault(route_meta(r["route_id"])["operator"], {"canceled": 0, "ran": 0})
         op["ran"] += r["cnt"]
-        total_ran += r["cnt"]
+    return today, per_operator
+
+
+@app.route("/lite/api/uitval")
+def lite_api_uitval():
+    """Basale uitvalcijfers voor vandaag: totaal + per-operator-uitsplitsing.
+    Bewust geen ?range=/weekday/hour/week/month-opsplitsing zoals
+    server.api_cancellations() -- dat is precies wat de lite-scope weglaat.
+    Leunt op de bestaande indexen idx_cancel_date/idx_ran_date (zie app/db.py),
+    geen nieuwe index nodig."""
+    today, per_operator = _uitval_per_operator_vandaag()
+    total_canceled = sum(a["canceled"] for a in per_operator.values())
+    total_ran = sum(a["ran"] for a in per_operator.values())
 
     per_operator_list = [
         {
@@ -262,6 +277,53 @@ def lite_api_uitval():
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
         "per_operator": per_operator_list,
     })
+
+
+@app.route("/lite/rss.xml")
+def lite_rss_uitval():
+    """RSS-feed met één melding per vervoerder zodra het uitvalpercentage van
+    VANDAAG boven CANCELLATION_ALERT_THRESHOLD_PCT komt, met een link naar de
+    lite-pagina. Wordt bij elke request opnieuw berekend op basis van de
+    huidige stand (geen aparte opslag nodig): de guid is per vervoerder+dag
+    stabiel, zodat feedlezers 'm niet als "nieuw" blijven zien zolang de dag
+    en het feit dat de grens overschreden is niet veranderen. Zodra het
+    percentage weer onder de grens zakt (of de dag omslaat) verdwijnt de
+    melding vanzelf uit de eerstvolgende feed-ophaal."""
+    today, per_operator = _uitval_per_operator_vandaag()
+
+    items = []
+    for operator, a in sorted(per_operator.items()):
+        total = a["canceled"] + a["ran"]
+        if total == 0:
+            continue
+        pct = 100.0 * a["canceled"] / total
+        if pct <= CANCELLATION_ALERT_THRESHOLD_PCT:
+            continue
+        title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today})"
+        description = (
+            f"{operator} heeft vandaag een uitvalpercentage van {pct:.1f}% "
+            f"({a['canceled']} van de {total} ritten), boven de "
+            f"{CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%-signaleringsgrens."
+        )
+        items.append(f"""
+    <item>
+      <title>{xml_escape(title)}</title>
+      <link>{xml_escape(LITE_BASE_URL)}</link>
+      <guid isPermaLink="false">cancel-alert-{xml_escape(operator)}-{today}</guid>
+      <pubDate>{format_datetime(datetime.now(timezone.utc))}</pubDate>
+      <description>{xml_escape(description)}</description>
+    </item>""")
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>OV Utrecht - Uitval-signalering</title>
+    <link>{xml_escape(LITE_BASE_URL)}</link>
+    <description>Melding zodra het uitvalpercentage van Keolis of Transdev vandaag boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}% komt.</description>
+    <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}
+  </channel>
+</rss>"""
+    return Response(xml, mimetype="application/rss+xml")
 
 
 @app.route("/lite/api/uitval/daily")
