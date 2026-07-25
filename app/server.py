@@ -2,6 +2,7 @@
 van U-OV (Keolis en Transdev, gezamenlijke concessiehouder busvervoer
 provincie Utrecht)."""
 import hmac
+import json
 import os
 import time
 from collections import defaultdict
@@ -24,6 +25,16 @@ app = Flask(
 )
 _index = UtrechtIndex()
 _timetable = Timetable()
+
+# Vereenvoudigde routetrajecten (zie app/build_static_index.py) voor het
+# tekenen van de lijn op de kaart. Bewust alleen hier geladen (niet in
+# UtrechtIndex, dat ook door de collector wordt gebruikt) -- de collector
+# heeft hier niets aan, en lite_server.py laadt 'm om dezelfde reden als
+# utrecht_stop_times.json niet: alleen de hoofd-webservice toont de kaart.
+_ROUTE_SHAPES_PATH = PROJECT_ROOT / "data" / "utrecht_shapes.json"
+_route_shapes = (
+    json.loads(_ROUTE_SHAPES_PATH.read_text(encoding="utf-8")) if _ROUTE_SHAPES_PATH.exists() else {}
+)
 
 ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op tijd"
 ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
@@ -817,6 +828,14 @@ def api_stop_departures(stop_id):
         "departures": departures,
         "count": len(departures),
     })
+
+
+@app.route("/api/routes/<route_id>/shape")
+def api_route_shape(route_id):
+    """Vereenvoudigd routetraject (lijst van [lat,lon]-lijsten -- meestal 2:
+    heen en terug) voor het tekenen van de lijn op de kaart. Leeg als de lijn
+    geen shape_id had in de GTFS-feed of niet bestaat."""
+    return jsonify({"route_id": route_id, "shapes": _route_shapes.get(route_id, [])})
 
 
 @app.route("/api/trips/<trip_id>/nearby-stops")

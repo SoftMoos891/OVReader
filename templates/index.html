@@ -216,6 +216,7 @@ legend.onAdd = function () {
 legend.addTo(map);
 
 const vehicleLayer = L.layerGroup().addTo(map);
+const routeShapeLayer = L.layerGroup().addTo(map);
 const markers = {};
 
 // --- Filter op lijn/operator ---------------------------------------------
@@ -349,12 +350,14 @@ async function refreshVehicles() {
         markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
       }
       markers[key].setPopupContent(html);
+      markers[key].routeId = v.route_id;
       // setPopupContent zet de halte-info terug op de placeholder, ook als
       // de popup nog openstaat -- meteen opnieuw laden zodat die niet leeg
       // blijft staan totdat je 'm sluit en opnieuw opent.
       if (markers[key].isPopupOpen()) loadNearbyStops(v.trip_id, markers[key]);
     } else {
       const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
+      m.routeId = v.route_id;
       vehicleLayer.addLayer(m);
       markers[key] = m;
     }
@@ -386,12 +389,39 @@ async function loadNearbyStops(tripId, marker) {
     if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';
   }
 }
+// Vereenvoudigd routetraject (zie app/build_static_index.py) getekend als
+// vaste, neutrale lijn -- bewust niet in de officiële lijnkleur: dat zou op
+// de toch al drukke kaart met vertragingskleuren en operator-logo's al snel
+// te veel worden. Net als loadNearbyStops() alleen opgehaald bij een klik,
+// niet standaard voor elk voertuig.
+async function loadRouteShape(routeId) {
+  routeShapeLayer.clearLayers();
+  if (!routeId) return;
+  try {
+    const res = await fetch(`/api/routes/${encodeURIComponent(routeId)}/shape`);
+    const data = await res.json();
+    for (const shape of data.shapes) {
+      L.polyline(shape, { color: cssVar('--accent'), weight: 4, opacity: 0.55 }).addTo(routeShapeLayer);
+    }
+  } catch (e) {
+    // stil negeren -- dit is een visuele extra, geen kernfunctie
+  }
+}
+
 map.on('popupopen', (e) => {
   const el = e.popup.getElement()?.querySelector('.veh-stops');
   const tripId = el?.dataset.tripId;
   if (!tripId) return;
   const marker = Object.values(markers).find(m => m.getPopup() === e.popup);
-  if (marker) loadNearbyStops(tripId, marker);
+  if (marker) {
+    loadNearbyStops(tripId, marker);
+    loadRouteShape(marker.routeId);
+  }
+});
+map.on('popupclose', (e) => {
+  const el = e.popup.getElement()?.querySelector('.veh-stops');
+  if (!el) return;  // niet elke popup op deze kaart is een voertuig-popup (bv. haltezoeker-marker)
+  routeShapeLayer.clearLayers();
 });
 
 // Sommige meldingen dragen een generiek effect (OTHER_EFFECT/UNKNOWN_EFFECT

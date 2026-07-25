@@ -17,6 +17,7 @@ bij te houden; de statische feed zelf verandert niet elke minuut.
 import csv
 import io
 import json
+import math
 import sys
 import zipfile
 from pathlib import Path
@@ -34,6 +35,13 @@ OUT_TRIPS = DATA_DIR / "utrecht_trips.json"
 OUT_CALENDAR = DATA_DIR / "utrecht_calendar.json"
 OUT_TRIP_META = DATA_DIR / "utrecht_trip_meta.json"
 OUT_STOP_TIMES = DATA_DIR / "utrecht_stop_times.json"
+OUT_SHAPES = DATA_DIR / "utrecht_shapes.json"
+
+# Tolerantie voor de Ramer-Douglas-Peucker-vereenvoudiging van routelijnen,
+# in graden (~0.00005 graden is ~5m op deze breedtegraad) -- ver onder wat op
+# een kaart nog zichtbaar verschil maakt, maar scheelt in de praktijk ~80% van
+# de punten (785k -> 165k voor heel U-OV).
+SHAPE_SIMPLIFY_TOLERANCE_DEGREES = 0.00005
 
 WEEKDAY_FIELDS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -96,9 +104,15 @@ def load_agency_name(zf):
 def find_trips_for_routes(zf, route_ids):
     """Filtert trips.txt op de gevonden U-OV buslijnen. Geeft naast de simpele
     trip->route-mapping (gebruikt door de realtime-fetchers) ook trip_meta
-    terug (service_id + headsign, gebruikt door de haltezoeker/dienstregeling)."""
+    terug (service_id + headsign, gebruikt door de haltezoeker/dienstregeling).
+
+    shape_id/direction_id gaan niet in trip_meta (die blijft klein en wordt
+    per trip opgevraagd): ze worden hier apart geteld zodat
+    find_dominant_shapes() alleen de meest gebruikte shape per lijn+richting
+    hoeft te bewaren, niet elke shape_id per trip."""
     trip_to_route = {}
     trip_meta = {}
+    shape_counts = {}  # (route_id, direction_id) -> {shape_id: aantal trips}
     with zf.open("trips.txt") as f:
         reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
         for row in reader:
@@ -109,7 +123,79 @@ def find_trips_for_routes(zf, route_ids):
                     "service_id": row.get("service_id", ""),
                     "headsign": row.get("trip_headsign", ""),
                 }
-    return trip_to_route, trip_meta
+                shape_id = row.get("shape_id")
+                if shape_id:
+                    key = (row["route_id"], row.get("direction_id", ""))
+                    counts = shape_counts.setdefault(key, {})
+                    counts[shape_id] = counts.get(shape_id, 0) + 1
+    return trip_to_route, trip_meta, shape_counts
+
+
+def find_dominant_shapes(shape_counts):
+    """Kiest per (lijn, richting) de shape_id die door de meeste trips wordt
+    gebruikt -- dat is in de praktijk het 'normale' tracé; zeldzame
+    omleidingsvarianten met een eigen shape_id (soms tientallen per lijn,
+    bv. na dienstregelingswijzigingen) vallen zo weg. Geeft terug:
+    route_id -> lijst met unieke shape_id's (meestal 1-2: heen en terug)."""
+    route_shapes = {}
+    for (route_id, _direction), counts in shape_counts.items():
+        dominant_shape = max(counts.items(), key=lambda kv: kv[1])[0]
+        route_shapes.setdefault(route_id, [])
+        if dominant_shape not in route_shapes[route_id]:
+            route_shapes[route_id].append(dominant_shape)
+    return route_shapes
+
+
+def _rdp_simplify(points, epsilon):
+    """Ramer-Douglas-Peucker, in pure Python (geen extra geo-dependency,
+    zelfde aanpak als de handmatige point-in-polygon-check in
+    ns_rail_alerts.py). points is een lijst van (lat, lon)-tuples."""
+    if len(points) < 3:
+        return points
+
+    def perp_distance(pt, start, end):
+        if start == end:
+            return math.hypot(pt[0] - start[0], pt[1] - start[1])
+        x1, y1 = start
+        x2, y2 = end
+        x0, y0 = pt
+        num = abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1)
+        den = math.hypot(y2 - y1, x2 - x1)
+        return num / den
+
+    max_dist, max_idx = 0.0, 0
+    for i in range(1, len(points) - 1):
+        d = perp_distance(points[i], points[0], points[-1])
+        if d > max_dist:
+            max_dist, max_idx = d, i
+
+    if max_dist > epsilon:
+        left = _rdp_simplify(points[:max_idx + 1], epsilon)
+        right = _rdp_simplify(points[max_idx:], epsilon)
+        return left[:-1] + right
+    return [points[0], points[-1]]
+
+
+def load_and_simplify_shapes(zf, shape_ids):
+    """Leest shapes.txt (landelijk, dus wederom een groot bestand), beperkt
+    tot de gevraagde shape_ids, en vereenvoudigt elke shape met RDP -- zie
+    SHAPE_SIMPLIFY_TOLERANCE_DEGREES."""
+    raw = {}
+    with zf.open("shapes.txt") as f:
+        reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
+        for row in reader:
+            sid = row["shape_id"]
+            if sid not in shape_ids:
+                continue
+            raw.setdefault(sid, []).append(
+                (int(row["shape_pt_sequence"]), float(row["shape_pt_lat"]), float(row["shape_pt_lon"]))
+            )
+
+    simplified = {}
+    for sid, pts in raw.items():
+        ordered = [(lat, lon) for _seq, lat, lon in sorted(pts)]
+        simplified[sid] = _rdp_simplify(ordered, SHAPE_SIMPLIFY_TOLERANCE_DEGREES)
+    return simplified
 
 
 def find_calendar_for_services(zf, service_ids):
@@ -209,7 +295,7 @@ def main():
             r["agency_name"] = agency_name
         log(f"{len(routes)} U-OV lijnen gevonden (bus + tram).")
 
-        trip_to_route, trip_meta = find_trips_for_routes(zf, set(routes))
+        trip_to_route, trip_meta, shape_counts = find_trips_for_routes(zf, set(routes))
         log(f"{len(trip_to_route):,} trips gevonden voor deze lijnen.")
 
         service_ids = {m["service_id"] for m in trip_meta.values() if m["service_id"]}
@@ -220,6 +306,17 @@ def main():
         stop_ids, stop_times_by_stop = find_stop_times_for_trips(zf, set(trip_to_route))
         stop_info = load_stop_info(zf, stop_ids)
         log(f"{len(stop_info):,} haltes gevonden, {sum(len(v) for v in stop_times_by_stop.values()):,} halte-tijden.")
+
+        route_shapes = find_dominant_shapes(shape_counts)
+        needed_shape_ids = {sid for shapes in route_shapes.values() for sid in shapes}
+        log(f"Bepaal {len(needed_shape_ids)} dominante routetraject(en) (van {sum(len(c) for c in shape_counts.values())} totaal) en vereenvoudig ze...")
+        simplified_shapes = load_and_simplify_shapes(zf, needed_shape_ids)
+        route_shape_points = {
+            route_id: [simplified_shapes[sid] for sid in shape_ids if sid in simplified_shapes]
+            for route_id, shape_ids in route_shapes.items()
+        }
+        total_points = sum(len(s) for shapes in route_shape_points.values() for s in shapes)
+        log(f"Routetrajecten vereenvoudigd: {total_points:,} punten voor {len(route_shape_points)} lijnen.")
 
     line_names = sorted({r["short_name"] for r in routes.values()}, key=lambda s: (len(s), s))
     log(f"Lijnnummers ({len(line_names)}): {', '.join(line_names)}")
@@ -245,9 +342,10 @@ def main():
     OUT_CALENDAR.write_text(json.dumps(calendar, ensure_ascii=False), encoding="utf-8")
     OUT_TRIP_META.write_text(json.dumps(trip_meta, ensure_ascii=False), encoding="utf-8")
     OUT_STOP_TIMES.write_text(json.dumps(stop_times_by_stop, ensure_ascii=False), encoding="utf-8")
+    OUT_SHAPES.write_text(json.dumps(route_shape_points, ensure_ascii=False), encoding="utf-8")
     log(
         f"Weggeschreven: {OUT_STOPS.name}, {OUT_ROUTES.name}, {OUT_TRIPS.name}, "
-        f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}"
+        f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, {OUT_SHAPES.name}"
     )
 
 
