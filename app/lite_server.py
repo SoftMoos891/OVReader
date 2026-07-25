@@ -145,10 +145,9 @@ def lite_api_health():
     })
 
 
-@app.route("/lite/api/rail-alerts")
-def lite_api_rail_alerts():
-    """Zelfde vorm als het volledige /api/rail-alerts in app/server.py --
-    storingen op het spoor (NS) binnen de provincie Utrecht."""
+def _active_rail_alerts():
+    """Actieve NS-spoorstoringen (provincie Utrecht) -- gedeeld door
+    lite_api_rail_alerts() en de RSS-feed hieronder."""
     conn = db.get_conn()
     try:
         rows = conn.execute(
@@ -156,7 +155,7 @@ def lite_api_rail_alerts():
         ).fetchall()
     finally:
         conn.close()
-    alerts = [
+    return [
         {
             "alert_id": r["alert_id"],
             "disruption_type": r["disruption_type"],
@@ -172,6 +171,13 @@ def lite_api_rail_alerts():
         }
         for r in rows
     ]
+
+
+@app.route("/lite/api/rail-alerts")
+def lite_api_rail_alerts():
+    """Zelfde vorm als het volledige /api/rail-alerts in app/server.py --
+    storingen op het spoor (NS) binnen de provincie Utrecht."""
+    alerts = _active_rail_alerts()
     return jsonify({"alerts": alerts, "count": len(alerts)})
 
 
@@ -296,18 +302,23 @@ def lite_api_uitval():
 
 @app.route("/lite/rss.xml")
 def lite_rss_uitval():
-    """RSS-feed met één melding per vervoerder zodra het uitvalpercentage van
-    VANDAAG boven CANCELLATION_ALERT_THRESHOLD_PCT komt, met een link naar de
-    lite-pagina. Wordt bij elke request opnieuw berekend op basis van de
-    huidige stand (geen aparte opslag nodig): de guid is per vervoerder+dag
-    stabiel, zodat feedlezers 'm niet als "nieuw" blijven zien zolang de dag
-    en het feit dat de grens overschreden is niet veranderen. Zodra het
-    percentage weer onder de grens zakt (of de dag omslaat) verdwijnt de
-    melding vanzelf uit de eerstvolgende feed-ophaal.
+    """RSS-feed met twee soorten meldingen, allebei linkend naar de lite-pagina:
 
-    Gebruikt up_to_now=True: zonder die correctie kan een vooraf aangekondigde
-    uitval voor later vandaag het percentage al opblazen voordat de bijbehorende
-    vertrektijd is verstreken, wat een voortijdige/onterechte melding zou geven."""
+    1. Eén melding per vervoerder zodra het uitvalpercentage van VANDAAG
+       boven CANCELLATION_ALERT_THRESHOLD_PCT komt. Wordt bij elke request
+       opnieuw berekend op basis van de huidige stand (geen aparte opslag
+       nodig): de guid is per vervoerder+dag stabiel, zodat feedlezers 'm
+       niet als "nieuw" blijven zien zolang de dag en het feit dat de grens
+       overschreden is niet veranderen. Zodra het percentage weer onder de
+       grens zakt (of de dag omslaat) verdwijnt de melding vanzelf uit de
+       eerstvolgende feed-ophaal. Gebruikt up_to_now=True: zonder die
+       correctie kan een vooraf aangekondigde uitval voor later vandaag het
+       percentage al opblazen voordat de bijbehorende vertrektijd is
+       verstreken, wat een voortijdige/onterechte melding zou geven.
+
+    2. Eén melding per actieve NS-spoorstoring (provincie Utrecht) -- guid is
+       het alert_id zelf, dus stabiel zolang de storing actief blijft en
+       vanzelf weg zodra 'm niet meer in _active_rail_alerts() voorkomt."""
     today, per_operator = _uitval_per_operator_vandaag(up_to_now=True)
     today_display = date.fromisoformat(today).strftime("%d-%m-%Y")
 
@@ -335,12 +346,26 @@ def lite_rss_uitval():
       <description>{xml_escape(description)}</description>
     </item>""")
 
+    for a in _active_rail_alerts():
+        title = f"NS-storing ({a['type_label']}): {a['title']}"
+        stations = ", ".join(a["stations"]) or "onbekend station"
+        description = f"{a['description'] or a['title']} Getroffen station(s): {stations}. Klik hier voor meer data."
+        pub_date = datetime.fromtimestamp(a["first_seen"], tz=timezone.utc)
+        items.append(f"""
+    <item>
+      <title>{xml_escape(title)}</title>
+      <link>{xml_escape(LITE_BASE_URL)}</link>
+      <guid isPermaLink="false">rail-alert-{xml_escape(a['alert_id'])}</guid>
+      <pubDate>{format_datetime(pub_date)}</pubDate>
+      <description>{xml_escape(description)}</description>
+    </item>""")
+
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>OV Utrecht - Uitval-signalering</title>
+    <title>OV Utrecht - Storingen en uitval-signalering</title>
     <link>{xml_escape(LITE_BASE_URL)}</link>
-    <description>Melding zodra het uitvalpercentage van Keolis of Transdev vandaag boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}% komt.</description>
+    <description>Melding zodra het uitvalpercentage van Keolis of Transdev vandaag boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}% komt, en bij actieve NS-storingen op het spoor in de provincie Utrecht.</description>
     <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}
   </channel>
 </rss>"""
