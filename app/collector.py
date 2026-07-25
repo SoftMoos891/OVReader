@@ -141,12 +141,12 @@ def collect_once():
                 conn.execute(
                     """INSERT INTO alerts
                        (alert_id, first_seen, last_seen, route_ids, header, description, effect,
-                        valid_from, valid_until, active)
+                        cause, valid_from, valid_until, active)
                        VALUES (:alert_id, :now, :now, :route_ids, :header, :description, :effect,
-                               :valid_from, :valid_until, 1)
+                               :cause, :valid_from, :valid_until, 1)
                        ON CONFLICT(alert_id) DO UPDATE SET
                            last_seen=:now, route_ids=:route_ids, header=:header,
-                           description=:description, effect=:effect,
+                           description=:description, effect=:effect, cause=:cause,
                            valid_from=:valid_from, valid_until=:valid_until, active=1""",
                     {
                         "alert_id": a["alert_id"],
@@ -155,6 +155,7 @@ def collect_once():
                         "header": a["header"],
                         "description": a["description"],
                         "effect": a["effect"],
+                        "cause": a["cause"],
                         "valid_from": a["valid_from"],
                         "valid_until": a["valid_until"],
                     },

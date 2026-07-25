@@ -203,6 +203,18 @@ _EFFECT_NAMES = {
     9: "NO_EFFECT", 10: "ACCESSIBILITY_ISSUE",
 }
 
+# GTFS-RT Alert.Cause -- los van effect (dat zegt iets over het GEVOLG voor
+# de dienst, bv. "Omleiding"); cause zegt iets over de OORZAAK. Vervoerders
+# vullen dit veld lang niet altijd betrouwbaar (in de praktijk is UNKNOWN_CAUSE
+# verreweg het vaakst voorkomend), maar als het wel gezet is (bv.
+# POLICE_ACTIVITY) is dat een sterker signaal dan tekst-keywords zoeken.
+_CAUSE_NAMES = {
+    1: "UNKNOWN_CAUSE", 2: "OTHER_CAUSE", 3: "TECHNICAL_PROBLEM",
+    4: "STRIKE", 5: "DEMONSTRATION", 6: "ACCIDENT", 7: "HOLIDAY",
+    8: "WEATHER", 9: "MAINTENANCE", 10: "CONSTRUCTION",
+    11: "POLICE_ACTIVITY", 12: "MEDICAL_EMERGENCY",
+}
+
 
 def fetch_alerts(index: UtrechtIndex):
     """Geeft lijst van dicts terug met actuele storingen/meldingen binnen Utrecht."""
@@ -247,6 +259,7 @@ def fetch_alerts(index: UtrechtIndex):
             "header": best_text(alert.header_text),
             "description": best_text(alert.description_text),
             "effect": _EFFECT_NAMES.get(alert.effect, "UNKNOWN_EFFECT"),
+            "cause": _CAUSE_NAMES.get(alert.cause, "UNKNOWN_CAUSE"),
             "valid_from": valid_from,
             "valid_until": valid_until,
         })

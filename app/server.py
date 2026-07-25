@@ -349,6 +349,7 @@ def api_alerts():
             "header": r["header"],
             "description": r["description"],
             "effect": r["effect"],
+            "cause": r["cause"],
             "routes": [route_meta(rid) for rid in route_ids],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],

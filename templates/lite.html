@@ -152,10 +152,20 @@ function effectLabel(effect) {
 // worden al gewoon door de keywords hieronder gedekt, dus de blanket-regel
 // gaf alleen valse ernstig-meldingen zonder iets extra's te vangen.
 const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
+// GTFS-RT Alert.cause is een betrouwbaarder signaal dan tekst-keywords als
+// de vervoerder het daadwerkelijk vult (vaak UNKNOWN_CAUSE, maar als het wel
+// gezet is telt het). Alleen de ondubbelzinnig urgente oorzaken; MAINTENANCE/
+// CONSTRUCTION/HOLIDAY/WEATHER/TECHNICAL_PROBLEM blijven bewust buiten deze
+// lijst -- dat zijn vaak routine meldingen, geen incidenten.
+const SEVERE_CAUSE_LABELS = {
+  ACCIDENT: 'Ongeval', POLICE_ACTIVITY: 'Politie', MEDICAL_EMERGENCY: 'Medisch noodgeval',
+  DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
+};
 function severeAlertLabel(a) {
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
-  return kw ? kw.charAt(0).toUpperCase() + kw.slice(1) : null;
+  if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
+  return SEVERE_CAUSE_LABELS[a.cause] || null;
 }
 
 function fmtAlertTime(ts) {

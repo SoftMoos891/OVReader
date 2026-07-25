@@ -57,7 +57,11 @@ CREATE TABLE IF NOT EXISTS alerts (
     -- toekomst liggen (nog te beginnen werkzaamheden) of ruimer zijn dan de
     -- periode waarin de melding actief=1 stond.
     valid_from INTEGER,
-    valid_until INTEGER
+    valid_until INTEGER,
+    -- GTFS-RT Alert.cause (bv. ACCIDENT/POLICE_ACTIVITY/MEDICAL_EMERGENCY) --
+    -- betrouwbaarder signaal voor de ernstig-badge dan tekst-keywords, als
+    -- de vervoerder het veld daadwerkelijk vult (vaak UNKNOWN_CAUSE).
+    cause TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rail_alerts (
@@ -210,6 +214,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE alerts ADD COLUMN valid_from INTEGER")
     if "valid_until" not in alert_cols:
         conn.execute("ALTER TABLE alerts ADD COLUMN valid_until INTEGER")
+    if "cause" not in alert_cols:
+        conn.execute("ALTER TABLE alerts ADD COLUMN cause TEXT")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook
