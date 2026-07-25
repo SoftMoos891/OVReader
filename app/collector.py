@@ -39,6 +39,23 @@ ON_TIME_MAX_DELAY = 180
 # RSS-melding wordt vastgelegd (zie check_cancellation_alerts_job()).
 CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
 
+# Zelfde ernst-detectie als severeAlertLabel() in templates/index.html en
+# lite.html (JS) -- hier geport naar Python zodat de RSS-feed ook zonder
+# browser kan bepalen welke U-OV-meldingen (bus/tram) "ernstig" zijn.
+# Bewust in sync houden met de JS-versie als die wijzigt.
+SEVERE_ALERT_KEYWORDS = [
+    "stremming", "verstoring", "storing", "brand", "hulpdiensten", "politie",
+    "ongeval", "aanrijding", "ambulance", "gewonde", "calamiteit",
+]
+SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMONSTRATION", "STRIKE"}
+
+
+def _is_severe_alert(header, description, cause):
+    text = f"{header or ''} {description or ''}".lower()
+    if any(kw in text for kw in SEVERE_ALERT_KEYWORDS):
+        return True
+    return cause in SEVERE_ALERT_CAUSES
+
 _index = None
 
 
@@ -160,6 +177,25 @@ def collect_once():
                         "valid_until": a["valid_until"],
                     },
                 )
+                # Permanente RSS-melding voor ernstige U-OV-meldingen (bus/tram),
+                # zelfde log-i.p.v.-live-status-redenering als bij de NS- en
+                # uitval-meldingen: eenmalig vastgelegd bij eerste constatering
+                # (INSERT OR IGNORE op alert_id), blijft staan ook nadat de
+                # melding zelf weer inactief wordt.
+                if _is_severe_alert(a["header"], a["description"], a["cause"]):
+                    title = f"Melding U-OV: {a['header'] or (a['description'] or '')[:80] or 'zie details'}"
+                    description = f"{a['description'] or a['header'] or ''} Klik hier voor meer data.".strip()
+                    conn.execute(
+                        """INSERT OR IGNORE INTO rss_feed_items
+                           (guid, kind, title, description, pub_date, created_at)
+                           VALUES (:guid, 'bus_alert', :title, :description, :now, :now)""",
+                        {
+                            "guid": f"bus-alert-{a['alert_id']}",
+                            "title": title,
+                            "description": description,
+                            "now": fetched_at,
+                        },
+                    )
             if seen_ids:
                 placeholders = ",".join("?" * len(seen_ids))
                 conn.execute(

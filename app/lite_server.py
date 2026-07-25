@@ -309,14 +309,17 @@ RSS_FEED_ITEM_LIMIT = 100
 
 @app.route("/lite/rss.xml")
 def lite_rss_uitval():
-    """RSS-feed met de geschiedenis van twee soorten meldingen, allebei
+    """RSS-feed met de geschiedenis van drie soorten meldingen, allemaal
     linkend naar de lite-pagina: uitval boven CANCELLATION_ALERT_THRESHOLD_PCT
-    per vervoerder, en nieuwe NS-spoorstoringen (provincie Utrecht). Beide
-    worden vastgelegd door de collector zodra ze zich voordoen (zie
-    check_cancellation_alerts_job()/fetch_rail_alerts_job() in collector.py)
-    en blijven daarna in de feed staan -- dit is bewust een LOG van
-    gebeurtenissen, geen weerspiegeling van de actuele live-status. Een
-    melding verdwijnt dus niet vanzelf zodra de situatie weer normaal is."""
+    per vervoerder, nieuwe NS-spoorstoringen (provincie Utrecht), en ernstige
+    U-OV-meldingen (bus/tram -- zelfde ernst-detectie als de rode badge op
+    het dashboard, zie _is_severe_alert() in collector.py). Alle drie worden
+    vastgelegd door de collector zodra ze zich voordoen (zie
+    check_cancellation_alerts_job()/fetch_rail_alerts_job()/de alerts-sync in
+    collect_once(), allemaal in collector.py) en blijven daarna in de feed
+    staan -- dit is bewust een LOG van gebeurtenissen, geen weerspiegeling
+    van de actuele live-status. Een melding verdwijnt dus niet vanzelf zodra
+    de situatie weer normaal is."""
     conn = db.get_conn()
     try:
         rows = conn.execute(
@@ -340,7 +343,7 @@ def lite_rss_uitval():
   <channel>
     <title>OV Utrecht - Storingen en uitval-signalering</title>
     <link>{xml_escape(LITE_BASE_URL)}</link>
-    <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, en bij nieuwe NS-storingen op het spoor in de provincie Utrecht.</description>
+    <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, bij nieuwe NS-storingen op het spoor in de provincie Utrecht, en bij ernstige U-OV-meldingen (bus/tram).</description>
     <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}
   </channel>
 </rss>"""
