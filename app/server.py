@@ -124,6 +124,11 @@ def route_meta(route_id):
         "long_name": r.get("long_name", ""),
         "agency_name": r.get("agency_name", "?"),
         "operator": r.get("operator", "Onbekend"),
+        # Officiële merkkleur van de lijn (hex zonder '#', zoals in de GTFS-
+        # feed) -- los van de vertragingskleur op de kaart, die functioneel
+        # blijft (status i.p.v. lijnidentiteit).
+        "color": r.get("color") or None,
+        "text_color": r.get("text_color") or None,
     }
 
 

@@ -75,6 +75,11 @@ def find_uov_routes(zf):
                     "short_name": row.get("route_short_name", ""),
                     "long_name": row.get("route_long_name", ""),
                     "route_type": row.get("route_type", ""),
+                    # Officiële merkkleur van de lijn (hex zonder '#'), voor
+                    # een kleurherkenbare weergave los van de vertragingskleur
+                    # op de kaart. Leeg als de feed 'm niet meegeeft.
+                    "color": row.get("route_color", ""),
+                    "text_color": row.get("route_text_color", ""),
                 }
     return routes
 

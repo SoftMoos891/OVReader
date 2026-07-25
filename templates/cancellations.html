@@ -505,7 +505,7 @@ function renderRouteTable() {
       ${col('short_name', 'Lijn')}${col('operator', 'Operator')}${col('canceled', 'Uitgevallen')}${col('ran', 'Gereden')}${col('cancellation_pct', '%')}
     </tr>` +
     rows.map(r => `<tr class="clickable" data-route-id="${r.route_id}">
-      <td>${r.short_name}</td>
+      <td><span class="line-swatch" style="background:#${r.color || 'ccc'};" title="Officiële lijnkleur"></span>${r.short_name}</td>
       <td>${r.operator}</td>
       <td>${r.canceled}</td>
       <td>${r.ran}</td>

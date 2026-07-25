@@ -547,7 +547,7 @@ async function refreshStats() {
     rt.innerHTML = '<table><tr><th></th><th>Lijn</th><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th><th>Max vertr.</th><th>Metingen</th></tr>' +
       rows.map(r => `<tr>
         <td><span class="fav-star ${favs.has(r.route_id) ? 'active' : ''}" data-route-id="${r.route_id}">★</span></td>
-        <td>${r.short_name}</td>
+        <td><span class="line-swatch" style="background:#${r.color || 'ccc'};" title="Officiële lijnkleur"></span>${r.short_name}</td>
         <td>${r.operator}</td>
         <td><span class="pill ${pillClass(r.on_time_pct)}">${r.on_time_pct}%</span></td>
         <td>${Math.round(r.avg_delay_seconds)}s</td>
