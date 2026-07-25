@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>OV Utrecht — storingsgeschiedenis</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: center; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a.nav-btn.push-right { margin-left: auto; }
+  header a.nav-btn { background: var(--accent); color: #fff; font-weight: 600;
+                     text-decoration: none; padding: 7px 16px; border-radius: 6px; font-size: 13px;
+                     white-space: nowrap; transition: filter .15s; }
+  header a.nav-btn:hover { filter: brightness(1.08); }
+  main { padding: 20px; max-width: 900px; margin: 0 auto; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 16px 18px; margin-bottom: 20px; }
+  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+                 color: var(--muted); margin: 0 0 4px; }
+  .section .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .pill.cancellation { background: var(--bad-bg); color: var(--bad); }
+  .pill.rail_alert { background: var(--warn-bg); color: var(--warn); }
+  .pill.bus_alert { background: var(--bad-bg); color: var(--bad); }
+  .history-item { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .history-item:last-child { border-bottom: none; }
+  .history-item .hdr { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+  .history-item .title { font-weight: 600; }
+  .history-item .date { color: var(--muted); font-size: 11px; font-family: 'IBM Plex Mono', monospace; margin-left: auto; white-space: nowrap; }
+  .history-item .desc { color: var(--muted); overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <a href="https://ovreader.dvznet.nl/lite" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
+  <h1>Storingsgeschiedenis</h1>
+  <span class="sub">Log van uitval-signaleringen, NS-storingen en ernstige U-OV-meldingen — dezelfde inhoud als de RSS-feed</span>
+  <a href="/lite" class="nav-btn push-right">&larr; Actueel</a>
+  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+</header>
+
+<main>
+  <div class="section">
+    <h2>Geschiedenis<span id="history-count"></span></h2>
+    <div class="sub">Laatste {{ limit }} meldingen — zelfde log als <code>/lite/rss.xml</code>, blijft staan ook nadat een situatie weer normaal is</div>
+    <div id="history"><div class="empty">Laden...</div></div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  Copyright (c) 2026 DVZNET - Alle rechten voorbehouden &bull; Brondata door OVapi/NDOV Loket en NS API &bull; Locatieinformatie via GTFS
+</footer>
+
+<script>
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+}
+
+const KIND_LABELS = { cancellation: 'Uitval', rail_alert: 'NS-storing', bus_alert: 'U-OV-melding' };
+
+function fmtDateTime(ts) {
+  return new Date(ts * 1000).toLocaleString('nl-NL', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+async function loadHistory() {
+  const el = document.getElementById('history');
+  try {
+    const res = await fetch('/lite/api/geschiedenis');
+    const data = await res.json();
+    document.getElementById('history-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+    if (data.count === 0) {
+      el.innerHTML = '<div class="empty">Nog geen meldingen vastgelegd</div>';
+      return;
+    }
+    el.innerHTML = data.items.map(item => `
+      <div class="history-item">
+        <div class="hdr">
+          <span class="pill ${item.kind}">${item.kind_label}</span>
+          <span class="title">${item.title}</span>
+          <span class="date">${fmtDateTime(item.pub_date)}</span>
+        </div>
+        <div class="desc">${item.description}</div>
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="empty">Kan geschiedenis niet ophalen.</div>';
+  }
+}
+
+loadHistory();
+</script>
+</body>
+</html>

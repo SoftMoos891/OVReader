@@ -97,6 +97,50 @@ def lite_index():
     return render_template("lite.html")
 
 
+@app.route("/lite/geschiedenis")
+def lite_geschiedenis():
+    return render_template("lite_geschiedenis.html", limit=HISTORY_ITEM_LIMIT)
+
+
+# Mensleesbare labels voor rss_feed_items.kind (zie collector.py:
+# check_cancellation_alerts_job()/fetch_rail_alerts_job()/de alerts-sync in
+# collect_once() -- dit zijn de enige drie 'kind'-waarden die worden
+# weggeschreven).
+_HISTORY_KIND_LABELS = {
+    "cancellation": "Uitval",
+    "rail_alert": "NS-storing",
+    "bus_alert": "U-OV-melding",
+}
+HISTORY_ITEM_LIMIT = 200
+
+
+@app.route("/lite/api/geschiedenis")
+def lite_api_geschiedenis():
+    """Mensleesbare versie van de RSS-feed (/lite/rss.xml): dezelfde
+    permanente log uit rss_feed_items, voor wie geen RSS-lezer gebruikt.
+    Iets ruimer gelimiteerd dan de feed zelf (die is bewust compact
+    gehouden) -- dit is een geschiedenispagina, geen actuele feed."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM rss_feed_items ORDER BY pub_date DESC LIMIT ?",
+            (HISTORY_ITEM_LIMIT,),
+        ).fetchall()
+    finally:
+        conn.close()
+    items = [
+        {
+            "kind": r["kind"],
+            "kind_label": _HISTORY_KIND_LABELS.get(r["kind"], r["kind"]),
+            "title": r["title"],
+            "description": r["description"],
+            "pub_date": r["pub_date"],
+        }
+        for r in rows
+    ]
+    return jsonify({"items": items, "count": len(items)})
+
+
 @app.route("/lite/api/health")
 def lite_api_health():
     """Zelfde vorm en logica als het volledige /api/health in app/server.py,
