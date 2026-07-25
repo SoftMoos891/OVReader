@@ -143,6 +143,14 @@
     </div>
   </div>
 
+  <div class="panel">
+    <h2>Vaak overgeslagen haltes</h2>
+    <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">
+      Rit rijdt door zonder bij deze halte te stoppen (GTFS-RT "SKIPPED") — los van complete rit-uitval hierboven. Op basis van de gekozen periode hierboven.
+    </div>
+    <div class="table-scroll" id="skipped-stops-table"><div class="empty">Laden...</div></div>
+  </div>
+
   <div class="grid2">
     <div class="panel">
       <h2>Uitval per week — per vervoerder</h2>
@@ -347,6 +355,23 @@ async function loadAll() {
   populateAgencyFilter();
   tripPage = 0;
   loadTrips();
+  loadSkippedStops();
+}
+
+async function loadSkippedStops() {
+  const el = document.getElementById('skipped-stops-table');
+  const res = await fetch(`/api/skipped-stops?range=${currentRange}`);
+  const data = await res.json();
+  if (data.items.length === 0) {
+    el.innerHTML = '<div class="empty">Geen overgeslagen haltes in deze periode</div>';
+    return;
+  }
+  el.innerHTML = '<table><tr><th>Halte</th><th>Keer overgeslagen</th><th>Lijnen</th></tr>' +
+    data.items.map(it => `<tr>
+      <td>${it.stop_name}</td>
+      <td>${it.count}</td>
+      <td>${it.routes.map(([name, cnt]) => `${name} (${cnt}x)`).join(', ')}</td>
+    </tr>`).join('') + '</table>';
 }
 
 // Klein delta-regeltje onder een KPI-waarde: verschil t.o.v. de vorige

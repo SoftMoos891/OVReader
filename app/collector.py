@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
 from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
-    parse_trip_delays, parse_cancellations, fetch_alerts,
+    parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
 )
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
 
@@ -110,15 +110,41 @@ def collect_once():
             traceback.print_exc()
 
         try:
+            skipped = parse_skipped_stops(trip_updates_feed, _index) if trip_updates_feed is not None else []
+            for s in skipped:
+                service_date = s["service_date"] or time.strftime("%Y-%m-%d", time.localtime(fetched_at))
+                conn.execute(
+                    """INSERT INTO skipped_stops
+                       (trip_id, service_date, route_id, stop_id, stop_sequence, first_seen, last_seen)
+                       VALUES (:trip_id, :service_date, :route_id, :stop_id, :stop_sequence, :now, :now)
+                       ON CONFLICT(trip_id, service_date, stop_id) DO UPDATE SET last_seen=:now""",
+                    {
+                        "trip_id": s["trip_id"],
+                        "service_date": service_date,
+                        "route_id": s["route_id"],
+                        "stop_id": s["stop_id"],
+                        "stop_sequence": s["stop_sequence"],
+                        "now": fetched_at,
+                    },
+                )
+        except Exception:
+            print("[collector] fout bij verwerken overgeslagen haltes:")
+            traceback.print_exc()
+
+        try:
             alerts = fetch_alerts(_index)
             seen_ids = [a["alert_id"] for a in alerts]
             for a in alerts:
                 conn.execute(
-                    """INSERT INTO alerts (alert_id, first_seen, last_seen, route_ids, header, description, effect, active)
-                       VALUES (:alert_id, :now, :now, :route_ids, :header, :description, :effect, 1)
+                    """INSERT INTO alerts
+                       (alert_id, first_seen, last_seen, route_ids, header, description, effect,
+                        valid_from, valid_until, active)
+                       VALUES (:alert_id, :now, :now, :route_ids, :header, :description, :effect,
+                               :valid_from, :valid_until, 1)
                        ON CONFLICT(alert_id) DO UPDATE SET
                            last_seen=:now, route_ids=:route_ids, header=:header,
-                           description=:description, effect=:effect, active=1""",
+                           description=:description, effect=:effect,
+                           valid_from=:valid_from, valid_until=:valid_until, active=1""",
                     {
                         "alert_id": a["alert_id"],
                         "now": fetched_at,
@@ -126,6 +152,8 @@ def collect_once():
                         "header": a["header"],
                         "description": a["description"],
                         "effect": a["effect"],
+                        "valid_from": a["valid_from"],
+                        "valid_until": a["valid_until"],
                     },
                 )
             if seen_ids:
@@ -277,6 +305,7 @@ def cleanup_old_data():
         )
         conn.execute("DELETE FROM trip_cancellations WHERE service_date < ?", (history_cutoff_date,))
         conn.execute("DELETE FROM trips_ran_daily WHERE service_date < ?", (history_cutoff_date,))
+        conn.execute("DELETE FROM skipped_stops WHERE service_date < ?", (history_cutoff_date,))
         conn.commit()
     finally:
         conn.close()
@@ -310,7 +339,7 @@ def vacuum_db():
 # vehicle_positions blijven er bewust buiten -- die zijn gigantisch (GB's),
 # worden toch periodiek opgerold en zijn dus vervangbaar; deze tabellen niet.
 BACKUP_TABLES = [
-    "trip_cancellations", "trips_ran_daily",
+    "trip_cancellations", "trips_ran_daily", "skipped_stops",
     "route_stats_daily", "route_stats_period_daily", "alerts",
 ]
 BACKUP_KEEP = 7  # aantal dagelijkse back-ups dat blijft staan

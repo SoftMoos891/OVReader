@@ -50,7 +50,14 @@ CREATE TABLE IF NOT EXISTS alerts (
     header TEXT,
     description TEXT,
     effect TEXT,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    -- Officiële geldigheidsperiode uit het GTFS-RT alert zelf
+    -- (active_period.start/end), los van first_seen/last_seen die alleen
+    -- zeggen wanneer WIJ de melding voor het eerst/laatst zagen. Kan in de
+    -- toekomst liggen (nog te beginnen werkzaamheden) of ruimer zijn dan de
+    -- periode waarin de melding actief=1 stond.
+    valid_from INTEGER,
+    valid_until INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS rail_alerts (
@@ -114,6 +121,24 @@ CREATE TABLE IF NOT EXISTS trip_cancellations (
 CREATE INDEX IF NOT EXISTS idx_cancel_date ON trip_cancellations(service_date);
 CREATE INDEX IF NOT EXISTS idx_cancel_route ON trip_cancellations(route_id);
 
+-- Individueel overgeslagen tussenhaltes (GTFS-RT stop_time_update met
+-- schedule_relationship SKIPPED) -- los van trip_cancellations, die alleen
+-- volledig geannuleerde ritten bijhoudt. Eén rij per (rit, halte, dag), dus
+-- net als trip_cancellations begrensd door het daadwerkelijke aantal
+-- ritten/dag i.p.v. per 30s-poll te groeien zoals trip_delays.
+CREATE TABLE IF NOT EXISTS skipped_stops (
+    trip_id TEXT NOT NULL,
+    service_date TEXT NOT NULL,
+    route_id TEXT,
+    stop_id TEXT NOT NULL,
+    stop_sequence INTEGER,
+    first_seen INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    PRIMARY KEY (trip_id, service_date, stop_id)
+);
+CREATE INDEX IF NOT EXISTS idx_skipped_date ON skipped_stops(service_date);
+CREATE INDEX IF NOT EXISTS idx_skipped_stop ON skipped_stops(stop_id);
+
 CREATE TABLE IF NOT EXISTS trips_ran_daily (
     service_date TEXT NOT NULL,
     trip_id TEXT NOT NULL,
@@ -161,6 +186,12 @@ def _migrate(conn):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(trip_cancellations)")}
     if "start_time" not in cols:
         conn.execute("ALTER TABLE trip_cancellations ADD COLUMN start_time TEXT")
+
+    alert_cols = {r["name"] for r in conn.execute("PRAGMA table_info(alerts)")}
+    if "valid_from" not in alert_cols:
+        conn.execute("ALTER TABLE alerts ADD COLUMN valid_from INTEGER")
+    if "valid_until" not in alert_cols:
+        conn.execute("ALTER TABLE alerts ADD COLUMN valid_until INTEGER")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook

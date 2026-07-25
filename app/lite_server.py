@@ -191,6 +191,8 @@ def lite_api_alerts():
             "routes": [route_meta(rid) for rid in route_ids],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
+            "valid_from": r["valid_from"],
+            "valid_until": r["valid_until"],
         })
     return jsonify({"alerts": alerts, "count": len(alerts)})
 

@@ -336,6 +336,8 @@ def api_alerts():
             "routes": [route_meta(rid) for rid in route_ids],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
+            "valid_from": r["valid_from"],
+            "valid_until": r["valid_until"],
         })
     return jsonify({"alerts": alerts, "count": len(alerts)})
 
@@ -1232,6 +1234,54 @@ def api_cancellation_trips():
         "limit": limit,
         "offset": offset,
         "items": items[offset:offset + limit],
+    })
+
+
+@app.route("/api/skipped-stops")
+def api_skipped_stops():
+    """Haltes die vaak worden overgeslagen (rit rijdt door zonder te stoppen --
+    GTFS-RT stop_time_update SKIPPED), los van complete rit-uitval. Zelfde
+    range-keys als /api/cancellations, standaard de laatste 30 dagen."""
+    range_key = request.args.get("range", "30d")
+    since_date, until_date = _date_bounds_for_range(range_key)
+    limit = min(int(request.args.get("limit", 30)), 100)
+
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT stop_id, route_id, COUNT(*) AS cnt
+               FROM skipped_stops
+               WHERE service_date >= ? AND service_date <= ?
+               GROUP BY stop_id, route_id""",
+            (since_date, until_date),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    per_stop = {}
+    for r in rows:
+        if not _index.is_bus_route(r["route_id"]):
+            continue  # historische rij van een lijn die niet meer in de huidige index zit
+        entry = per_stop.setdefault(r["stop_id"], {"total": 0, "routes": {}})
+        entry["total"] += r["cnt"]
+        meta = route_meta(r["route_id"])
+        entry["routes"][meta["short_name"]] = entry["routes"].get(meta["short_name"], 0) + r["cnt"]
+
+    items = [
+        {
+            "stop_id": stop_id,
+            "stop_name": _index.stops.get(stop_id, {}).get("name", stop_id),
+            "count": data["total"],
+            "routes": sorted(data["routes"].items(), key=lambda kv: -kv[1]),
+        }
+        for stop_id, data in per_stop.items()
+    ]
+    items.sort(key=lambda x: -x["count"])
+
+    return jsonify({
+        "since_date": since_date,
+        "until_date": until_date,
+        "items": items[:limit],
     })
 
 

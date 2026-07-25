@@ -432,6 +432,18 @@ function fmtAlertTime(ts) {
   });
 }
 
+// Officiële geldigheidsperiode uit het GTFS-RT alert zelf (active_period),
+// los van first_seen/last_seen die alleen zeggen wanneer WIJ de melding voor
+// het eerst/laatst zagen. valid_from kan in de toekomst liggen (nog te
+// beginnen werkzaamheden) -- toon dan "vanaf", anders "t/m" als er een
+// einddatum bekend is.
+function fmtValidity(a) {
+  const nowSec = Date.now() / 1000;
+  if (a.valid_from && a.valid_from > nowSec) return `Geldig vanaf ${fmtAlertTime(a.valid_from)}`;
+  if (a.valid_until) return `Geldig t/m ${fmtAlertTime(a.valid_until)}`;
+  return '';
+}
+
 async function refreshAlerts() {
   const res = await fetch('/api/alerts');
   const data = await res.json();
@@ -465,7 +477,7 @@ async function refreshAlerts() {
       <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
       <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}
-        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}</div>
+        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}${fmtValidity(a) ? ` &middot; ${fmtValidity(a)}` : ''}</div>
     </div>`;
   }).join('');
 }

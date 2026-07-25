@@ -164,6 +164,38 @@ def parse_cancellations(feed, index: UtrechtIndex):
     return results
 
 
+def parse_skipped_stops(feed, index: UtrechtIndex):
+    """Geeft lijst van dicts terug met individuele tussenhaltes die als
+    SKIPPED gemeld zijn in de trip-updates feed (rit rijdt door, maar stopt
+    niet bij deze halte) -- los van parse_cancellations(), die alleen
+    volledig geannuleerde ritten afvangt."""
+    results = []
+    for entity in feed.entity:
+        if not entity.HasField("trip_update"):
+            continue
+        tu = entity.trip_update
+        trip = tu.trip
+        trip_id = trip.trip_id or None
+        route_id = trip.route_id or None
+        resolved_route = index.route_id_for(trip_id, route_id)
+        if not resolved_route:
+            continue
+        service_date = None
+        if trip.start_date and len(trip.start_date) == 8:
+            service_date = f"{trip.start_date[0:4]}-{trip.start_date[4:6]}-{trip.start_date[6:8]}"
+        for stu in tu.stop_time_update:
+            if stu.schedule_relationship != gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.SKIPPED:
+                continue
+            results.append({
+                "trip_id": trip_id,
+                "route_id": resolved_route,
+                "service_date": service_date,  # None afgehandeld door caller (fallback op vandaag)
+                "stop_id": stu.stop_id,
+                "stop_sequence": stu.stop_sequence,
+            })
+    return results
+
+
 _EFFECT_NAMES = {
     0: "NO_SERVICE", 1: "REDUCED_SERVICE", 2: "SIGNIFICANT_DELAYS",
     3: "DETOUR", 4: "ADDITIONAL_SERVICE", 5: "MODIFIED_SERVICE",
@@ -203,11 +235,19 @@ def fetch_alerts(index: UtrechtIndex):
                     return t.text
             return translated_string.translation[0].text
 
+        # De feed geeft in de praktijk precies één active_period per alert
+        # (zie onderzoek in ns_rail_alerts.py-achtige verkenning); bij meer
+        # dan één nemen we toch de ruimst mogelijke periode.
+        valid_from = min((p.start for p in alert.active_period if p.HasField("start")), default=None)
+        valid_until = max((p.end for p in alert.active_period if p.HasField("end")), default=None)
+
         results.append({
             "alert_id": entity.id,
             "route_ids": sorted(route_ids),
             "header": best_text(alert.header_text),
             "description": best_text(alert.description_text),
             "effect": _EFFECT_NAMES.get(alert.effect, "UNKNOWN_EFFECT"),
+            "valid_from": valid_from,
+            "valid_until": valid_until,
         })
     return results
