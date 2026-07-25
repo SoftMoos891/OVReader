@@ -88,6 +88,24 @@ CREATE TABLE IF NOT EXISTS ns_fetch_status (
     last_error TEXT
 );
 
+-- Permanente geschiedenis van RSS-meldingen (/lite/rss.xml): items worden
+-- hier één keer geschreven door de collector zodra een gebeurtenis zich
+-- voordoet (uitval boven de signaleringsgrens, een nieuwe NS-storing) en
+-- blijven daarna staan, ook als de situatie weer normaal is -- de feed is
+-- bewust GEEN weerspiegeling van de actuele live-status, maar een log van
+-- wat er is gebeurd. guid is de PRIMARY KEY, dus INSERT OR IGNORE zorgt
+-- vanzelf dat eenzelfde gebeurtenis (bv. dezelfde vervoerder+dag, of
+-- dezelfde NS alert_id) maar één keer wordt vastgelegd.
+CREATE TABLE IF NOT EXISTS rss_feed_items (
+    guid TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    pub_date INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rss_items_pubdate ON rss_feed_items(pub_date);
+
 CREATE TABLE IF NOT EXISTS route_stats_daily (
     day TEXT NOT NULL,
     route_id TEXT NOT NULL,

@@ -35,6 +35,9 @@ CANCELLATION_HISTORY_RETENTION_DAYS = 1825  # 5 jaar
 # te vroeg en 3 min te laat. Buiten die band telt een rit niet meer als op tijd.
 ON_TIME_MIN_DELAY = -120
 ON_TIME_MAX_DELAY = 180
+# Vanaf welk uitvalpercentage (van vandaag, per vervoerder) een permanente
+# RSS-melding wordt vastgelegd (zie check_cancellation_alerts_job()).
+CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
 
 _index = None
 
@@ -458,6 +461,20 @@ def fetch_rail_alerts_job():
                     "stations": ",".join(a["stations"]),
                 },
             )
+            # Permanente RSS-melding (zie check_cancellation_alerts_job()
+            # hierboven voor dezelfde log-i.p.v.-live-status-redenering).
+            # INSERT OR IGNORE op alert_id zorgt dat dit maar één keer per
+            # storing gebeurt, ongeacht hoe vaak 'm hierna nog als actief
+            # gezien wordt.
+            title = f"NS-storing ({a['type_label']}): {a['title']}"
+            stations = ", ".join(a["stations"]) or "onbekend station"
+            description = f"{a['description'] or a['title']} Getroffen station(s): {stations}. Klik hier voor meer data."
+            conn.execute(
+                """INSERT OR IGNORE INTO rss_feed_items
+                   (guid, kind, title, description, pub_date, created_at)
+                   VALUES (:guid, 'rail_alert', :title, :description, :now, :now)""",
+                {"guid": f"rail-alert-{a['alert_id']}", "title": title, "description": description, "now": fetched_at},
+            )
         if seen_ids:
             placeholders = ",".join("?" * len(seen_ids))
             conn.execute(
@@ -485,6 +502,87 @@ def fetch_rail_alerts_job():
         conn.close()
 
 
+def check_cancellation_alerts_job():
+    """Legt permanent een RSS-melding vast (rss_feed_items, zie db.py) zodra
+    het uitvalpercentage van VANDAAG voor een vervoerder boven
+    CANCELLATION_ALERT_THRESHOLD_PCT komt. guid is cancel-alert-{operator}-
+    {datum}: INSERT OR IGNORE zorgt dat dit maar één keer per vervoerder per
+    dag gebeurt, en de melding blijft daarna staan ook als het percentage
+    later weer onder de grens zakt -- de RSS-feed (/lite/rss.xml) is bewust
+    een log van gebeurtenissen, geen weerspiegeling van de actuele status.
+
+    Zelfde up_to_now-correctie als op /api/cancellations (server.py) en de
+    'tot nu toe'-toggle op /lite: zonder die correctie kan een vooraf
+    aangekondigde uitval voor later vandaag het percentage al opblazen
+    voordat de bijbehorende vertrektijd is verstreken."""
+    global _index
+    if _index is None:
+        _index = UtrechtIndex()
+
+    now = _now()
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    now_time_str = time.strftime("%H:%M:%S", time.localtime(now))
+    conn = db.get_conn()
+    try:
+        canceled_rows = conn.execute(
+            "SELECT route_id, start_time, COUNT(*) AS cnt FROM trip_cancellations "
+            "WHERE service_date = ? GROUP BY route_id, start_time",
+            (today,),
+        ).fetchall()
+        ran_rows = conn.execute(
+            """SELECT r.route_id, COUNT(*) AS cnt FROM trips_ran_daily r
+               WHERE r.service_date = ? AND NOT EXISTS (
+                   SELECT 1 FROM trip_cancellations c
+                   WHERE c.trip_id = r.trip_id AND c.service_date = r.service_date
+               )
+               GROUP BY r.route_id""",
+            (today,),
+        ).fetchall()
+
+        per_operator = {}
+        for r in canceled_rows:
+            if not _index.is_bus_route(r["route_id"]):
+                continue
+            if r["start_time"] and r["start_time"] > now_time_str:
+                continue  # vooraf aangekondigde uitval voor een vertrektijd die nog moet komen
+            operator = _index.routes.get(r["route_id"], {}).get("operator", "Onbekend")
+            op = per_operator.setdefault(operator, {"canceled": 0, "ran": 0})
+            op["canceled"] += r["cnt"]
+        for r in ran_rows:
+            if not _index.is_bus_route(r["route_id"]):
+                continue
+            operator = _index.routes.get(r["route_id"], {}).get("operator", "Onbekend")
+            op = per_operator.setdefault(operator, {"canceled": 0, "ran": 0})
+            op["ran"] += r["cnt"]
+
+        today_display = time.strftime("%d-%m-%Y", time.localtime(now))
+        for operator, a in per_operator.items():
+            total = a["canceled"] + a["ran"]
+            if total == 0:
+                continue
+            pct = 100.0 * a["canceled"] / total
+            if pct <= CANCELLATION_ALERT_THRESHOLD_PCT:
+                continue
+            title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today_display})"
+            description = (
+                f"{operator} heeft op {today_display} een uitvalpercentage van {pct:.1f}% "
+                f"({a['canceled']} van de {total} ritten) bereikt, boven de "
+                f"{CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%-signaleringsgrens. Klik hier voor meer data."
+            )
+            conn.execute(
+                """INSERT OR IGNORE INTO rss_feed_items
+                   (guid, kind, title, description, pub_date, created_at)
+                   VALUES (:guid, 'cancellation', :title, :description, :now, :now)""",
+                {"guid": f"cancel-alert-{operator}-{today}", "title": title, "description": description, "now": now},
+            )
+        conn.commit()
+    except Exception:
+        print("[collector] fout bij controleren uitval-signalering:")
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+
 def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
@@ -501,10 +599,12 @@ def start_scheduler():
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
+    scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
     fetch_rail_alerts_job()
+    check_cancellation_alerts_job()
     # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
     # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
     # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen
