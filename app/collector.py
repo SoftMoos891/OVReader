@@ -628,11 +628,12 @@ def check_cancellation_alerts_job():
             if total == 0:
                 continue
             pct = 100.0 * a["canceled"] / total
+            # Bewust GEEN _mark_rss_item_resolved() hier zoals bij rail_alert/
+            # bus_alert: het uitvalpercentage van vandaag schommelt de hele
+            # dag door boven en onder de grens, dus "(voorbij)" zou hier
+            # constant aan/uit kunnen flipperen i.p.v. een echt afgeronde
+            # gebeurtenis markeren zoals bij een storing die stopt.
             if pct <= CANCELLATION_ALERT_THRESHOLD_PCT:
-                # Was eerder vandaag misschien wel boven de grens (vandaar een
-                # bestaande, nog onopgeloste rss_feed_items-rij) -- inmiddels
-                # weer normaal.
-                _mark_rss_item_resolved(conn, guid, now)
                 continue
             title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today_display})"
             description = (
