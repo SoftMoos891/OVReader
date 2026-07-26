@@ -144,14 +144,6 @@
   </div>
 
   <div class="panel">
-    <h2>Vergelijking met andere steden (vandaag)</h2>
-    <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">
-      Uitvalpercentage stadsvervoer (bus/tram/metro) vandaag t.o.v. GVB (Amsterdam), RET (Rotterdam) en HTM (Den Haag) — altijd vandaag, los van de gekozen periode hierboven.
-    </div>
-    <div id="regio-vergelijking-table"><div class="empty">Laden...</div></div>
-  </div>
-
-  <div class="panel">
     <h2>Vaak overgeslagen haltes</h2>
     <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">
       Rit rijdt door zonder bij deze halte te stoppen (GTFS-RT "SKIPPED") — los van complete rit-uitval hierboven. Op basis van de gekozen periode hierboven.
@@ -379,25 +371,6 @@ async function loadSkippedStops() {
       <td>${it.stop_name}</td>
       <td>${it.count}</td>
       <td>${it.routes.map(([name, cnt]) => `${name} (${cnt}x)`).join(', ')}</td>
-    </tr>`).join('') + '</table>';
-}
-
-// Los van currentRange/upToNow: dit is altijd "vandaag", ongeacht de
-// gekozen periode elders op de pagina (zie /api/cancellations/regio-
-// vergelijking in server.py). Daarom niet in loadAll() maar apart geladen.
-async function loadRegioVergelijking() {
-  const el = document.getElementById('regio-vergelijking-table');
-  const res = await fetch('/api/cancellations/regio-vergelijking');
-  const data = await res.json();
-  if (data.cities.length === 0) {
-    el.innerHTML = '<div class="empty">Nog geen data</div>';
-    return;
-  }
-  el.innerHTML = '<table><tr><th>Stad</th><th>Uitval</th><th>Ritten</th></tr>' +
-    data.cities.map(c => `<tr>
-      <td>${c.city}</td>
-      <td><span class="pill ${pillClass(c.cancellation_pct)}">${c.cancellation_pct}%</span></td>
-      <td>${c.canceled}/${c.canceled + c.ran}</td>
     </tr>`).join('') + '</table>';
 }
 
@@ -745,15 +718,12 @@ applyUrlState();
 renderScheduleBanner();
 loadAll().catch(console.error);
 loadHealth().catch(console.error);
-loadRegioVergelijking().catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
 setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);
-setInterval(() => { if (!document.hidden) loadRegioVergelijking().catch(console.error); }, 60000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     loadAll().catch(console.error);
     loadHealth().catch(console.error);
-    loadRegioVergelijking().catch(console.error);
   }
 });
 </script>

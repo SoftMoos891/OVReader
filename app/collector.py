@@ -1,10 +1,8 @@
 """Achtergrondtaak die periodiek de realtime feeds ophaalt en in SQLite opslaat."""
 import datetime as dt
-import json
 import os
 import time
 import traceback
-from pathlib import Path
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -12,11 +10,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
 from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
-    parse_trip_delays, parse_cancellations, parse_skipped_stops, parse_comparison_activity, fetch_alerts,
+    parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
 )
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
-
-COMPARISON_ROUTES_PATH = Path(__file__).resolve().parent.parent / "data" / "regio_vergelijking_routes.json"
 
 FETCH_INTERVAL_SECONDS = 30
 # Hoe lang trip_delays/vehicle_positions als RUWE (per-halte/per-fetch) rijen
@@ -61,25 +57,10 @@ def _is_severe_alert(header, description, cause):
     return cause in SEVERE_ALERT_CAUSES
 
 _index = None
-_comparison_routes = None
 
 
 def _now():
     return int(time.time())
-
-
-def _load_comparison_routes():
-    """Lazy-load van regio_vergelijking_routes.json (GVB/RET/HTM, zie
-    build_static_index.py) -- leeg dict (geen fout) als het bestand nog niet
-    is opgebouwd, zodat een verse checkout niet meteen op deze stap
-    struikelt."""
-    global _comparison_routes
-    if _comparison_routes is None:
-        if COMPARISON_ROUTES_PATH.exists():
-            _comparison_routes = json.loads(COMPARISON_ROUTES_PATH.read_text(encoding="utf-8"))
-        else:
-            _comparison_routes = {}
-    return _comparison_routes
 
 
 def _mark_rss_item_resolved(conn, guid, now):
@@ -183,42 +164,6 @@ def collect_once():
                 )
         except Exception:
             print("[collector] fout bij verwerken overgeslagen haltes:")
-            traceback.print_exc()
-
-        try:
-            comparison_routes = _load_comparison_routes()
-            activity = (
-                parse_comparison_activity(trip_updates_feed, comparison_routes)
-                if trip_updates_feed is not None and comparison_routes else []
-            )
-            today = time.strftime("%Y-%m-%d", time.localtime(fetched_at))
-            ran = set()
-            for a in activity:
-                service_date = a["service_date"] or today
-                if a["canceled"]:
-                    conn.execute(
-                        """INSERT INTO trip_cancellations (trip_id, service_date, route_id, start_time, first_seen, last_seen)
-                           VALUES (:trip_id, :service_date, :route_id, :start_time, :now, :now)
-                           ON CONFLICT(trip_id, service_date) DO UPDATE SET
-                               last_seen=:now,
-                               start_time=COALESCE(trip_cancellations.start_time, :start_time)""",
-                        {
-                            "trip_id": a["trip_id"],
-                            "service_date": service_date,
-                            "route_id": a["route_id"],
-                            "start_time": a["start_time"],
-                            "now": fetched_at,
-                        },
-                    )
-                else:
-                    ran.add((service_date, a["trip_id"], a["route_id"]))
-            if ran:
-                conn.executemany(
-                    "INSERT OR IGNORE INTO trips_ran_daily (service_date, trip_id, route_id) VALUES (?, ?, ?)",
-                    ran,
-                )
-        except Exception:
-            print("[collector] fout bij verwerken regio-vergelijking (GVB/RET/HTM):")
             traceback.print_exc()
 
         try:
