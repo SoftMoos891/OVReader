@@ -12,10 +12,6 @@
 </script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-      integrity="sha256-YU3qCpj/P06tdPBJGPax0bm6Q1wltfwjsho5TR4+TYc=" crossorigin=""/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
-      integrity="sha256-YSWCMtmNZNwqex4CEw1nQhvFub2lmU7vcCKP+XVwwXA=" crossorigin=""/>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
@@ -216,8 +212,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
-        integrity="sha256-Hk4dIpcqOSb0hZjgyvFOP+cEmDXUKKNE/tT542ZbNQg=" crossorigin=""></script>
 <script>
 const map = L.map('map').setView([52.09, 5.20], 10);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -238,15 +232,7 @@ legend.onAdd = function () {
 };
 legend.addTo(map);
 
-// disableClusteringAtZoom: op straatniveau altijd losse voertuigen (waar het
-// om lijnnummer/vertraging per bus gaat), alleen clusteren als je uitzoomt
-// naar bv. de hele provincie en bussen elkaar anders overlappen.
-const vehicleLayer = L.markerClusterGroup({
-  maxClusterRadius: 60,
-  disableClusteringAtZoom: 15,
-  spiderfyOnMaxZoom: false,
-  showCoverageOnHover: false,
-}).addTo(map);
+const vehicleLayer = L.layerGroup().addTo(map);
 const routeShapeLayer = L.layerGroup().addTo(map);
 const roadSituationLayer = L.layerGroup().addTo(map);
 const markers = {};
@@ -452,10 +438,6 @@ async function refreshVehicles() {
   for (const id of Object.keys(markers)) {
     if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; delete markerState[id]; }
   }
-  // Clusters herberekenen na het verplaatsen van bestaande markers -- zonder
-  // dit blijft een marker in zijn oude cluster-positie hangen totdat er
-  // toevallig een cluster-herbouw door een andere wijziging plaatsvindt.
-  vehicleLayer.refreshClusters();
 
   if (followedVehicleId && !followedLatLng) stopFollowing();  // rit is verdwenen (bv. beëindigd)
   else if (followedLatLng) map.panTo(followedLatLng, { animate: true });
