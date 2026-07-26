@@ -71,12 +71,24 @@ def _mark_rss_item_resolved(conn, guid, now):
     alleen het bestaande bericht bijgewerkt. Werkt alleen op nog-onopgeloste
     rijen (idempotent: een tweede keer oproepen voor dezelfde guid doet niks
     meer) en is een no-op als er geen rij met deze guid bestaat (bv. omdat de
-    onderliggende melding nooit als ernstig genoeg werd gelogd)."""
+    onderliggende melding nooit als ernstig genoeg werd gelogd).
+
+    Geldt NIET voor wegsituaties (kind='road_situation') -- die worden
+    verwijderd i.p.v. gemarkeerd, zie _remove_resolved_rss_item()."""
     conn.execute(
         """UPDATE rss_feed_items SET title = title || ' (voorbij)', resolved_at = :now
            WHERE guid = :guid AND resolved_at IS NULL""",
         {"guid": guid, "now": now},
     )
+
+
+def _remove_resolved_rss_item(conn, guid):
+    """Verwijdert een rss_feed_items-rij zodra de onderliggende situatie
+    voorbij is -- i.p.v. 'm te markeren met _mark_rss_item_resolved().
+    Alleen voor wegsituaties: die zijn typisch kortdurend (een file,
+    ongeval) en op verzoek moet de RSS-feed ze niet als "(voorbij)" blijven
+    tonen zoals de andere meldingssoorten (NS/uitval/bus) wel doen."""
+    conn.execute("DELETE FROM rss_feed_items WHERE guid = :guid", {"guid": guid})
 
 
 def collect_once():
@@ -651,7 +663,7 @@ def fetch_road_situations_job():
             newly_inactive = conn.execute("SELECT situation_id FROM road_situations WHERE active=1").fetchall()
             conn.execute("UPDATE road_situations SET active=0 WHERE active=1")
         for r in newly_inactive:
-            _mark_rss_item_resolved(conn, f"road-situation-{r['situation_id']}", fetched_at)
+            _remove_resolved_rss_item(conn, f"road-situation-{r['situation_id']}")
         conn.execute(
             """INSERT INTO road_fetch_status (id, last_success_at) VALUES (1, :now)
                ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
