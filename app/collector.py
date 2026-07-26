@@ -666,6 +666,16 @@ def fetch_road_situations_job():
             conn.execute("UPDATE road_situations SET active=0 WHERE active=1")
         for r in newly_inactive:
             _remove_resolved_rss_item(conn, f"road-situation-{r['situation_id']}")
+        # Vangnet: verwijdert ook road_situation-items die vóór deze aanpak
+        # (toen wegsituaties nog met _mark_rss_item_resolved() als
+        # "(voorbij)" werden gemarkeerd i.p.v. verwijderd) al resolved_at
+        # gezet kregen. Die worden hierboven niet meer als "newly_inactive"
+        # herkend (de overgang actief->inactief ligt al in het verleden),
+        # dus zonder dit blijven ze voor altijd als "(voorbij)" in de feed
+        # staan. Kan met een gewone kind='road_situation'-filter, want alle
+        # andere soorten (NS/uitval/bus) horen hun "(voorbij)"-item wel te
+        # behouden.
+        conn.execute("DELETE FROM rss_feed_items WHERE kind='road_situation' AND resolved_at IS NOT NULL")
         conn.execute(
             """INSERT INTO road_fetch_status (id, last_success_at) VALUES (1, :now)
                ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
