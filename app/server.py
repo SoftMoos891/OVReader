@@ -37,6 +37,15 @@ _route_shapes = (
     json.loads(_ROUTE_SHAPES_PATH.read_text(encoding="utf-8")) if _ROUTE_SHAPES_PATH.exists() else {}
 )
 
+# Voertuignummer -> bustype (zie app/build_bus_types_index.py), voor de
+# voertuig-popup op de kaart. Zelfde bewuste keuze als _route_shapes hierboven:
+# alleen hier geladen, niet in UtrechtIndex (collector heeft er niets aan) en
+# niet in lite_server.py (die toont geen kaart/popup-detail).
+_BUS_TYPES_PATH = PROJECT_ROOT / "data" / "bus_types.json"
+_bus_types = (
+    json.loads(_BUS_TYPES_PATH.read_text(encoding="utf-8")) if _BUS_TYPES_PATH.exists() else {}
+)
+
 ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op tijd"
 ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
 VEHICLE_FRESHNESS_SECONDS = 90
@@ -328,6 +337,7 @@ def api_vehicles():
         vehicles.append({
             "ident": r["ident"],
             "vehicle_id": r["vehicle_id"],
+            "vehicle_type": _bus_types.get(r["vehicle_id"]) if r["vehicle_id"] else None,
             "trip_id": r["trip_id"],
             "route_id": r["route_id"],
             "route_short_name": meta["short_name"],

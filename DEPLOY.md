@@ -73,6 +73,19 @@ wegnummer. Alleen opnieuw draaien als NDW een nieuwe VILD-versie uitbrengt --
 de collector waarschuwt daarover in zijn log (`journalctl -u
 utrecht-bus-collector | grep VILD`).
 
+Tot slot eenmalig de bustype-tabel opbouwen (voertuignummer -> bustype, bv.
+"VDL Citea LF-122 Electric", voor de voertuig-popup op de kaart):
+
+```bash
+sudo -u utrechtbus ./venv/bin/python -m app.build_bus_types_index
+```
+
+Haalt twee pagina's op van bussen.ov-database.nl (community-onderhouden,
+geen officiele API) en schrijft `data/bus_types.json`. Zonder dit bestand
+werkt alles gewoon, maar toont de popup geen bustype. Alleen opnieuw draaien
+na een grote vlootwijziging (nieuwe/vervangen bussen) -- de vloot verandert
+traag.
+
 ## 4. Wachtwoord instellen (verplicht -- dit komt op het internet te staan)
 
 ```bash

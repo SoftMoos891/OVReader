@@ -419,7 +419,7 @@ async function refreshVehicles() {
     const html = `<b>Lijn ${v.route_short_name}</b>${destination} (U-OV, ${v.operator})<br>` +
                  `Status: ${delayText(v.delay_seconds)}<br>` +
                  `${stopLine ? `${stopLine}<br>` : ''}` +
-                 `Voertuig ${v.vehicle_id || v.trip_id}` +
+                 `Voertuig ${v.vehicle_id || v.trip_id}${v.vehicle_type ? ` (${v.vehicle_type})` : ''}` +
                  `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
                  `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
     if (markers[key]) {
