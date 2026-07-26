@@ -382,6 +382,7 @@ def api_rail_alerts():
             "start_time": r["start_time"],
             "end_time": r["end_time"],
             "impact": r["impact"],
+            "consequence_level": r["consequence_level"],
             "stations": [s for s in (r["stations"] or "").split(",") if s],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],

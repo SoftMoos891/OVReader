@@ -218,6 +218,13 @@ function railAlertSeverity(a) {
   return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
 }
 
+// consequence_level: gestructureerd gevolg-veld uit de NS-respons, naast het
+// al gebruikte impact-getal. Alleen de bekende waarden uit onderzoek vertaald;
+// onbekende waarden gewoon ongewijzigd tonen i.p.v. verbergen.
+const CONSEQUENCE_LEVEL_LABELS = {
+  NO_TRAINS: 'Geen treinen', LESS_TRAINS: 'Minder treinen', DELAYS: 'Vertraging',
+};
+
 async function refreshRailAlerts() {
   const res = await fetch('/lite/api/rail-alerts');
   const data = await res.json();
@@ -227,11 +234,13 @@ async function refreshRailAlerts() {
   el.innerHTML = data.alerts.map(a => {
     const severe = railAlertSeverity(a);
     const badge = `<span class="pill ${severe ? 'bad' : 'warn'}">${a.type_label}</span>`;
+    const consequence = a.consequence_level
+      ? ` &middot; ${CONSEQUENCE_LEVEL_LABELS[a.consequence_level] || a.consequence_level}` : '';
     return `
     <div class="alert ${severe ? 'severe' : ''}">
       <div class="hdr">${badge}${a.title}</div>
       <div>${a.description || ''}</div>
-      <div class="routes">Stations: ${a.stations.join(', ') || '—'}
+      <div class="routes">Stations: ${a.stations.join(', ') || '—'}${consequence}
         &middot; Gemeld om ${fmtAlertTime(a.first_seen)}</div>
     </div>`;
   }).join('');

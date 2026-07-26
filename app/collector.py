@@ -500,13 +500,14 @@ def fetch_rail_alerts_job():
             conn.execute(
                 """INSERT INTO rail_alerts
                    (alert_id, first_seen, last_seen, disruption_type, type_label,
-                    title, description, start_time, end_time, impact, stations, active)
+                    title, description, start_time, end_time, impact, consequence_level, stations, active)
                    VALUES (:alert_id, :now, :now, :disruption_type, :type_label,
-                           :title, :description, :start_time, :end_time, :impact, :stations, 1)
+                           :title, :description, :start_time, :end_time, :impact, :consequence_level, :stations, 1)
                    ON CONFLICT(alert_id) DO UPDATE SET
                        last_seen=:now, disruption_type=:disruption_type, type_label=:type_label,
                        title=:title, description=:description, start_time=:start_time,
-                       end_time=:end_time, impact=:impact, stations=:stations, active=1""",
+                       end_time=:end_time, impact=:impact, consequence_level=:consequence_level,
+                       stations=:stations, active=1""",
                 {
                     "alert_id": a["alert_id"],
                     "now": fetched_at,
@@ -517,6 +518,7 @@ def fetch_rail_alerts_job():
                     "start_time": a["start_time"],
                     "end_time": a["end_time"],
                     "impact": a["impact"],
+                    "consequence_level": a["consequence_level"],
                     "stations": ",".join(a["stations"]),
                 },
             )

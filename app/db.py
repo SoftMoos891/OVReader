@@ -76,7 +76,10 @@ CREATE TABLE IF NOT EXISTS rail_alerts (
     end_time TEXT,
     impact INTEGER,
     stations TEXT,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    -- Gestructureerd ernst/gevolg-veld uit de NS-respons (bv. 'LESS_TRAINS'),
+    -- naast het al gebruikte impact-getal.
+    consequence_level TEXT
 );
 
 -- Los van rail_alerts zelf: die tabel krijgt alleen nieuwe/bijgewerkte rijen
@@ -226,6 +229,10 @@ def _migrate(conn):
     rss_item_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rss_feed_items)")}
     if "resolved_at" not in rss_item_cols:
         conn.execute("ALTER TABLE rss_feed_items ADD COLUMN resolved_at INTEGER")
+
+    rail_alert_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rail_alerts)")}
+    if "consequence_level" not in rail_alert_cols:
+        conn.execute("ALTER TABLE rail_alerts ADD COLUMN consequence_level TEXT")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook

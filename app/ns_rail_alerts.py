@@ -86,6 +86,28 @@ def fetch_rail_disruptions(api_key):
     return resp.json()
 
 
+def _first_alternative_transport_label(d):
+    """Eerste 'vervangend vervoer'-omschrijving (bv. 'Er rijden stopbussen
+    tussen X en Y.') uit alternativeTransportTimespans, indien aanwezig --
+    zat al in de respons die we toch al ophalen voor de storingsdetails,
+    alleen nog niet uitgelezen."""
+    for span in d.get("alternativeTransportTimespans") or []:
+        label = (span.get("alternativeTransport") or {}).get("label")
+        if label:
+            return label
+    return None
+
+
+def _first_consequence_level(d):
+    """Gestructureerd ernst/gevolg-veld (bv. 'LESS_TRAINS') naast het al
+    gebruikte impact-getal -- net als hierboven, al in de respons aanwezig."""
+    for ps in d.get("publicationSections") or []:
+        level = (ps.get("consequence") or {}).get("level")
+        if level:
+            return level
+    return None
+
+
 def parse_rail_alerts(disruptions):
     """Filtert de landelijke NS-storingenlijst tot alleen storingen die
     minstens één station in de provincie Utrecht raken."""
@@ -103,6 +125,9 @@ def parse_rail_alerts(disruptions):
         situation = timespans[0].get("situation") if timespans else None
         title = d.get("title", "")
         description = situation["label"] if situation else ""
+        alt_transport = _first_alternative_transport_label(d)
+        if alt_transport:
+            description = f"{description} {alt_transport}".strip()
         # Internationale trajecten (bv. Amsterdam - München) lopen soms toevallig
         # via een Utrecht-station, maar zijn voor deze provinciale monitor geen
         # relevante lokale storing -- eruit filteren op verzoek.
@@ -117,6 +142,7 @@ def parse_rail_alerts(disruptions):
             "start_time": d.get("start"),
             "end_time": d.get("end"),
             "impact": (d.get("impact") or {}).get("value"),
+            "consequence_level": _first_consequence_level(d),
             "stations": utrecht_stations,
         })
     return results
