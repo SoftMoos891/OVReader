@@ -262,6 +262,8 @@ def lite_api_road_situations():
             "end_time": r["end_time"],
             "lat": r["lat"],
             "lon": r["lon"],
+            "road_number": r["road_number"],
+            "road_location": r["road_location"],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
         }

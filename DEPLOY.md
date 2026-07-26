@@ -60,6 +60,19 @@ sudo -u utrechtbus ./venv/bin/python -m app.build_static_index
 Duurt een paar minuten. Resultaat: `data/utrecht_routes.json`,
 `utrecht_stops.json`, `utrecht_trips.json`.
 
+Daarnaast eenmalig de VILD-tabel opbouwen, die AlertC-locatiecodes uit de
+NDW-wegsituatiefeed vertaalt naar een wegnummer (bv. "A27 Everdingen - A2"):
+
+```bash
+sudo -u utrechtbus ./venv/bin/python -m app.build_vild_index
+```
+
+Downloadt ~40 MB en schrijft `data/vild_locations.json` (~470 KB). Zonder
+dit bestand werkt alles gewoon, maar tonen de wegsituatie-meldingen geen
+wegnummer. Alleen opnieuw draaien als NDW een nieuwe VILD-versie uitbrengt --
+de collector waarschuwt daarover in zijn log (`journalctl -u
+utrecht-bus-collector | grep VILD`).
+
 ## 4. Wachtwoord instellen (verplicht -- dit komt op het internet te staan)
 
 ```bash

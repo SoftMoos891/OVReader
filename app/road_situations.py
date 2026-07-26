@@ -68,6 +68,54 @@ def _load_utrecht_rings():
 
 _UTRECHT_RINGS = _load_utrecht_rings()
 
+# AlertC-locatiecodes -> [wegnummer, naam1, naam2], gegenereerd door
+# app/build_vild_index.py. Ontbreekt dat bestand, dan blijft alles werken --
+# de meldingen tonen dan alleen geen wegnummer.
+_VILD_PATH = DATA_DIR / "vild_locations.json"
+_VILD_LOCATIONS = (
+    json.loads(_VILD_PATH.read_text(encoding="utf-8")) if _VILD_PATH.exists() else {}
+)
+# Zie build_vild_index.VILD_TABLE_VERSION: verwijst de feed naar een andere
+# tabelversie, dan kunnen codes verschoven zijn en is een nieuwe build nodig.
+_EXPECTED_TABLE_NUMBER, _EXPECTED_TABLE_VERSION = "6.13", "A"
+_table_version_warned = False
+
+
+def _warn_on_table_version(root):
+    """Eenmalige waarschuwing in het collector-log zodra NDW naar een andere
+    VILD-versie overstapt dan waarmee vild_locations.json is gebouwd."""
+    global _table_version_warned
+    if _table_version_warned or not _VILD_LOCATIONS:
+        return
+    number = root.find(".//loc:alertCLocationTableNumber", _NS)
+    version = root.find(".//loc:alertCLocationTableVersion", _NS)
+    if number is None or version is None:
+        return
+    if number.text != _EXPECTED_TABLE_NUMBER or version.text != _EXPECTED_TABLE_VERSION:
+        _table_version_warned = True
+        print(
+            f"[road_situations] LET OP: feed gebruikt VILD-tabel "
+            f"{number.text}.{version.text}, maar data/vild_locations.json is gebouwd "
+            f"voor {_EXPECTED_TABLE_NUMBER}.{_EXPECTED_TABLE_VERSION}. "
+            f"Draai 'python -m app.build_vild_index' opnieuw (en pas de versie daarin aan).",
+            flush=True,
+        )
+
+
+def _road_label(record_els):
+    """Wegnummer + leesbare plaatsaanduiding bij een situatie, opgezocht via
+    de AlertC-code(s) in de locatiereferentie. Geeft (None, None) als de
+    situatie geen code heeft of die niet in de tabel staat."""
+    for rec in record_els:
+        for code_el in rec.findall(".//loc:specificLocation", _NS):
+            entry = _VILD_LOCATIONS.get((code_el.text or "").strip())
+            if not entry:
+                continue
+            road = entry[0] or None
+            names = [n for n in entry[1:] if n]
+            return road, " - ".join(names) or None
+    return None, None
+
 
 def _point_in_ring(lng, lat, ring):
     """Ray-casting point-in-polygon (even-odd rule) -- voorkomt een externe
@@ -118,6 +166,7 @@ def _extract_points(record_el):
 def parse_road_situations(root):
     """Filtert de landelijke NDW-wegsituaties tot alleen situaties die
     minstens één punt binnen de provincie Utrecht hebben."""
+    _warn_on_table_version(root)
     results = []
     for situation in root.findall(".//sit:situation", _NS):
         records = situation.findall("sit:situationRecord", _NS)
@@ -161,6 +210,7 @@ def parse_road_situations(root):
             continue
 
         record_type = next((t for t in _TYPE_PRIORITY if t in record_types), record_types[0])
+        road_number, road_location = _road_label(records)
         results.append({
             "situation_id": situation.get("id"),
             "record_type": record_type,
@@ -171,6 +221,8 @@ def parse_road_situations(root):
             "end_time": end_time,
             "lon": utrecht_point[0],
             "lat": utrecht_point[1],
+            "road_number": road_number,
+            "road_location": road_location,
         })
     return results
 

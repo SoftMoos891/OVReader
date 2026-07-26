@@ -587,13 +587,16 @@ def fetch_road_situations_job():
             conn.execute(
                 """INSERT INTO road_situations
                    (situation_id, first_seen, last_seen, record_type, type_label,
-                    comment, severity, start_time, end_time, lat, lon, active)
+                    comment, severity, start_time, end_time, lat, lon,
+                    road_number, road_location, active)
                    VALUES (:situation_id, :now, :now, :record_type, :type_label,
-                           :comment, :severity, :start_time, :end_time, :lat, :lon, 1)
+                           :comment, :severity, :start_time, :end_time, :lat, :lon,
+                           :road_number, :road_location, 1)
                    ON CONFLICT(situation_id) DO UPDATE SET
                        last_seen=:now, record_type=:record_type, type_label=:type_label,
                        comment=:comment, severity=:severity, start_time=:start_time,
-                       end_time=:end_time, lat=:lat, lon=:lon, active=1""",
+                       end_time=:end_time, lat=:lat, lon=:lon,
+                       road_number=:road_number, road_location=:road_location, active=1""",
                 {
                     "situation_id": s["situation_id"],
                     "now": fetched_at,
@@ -605,13 +608,24 @@ def fetch_road_situations_job():
                     "end_time": s["end_time"],
                     "lat": s["lat"],
                     "lon": s["lon"],
+                    "road_number": s["road_number"],
+                    "road_location": s["road_location"],
                 },
             )
             # Permanente RSS-melding, alleen voor de echt urgente typen (een
             # wegwerkzaamheid met maandenlange geldigheid is geen incident).
             if s["record_type"] in SEVERE_ROAD_TYPES:
-                title = f"Wegsituatie ({s['type_label']}): {s['comment'] or s['type_label']}"
-                description = f"{s['comment'] or s['type_label']} Klik hier voor meer data.".strip()
+                # Wegnummer + plaatsaanduiding vooraan: zonder die context zegt
+                # "Ongeval" in een feedlezer weinig.
+                where = " ".join(p for p in (s["road_number"], s["road_location"]) if p)
+                title = f"Wegsituatie ({s['type_label']}): {where or s['comment'] or s['type_label']}"
+                parts = [f"{s['type_label']} op {where}." if where else f"{s['type_label']}."]
+                # De vrije tekst is lang niet altijd gevuld, en soms een
+                # letterlijke herhaling van het type -- dan niets toevoegen.
+                if s["comment"] and s["comment"] != s["type_label"]:
+                    parts.append(s["comment"])
+                parts.append("Klik hier voor meer data.")
+                description = " ".join(parts)
                 conn.execute(
                     """INSERT OR IGNORE INTO rss_feed_items
                        (guid, kind, title, description, pub_date, created_at)

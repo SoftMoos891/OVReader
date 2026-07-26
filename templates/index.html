@@ -594,15 +594,20 @@ async function refreshRoadSituations() {
   const el = document.getElementById('road-situations');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen urgente wegsituaties</div>'; return; }
   el.innerHTML = data.situations.map(s => {
-    // De feed zelf geeft geen leesbare weg-/plaatsnaam (AlertC-locatiecodes,
-    // geen opzoektabel meegeleverd) -- wel coordinaten, dus een kaart-pop-up
-    // i.p.v. helemaal geen locatie-aanduiding.
+    // Wegnummer + plaatsaanduiding komen uit de VILD-tabel (zie
+    // app/build_vild_index.py); de feed zelf noemt alleen een AlertC-code.
+    // Niet elke situatie heeft een bruikbare code -- val dan terug op de
+    // vrije tekst, en anders op het type.
+    const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
+    const heading = where || s.comment || s.type_label;
+    const detail = (where && s.comment) ? `<div>${s.comment}</div>` : '';
     const mapLink = (s.lat && s.lon)
-      ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${s.type_label}">Bekijk op kaart</a>`
+      ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
       : '';
     return `
     <div class="alert severe">
-      <div class="hdr"><span class="pill bad">${s.type_label}</span>${s.comment || s.type_label}</div>
+      <div class="hdr"><span class="pill bad">${s.type_label}</span>${heading}</div>
+      ${detail}
       <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${mapLink}</div>
     </div>`;
   }).join('');

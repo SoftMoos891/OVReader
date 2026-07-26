@@ -114,7 +114,13 @@ CREATE TABLE IF NOT EXISTS road_situations (
     -- zich voordoet (de feed zelf gebruikt AlertC-locatiecodes, geen
     -- leesbare weg-/plaatsnaam).
     lat REAL,
-    lon REAL
+    lon REAL,
+    -- Wegnummer (bv. "A27") en plaatsaanduiding (bv. "Everdingen - A2"),
+    -- opgezocht via de AlertC-code in de VILD-tabel (zie
+    -- app/build_vild_index.py). Leeg als die tabel niet gebouwd is of de
+    -- situatie geen bruikbare code heeft.
+    road_number TEXT,
+    road_location TEXT
 );
 
 -- Zelfde reden als ns_fetch_status hierboven: road_situations krijgt alleen
@@ -271,6 +277,10 @@ def _migrate(conn):
         conn.execute("ALTER TABLE road_situations ADD COLUMN lat REAL")
     if "lon" not in road_situation_cols:
         conn.execute("ALTER TABLE road_situations ADD COLUMN lon REAL")
+    if "road_number" not in road_situation_cols:
+        conn.execute("ALTER TABLE road_situations ADD COLUMN road_number TEXT")
+    if "road_location" not in road_situation_cols:
+        conn.execute("ALTER TABLE road_situations ADD COLUMN road_location TEXT")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook
