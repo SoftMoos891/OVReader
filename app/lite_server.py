@@ -105,13 +105,14 @@ def lite_geschiedenis():
 
 
 # Mensleesbare labels voor rss_feed_items.kind (zie collector.py:
-# check_cancellation_alerts_job()/fetch_rail_alerts_job()/de alerts-sync in
-# collect_once() -- dit zijn de enige drie 'kind'-waarden die worden
-# weggeschreven).
+# check_cancellation_alerts_job()/fetch_rail_alerts_job()/fetch_road_situations_job()/
+# de alerts-sync in collect_once() -- dit zijn de vier 'kind'-waarden die
+# worden weggeschreven).
 _HISTORY_KIND_LABELS = {
     "cancellation": "Uitval",
     "rail_alert": "NS-storing",
     "bus_alert": "U-OV-melding",
+    "road_situation": "Wegsituatie",
 }
 HISTORY_ITEM_LIMIT = 200
 
@@ -121,12 +122,33 @@ def lite_api_geschiedenis():
     """Mensleesbare versie van de RSS-feed (/lite/rss.xml): dezelfde
     permanente log uit rss_feed_items, voor wie geen RSS-lezer gebruikt.
     Iets ruimer gelimiteerd dan de feed zelf (die is bewust compact
-    gehouden) -- dit is een geschiedenispagina, geen actuele feed."""
+    gehouden) -- dit is een geschiedenispagina, geen actuele feed.
+
+    Optioneel ?kind=cancellation/rail_alert/bus_alert/road_situation om tot
+    één soort te beperken (voor het filter op de pagina zelf).
+
+    'today_by_kind' telt, ongeacht het filter, hoeveel items er sinds
+    middernacht (lokale tijd) zijn bijgekomen per soort -- voor de
+    KPI-tegel bovenaan de pagina."""
+    kind = request.args.get("kind")
+    today_start = int(
+        datetime.combine(date.today(), datetime.min.time()).timestamp()
+    )
     conn = db.get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM rss_feed_items ORDER BY pub_date DESC LIMIT ?",
-            (HISTORY_ITEM_LIMIT,),
+        if kind:
+            rows = conn.execute(
+                "SELECT * FROM rss_feed_items WHERE kind = ? ORDER BY pub_date DESC LIMIT ?",
+                (kind, HISTORY_ITEM_LIMIT),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM rss_feed_items ORDER BY pub_date DESC LIMIT ?",
+                (HISTORY_ITEM_LIMIT,),
+            ).fetchall()
+        today_rows = conn.execute(
+            "SELECT kind, COUNT(*) AS cnt FROM rss_feed_items WHERE pub_date >= ? GROUP BY kind",
+            (today_start,),
         ).fetchall()
     finally:
         conn.close()
@@ -140,7 +162,13 @@ def lite_api_geschiedenis():
         }
         for r in rows
     ]
-    return jsonify({"items": items, "count": len(items)})
+    today_by_kind = {r["kind"]: r["cnt"] for r in today_rows}
+    return jsonify({
+        "items": items,
+        "count": len(items),
+        "today_by_kind": today_by_kind,
+        "today_total": sum(today_by_kind.values()),
+    })
 
 
 @app.route("/lite/api/health")

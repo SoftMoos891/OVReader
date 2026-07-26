@@ -33,6 +33,17 @@
   .pill.cancellation { background: var(--bad-bg); color: var(--bad); }
   .pill.rail_alert { background: var(--warn-bg); color: var(--warn); }
   .pill.bus_alert { background: var(--bad-bg); color: var(--bad); }
+  .pill.road_situation { background: var(--bad-bg); color: var(--bad); }
+  .kpi-row { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+  .kpi-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 14px 20px; min-width: 130px; }
+  .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
+  .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .filter-row { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+                border-radius: 6px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; transition: all .15s; }
+  .filter-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
+  .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
   .history-item { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
   .history-item:last-child { border-bottom: none; }
   .history-item .hdr { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
@@ -51,9 +62,18 @@
 </header>
 
 <main>
+  <div class="kpi-row" id="kpi-row"></div>
+
   <div class="section">
     <h2>Geschiedenis<span id="history-count"></span></h2>
     <div class="sub">Laatste {{ limit }} meldingen — zelfde log als <code>/lite/rss.xml</code>, blijft staan ook nadat een situatie weer normaal is</div>
+    <div class="filter-row" id="filter-row">
+      <button class="filter-btn active" data-kind="">Alles</button>
+      <button class="filter-btn" data-kind="cancellation">Uitval</button>
+      <button class="filter-btn" data-kind="rail_alert">NS-storing</button>
+      <button class="filter-btn" data-kind="bus_alert">U-OV-melding</button>
+      <button class="filter-btn" data-kind="road_situation">Wegsituatie</button>
+    </div>
     <div id="history"><div class="empty">Laden...</div></div>
   </div>
 </main>
@@ -68,7 +88,9 @@ function toggleDarkMode() {
   localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
 }
 
-const KIND_LABELS = { cancellation: 'Uitval', rail_alert: 'NS-storing', bus_alert: 'U-OV-melding' };
+const KIND_LABELS = {
+  cancellation: 'Uitval', rail_alert: 'NS-storing', bus_alert: 'U-OV-melding', road_situation: 'Wegsituatie',
+};
 
 function fmtDateTime(ts) {
   return new Date(ts * 1000).toLocaleString('nl-NL', {
@@ -76,14 +98,25 @@ function fmtDateTime(ts) {
   });
 }
 
+let currentKind = '';
+
+function renderKpis(todayByKind, todayTotal) {
+  const box = (label, num) => `<div class="kpi-box"><div class="num">${num}</div><div class="label">${label}</div></div>`;
+  document.getElementById('kpi-row').innerHTML =
+    box('Meldingen vandaag', todayTotal) +
+    Object.entries(KIND_LABELS).map(([kind, label]) => box(label, todayByKind[kind] || 0)).join('');
+}
+
 async function loadHistory() {
   const el = document.getElementById('history');
   try {
-    const res = await fetch('/lite/api/geschiedenis');
+    const params = currentKind ? `?kind=${encodeURIComponent(currentKind)}` : '';
+    const res = await fetch(`/lite/api/geschiedenis${params}`);
     const data = await res.json();
+    renderKpis(data.today_by_kind || {}, data.today_total || 0);
     document.getElementById('history-count').textContent = data.count > 0 ? ` (${data.count})` : '';
     if (data.count === 0) {
-      el.innerHTML = '<div class="empty">Nog geen meldingen vastgelegd</div>';
+      el.innerHTML = '<div class="empty">Geen meldingen gevonden</div>';
       return;
     }
     el.innerHTML = data.items.map(item => `
@@ -99,6 +132,14 @@ async function loadHistory() {
     el.innerHTML = '<div class="empty">Kan geschiedenis niet ophalen.</div>';
   }
 }
+
+document.getElementById('filter-row').addEventListener('click', (e) => {
+  const btn = e.target.closest('.filter-btn');
+  if (!btn) return;
+  currentKind = btn.dataset.kind;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b === btn));
+  loadHistory();
+});
 
 loadHistory();
 </script>

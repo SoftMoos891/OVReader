@@ -226,6 +226,7 @@ legend.onAdd = function () {
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--warn);margin-right:6px;"></span>Lichte vertraging (3-6 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--bad);margin-right:6px;"></span>Grote vertraging (&gt;6 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--muted);margin-right:6px;"></span>Onbekend</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
   `;
   return div;
 };
@@ -233,6 +234,7 @@ legend.addTo(map);
 
 const vehicleLayer = L.layerGroup().addTo(map);
 const routeShapeLayer = L.layerGroup().addTo(map);
+const roadSituationLayer = L.layerGroup().addTo(map);
 const markers = {};
 
 // --- Filter op lijn/operator ---------------------------------------------
@@ -587,10 +589,34 @@ async function refreshRailAlerts() {
 // alleen nog de urgente typen (ongeval/abnormale verkeersdrukte) binnen de
 // provincie Utrecht -- wegwerkzaamheden/omleidingen zijn er al uit gefilterd,
 // dus elke melding hier krijgt de rode badge.
+// Icoon voor wegsituaties op de kaart: zelfde rode "ernstig"-kleur als de
+// badge in de lijst, een uitroepteken i.p.v. lijnnummer zodat het duidelijk
+// geen bus is. Aparte laag (roadSituationLayer) i.p.v. de vehicleLayer, dus
+// altijd zichtbaar los van de lijn-/operatorfilter.
+function roadSituationIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative; transform:translate(-11px, -11px);">
+             <div class="bus-badge" style="background:#d6006c; width:22px; height:22px; border-radius:50%;">⚠</div>
+           </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
 async function refreshRoadSituations() {
   const res = await fetch('/api/road-situations');
   const data = await res.json();
   document.getElementById('road-situations-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+
+  roadSituationLayer.clearLayers();
+  for (const s of data.situations) {
+    if (!s.lat || !s.lon) continue;
+    const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
+    const popupText = `<b>${s.type_label}</b>${where ? `<br>${where}` : ''}${s.comment ? `<br>${s.comment}` : ''}`;
+    L.marker([s.lat, s.lon], { icon: roadSituationIcon() }).bindPopup(popupText).addTo(roadSituationLayer);
+  }
+
   const el = document.getElementById('road-situations');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen urgente wegsituaties</div>'; return; }
   el.innerHTML = data.situations.map(s => {
