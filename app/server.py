@@ -412,8 +412,8 @@ def api_road_situations():
     app/road_situations.py). Publieke, sleutelloze bron (NDW), dus altijd
     actief -- niet afhankelijk van een env var zoals NS_API_KEY.
 
-    Alleen de urgente typen (SEVERE_ROAD_TYPES: ongeval/abnormale
-    verkeersdrukte). De collector bewaart wel alle situaties -- de rest is
+    Alleen de urgente typen (zie SEVERE_ROAD_TYPES in road_situations.py).
+    De collector bewaart wel alle situaties -- de rest is
     vrijwel altijd langlopende wegwerkzaamheden/omleidingen die de lijst
     zouden overspoelen zonder iets te zeggen over de actuele situatie."""
     types = tuple(sorted(SEVERE_ROAD_TYPES))
