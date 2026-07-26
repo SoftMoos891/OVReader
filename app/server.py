@@ -269,7 +269,8 @@ def api_vehicles():
     cutoff = int(time.time()) - VEHICLE_FRESHNESS_SECONDS
     conn = db.get_conn()
     try:
-        # OVapi laat het vehicle_id-veld vaak leeg; val in dat geval terug op
+        # vehicle_id komt uit vehicle.label (zie gtfs_rt.py) en is bij OVapi
+        # niet voor elk voertuig gevuld (~98% wel); val in dat geval terug op
         # trip_id als unieke identiteit per voertuig/rit zodat we niet alle
         # "vehicle_id-loze" bussen op elkaar dedupliceren.
         rows = conn.execute(
@@ -322,6 +323,7 @@ def api_vehicles():
             # die rijen buiten het freshness-venster vallen.
             continue
         meta = route_meta(r["route_id"])
+        trip_meta = _timetable.trip_meta.get(r["trip_id"], {})
         vehicles.append({
             "ident": r["ident"],
             "vehicle_id": r["vehicle_id"],
@@ -330,6 +332,9 @@ def api_vehicles():
             "route_short_name": meta["short_name"],
             "agency_name": meta["agency_name"],
             "operator": meta["operator"],
+            "headsign": trip_meta.get("headsign") or None,
+            "direction_id": r["direction_id"],
+            "current_status": r["current_status"],
             "lat": r["lat"],
             "lon": r["lon"],
             "bearing": r["bearing"],

@@ -75,6 +75,9 @@ def _fetch_feed(url):
     return feed
 
 
+_CURRENT_STATUS_NAMES = {0: "INCOMING_AT", 1: "STOPPED_AT", 2: "IN_TRANSIT_TO"}
+
+
 def fetch_vehicle_positions(index: UtrechtIndex):
     """Geeft lijst van dicts terug met voertuigposities binnen Utrecht."""
     feed = _fetch_feed(FEED_VEHICLE_POSITIONS)
@@ -91,9 +94,13 @@ def fetch_vehicle_positions(index: UtrechtIndex):
         if not vp.HasField("position"):
             continue
         results.append({
-            "vehicle_id": vp.vehicle.id if vp.HasField("vehicle") else None,
+            # vehicle.id staat in de praktijk nooit gevuld (OVapi) -- het
+            # echte voertuignummer (bv. "7054") zit in vehicle.label.
+            "vehicle_id": vp.vehicle.label if vp.HasField("vehicle") else None,
             "trip_id": trip_id,
             "route_id": resolved_route,
+            "direction_id": vp.trip.direction_id if vp.HasField("trip") and vp.trip.HasField("direction_id") else None,
+            "current_status": _CURRENT_STATUS_NAMES.get(vp.current_status, "IN_TRANSIT_TO"),
             "lat": vp.position.latitude,
             "lon": vp.position.longitude,
             "speed": vp.position.speed if vp.position.HasField("speed") else None,

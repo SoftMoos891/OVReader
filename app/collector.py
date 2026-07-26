@@ -103,8 +103,10 @@ def collect_once():
             positions = fetch_vehicle_positions(_index)
             conn.executemany(
                 """INSERT INTO vehicle_positions
-                   (fetched_at, vehicle_id, trip_id, route_id, lat, lon, speed, bearing)
-                   VALUES (:fetched_at, :vehicle_id, :trip_id, :route_id, :lat, :lon, :speed, :bearing)""",
+                   (fetched_at, vehicle_id, trip_id, route_id, lat, lon, speed, bearing,
+                    direction_id, current_status)
+                   VALUES (:fetched_at, :vehicle_id, :trip_id, :route_id, :lat, :lon, :speed, :bearing,
+                           :direction_id, :current_status)""",
                 [{**p, "fetched_at": fetched_at} for p in positions],
             )
         except Exception:

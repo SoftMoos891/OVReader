@@ -406,9 +406,12 @@ async function refreshVehicles() {
     if (key === followedVehicleId) followedLatLng = [v.lat, v.lon];
     const color = delayColor(v.delay_seconds);
     const followLabel = key === followedVehicleId ? '✕ Stop met volgen' : '📍 Volg dit voertuig';
-    const html = `<b>Lijn ${v.route_short_name}</b> (U-OV, ${v.operator})<br>` +
-                 `Status: ${delayText(v.delay_seconds)}<br>` +
-                 `Rit ${v.vehicle_id || v.trip_id}` +
+    const destination = v.headsign ? ` richting ${v.headsign}` : '';
+    const movement = v.current_status === 'STOPPED_AT' ? 'Staat bij een halte'
+      : v.current_status === 'IN_TRANSIT_TO' ? 'Onderweg naar volgende halte' : null;
+    const html = `<b>Lijn ${v.route_short_name}</b>${destination} (U-OV, ${v.operator})<br>` +
+                 `Status: ${delayText(v.delay_seconds)}${movement ? ` &middot; ${movement}` : ''}<br>` +
+                 `Voertuig ${v.vehicle_id || v.trip_id}` +
                  `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
                  `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
     if (markers[key]) {
