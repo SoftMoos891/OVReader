@@ -44,6 +44,7 @@ LITE_BASE_URL = "https://ovreader.dvznet.nl/lite"
 VEHICLE_FRESHNESS_SECONDS = 90
 CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt sporadisch binnen, geen 30s-heartbeat
 RAIL_ALERTS_STALE_AFTER_SECONDS = 600  # zelfde marge als in app/server.py (job draait elke 2 min)
+ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200  # zelfde marge als in app/server.py (job draait elke 5 min)
 
 app = Flask(
     __name__,
@@ -154,6 +155,9 @@ def lite_api_health():
         ns_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM ns_fetch_status WHERE id = 1"
         ).fetchone()
+        road_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM road_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -168,12 +172,17 @@ def lite_api_health():
         rail_alerts_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
     else:
         rail_alerts_component = component(ns_status["last_success_at"], stale_after=RAIL_ALERTS_STALE_AFTER_SECONDS)
+    road_situations_component = component(
+        road_status["last_success_at"] if road_status else None,
+        stale_after=ROAD_SITUATIONS_STALE_AFTER_SECONDS,
+    )
 
     components = {
         "vehicle_positions": component(vp_last),
         "trip_delays": component(td_last),
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
         "rail_alerts": rail_alerts_component,
+        "road_situations": road_situations_component,
     }
     latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
@@ -224,6 +233,35 @@ def lite_api_rail_alerts():
     storingen op het spoor (NS) binnen de provincie Utrecht."""
     alerts = _active_rail_alerts()
     return jsonify({"alerts": alerts, "count": len(alerts)})
+
+
+@app.route("/lite/api/road-situations")
+def lite_api_road_situations():
+    """Zelfde vorm als het volledige /api/road-situations in app/server.py --
+    actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de provincie
+    Utrecht."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM road_situations WHERE active=1 ORDER BY first_seen DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    situations = [
+        {
+            "situation_id": r["situation_id"],
+            "record_type": r["record_type"],
+            "type_label": r["type_label"],
+            "comment": r["comment"],
+            "severity": r["severity"],
+            "start_time": r["start_time"],
+            "end_time": r["end_time"],
+            "first_seen": r["first_seen"],
+            "last_seen": r["last_seen"],
+        }
+        for r in rows
+    ]
+    return jsonify({"situations": situations, "count": len(situations)})
 
 
 @app.route("/lite/api/alerts")

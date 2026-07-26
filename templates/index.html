@@ -163,6 +163,11 @@
       <div id="rail-alerts"><div class="empty">Laden...</div></div>
     </div>
     <div class="section">
+      <h2>Wegsituatie<span id="road-situations-count"></span></h2>
+      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Rijkswaterstaat-hoofdwegennet (snelwegen) binnen de provincie Utrecht -- wegwerkzaamheden, ongevallen, omleidingen</div>
+      <div id="road-situations"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
       <h2>Punctualiteit per operator</h2>
       <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
       <div id="agency-stats"><div class="empty">Laden...</div></div>
@@ -566,6 +571,31 @@ async function refreshRailAlerts() {
   }).join('');
 }
 
+// Wegsituaties (Rijkswaterstaat-hoofdwegennet, NDW open data, zie
+// /api/road-situations en app/road_situations.py), al vooraf op de server
+// gefilterd tot situaties binnen de provincie Utrecht. Alleen Ongeval/
+// Abnormale verkeersdrukte tellen als ernstig -- de rest (wegwerkzaamheden,
+// omleidingen, snelheidsmaatregelen) is routine, geen incident.
+const SEVERE_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
+
+async function refreshRoadSituations() {
+  const res = await fetch('/api/road-situations');
+  const data = await res.json();
+  document.getElementById('road-situations-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+  const el = document.getElementById('road-situations');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele wegsituaties</div>'; return; }
+  const withSeverity = data.situations.map(s => ({ s, severe: SEVERE_ROAD_TYPES.has(s.record_type) }));
+  withSeverity.sort((a, b) => (b.severe ? 1 : 0) - (a.severe ? 1 : 0));
+  el.innerHTML = withSeverity.map(({ s, severe }) => {
+    const badge = `<span class="pill ${severe ? 'bad' : 'warn'}">${s.type_label}</span>`;
+    return `
+    <div class="alert ${severe ? 'severe' : ''}">
+      <div class="hdr">${badge}${s.comment || s.type_label}</div>
+      <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}</div>
+    </div>`;
+  }).join('');
+}
+
 function cancellationPillClass(pct) {
   if (pct > 5) return 'bad';
   if (pct > 2) return 'warn';
@@ -717,6 +747,7 @@ function slowTick() {
   if (document.hidden) return;
   refreshAlerts().catch(console.error);
   refreshRailAlerts().catch(console.error);
+  refreshRoadSituations().catch(console.error);
   refreshStats().catch(console.error);
   refreshCancellations().catch(console.error);
   refreshStopDepartures().catch(console.error);
@@ -769,6 +800,7 @@ async function loadHealth() {
       ['Vertragingen', data.components.trip_delays, null],
       ['Uitval', data.components.cancellations, cancelNote],
       ['Spoorstoringen (NS)', data.components.rail_alerts, railNote],
+      ['Wegsituaties', data.components.road_situations, null],
     ];
     document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
       <div class="health-row">

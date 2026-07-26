@@ -13,6 +13,7 @@ from .gtfs_rt import (
     parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
 )
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
+from .road_situations import SEVERE_ROAD_TYPES, fetch_utrecht_road_situations
 
 FETCH_INTERVAL_SECONDS = 30
 # Hoe lang trip_delays/vehicle_positions als RUWE (per-halte/per-fetch) rijen
@@ -570,6 +571,90 @@ def fetch_rail_alerts_job():
         conn.close()
 
 
+def fetch_road_situations_job():
+    """Haalt actuele wegsituaties op (Rijkswaterstaat-hoofdwegennet, NDW open
+    data, zie road_situations.py) binnen de provincie Utrecht en
+    synchroniseert ze naar road_situations, met dezelfde first_seen/
+    last_seen/active-boekhouding als rail_alerts. Publieke, sleutelloze bron
+    (geen abonnementslimiet zoals bij NS) -- elke 5 minuten is ruim actueel
+    genoeg voor vooral wegwerkzaamheden/langlopende situaties."""
+    fetched_at = _now()
+    conn = db.get_conn()
+    try:
+        situations = fetch_utrecht_road_situations()
+        seen_ids = [s["situation_id"] for s in situations]
+        for s in situations:
+            conn.execute(
+                """INSERT INTO road_situations
+                   (situation_id, first_seen, last_seen, record_type, type_label,
+                    comment, severity, start_time, end_time, active)
+                   VALUES (:situation_id, :now, :now, :record_type, :type_label,
+                           :comment, :severity, :start_time, :end_time, 1)
+                   ON CONFLICT(situation_id) DO UPDATE SET
+                       last_seen=:now, record_type=:record_type, type_label=:type_label,
+                       comment=:comment, severity=:severity, start_time=:start_time,
+                       end_time=:end_time, active=1""",
+                {
+                    "situation_id": s["situation_id"],
+                    "now": fetched_at,
+                    "record_type": s["record_type"],
+                    "type_label": s["type_label"],
+                    "comment": s["comment"],
+                    "severity": s["severity"],
+                    "start_time": s["start_time"],
+                    "end_time": s["end_time"],
+                },
+            )
+            # Permanente RSS-melding, alleen voor de echt urgente typen (een
+            # wegwerkzaamheid met maandenlange geldigheid is geen incident).
+            if s["record_type"] in SEVERE_ROAD_TYPES:
+                title = f"Wegsituatie ({s['type_label']}): {s['comment'] or s['type_label']}"
+                description = f"{s['comment'] or s['type_label']} Klik hier voor meer data.".strip()
+                conn.execute(
+                    """INSERT OR IGNORE INTO rss_feed_items
+                       (guid, kind, title, description, pub_date, created_at)
+                       VALUES (:guid, 'road_situation', :title, :description, :now, :now)""",
+                    {
+                        "guid": f"road-situation-{s['situation_id']}",
+                        "title": title,
+                        "description": description,
+                        "now": fetched_at,
+                    },
+                )
+        if seen_ids:
+            placeholders = ",".join("?" * len(seen_ids))
+            newly_inactive = conn.execute(
+                f"SELECT situation_id FROM road_situations WHERE active=1 AND situation_id NOT IN ({placeholders})",
+                seen_ids,
+            ).fetchall()
+            conn.execute(
+                f"UPDATE road_situations SET active=0 WHERE active=1 AND situation_id NOT IN ({placeholders})",
+                seen_ids,
+            )
+        else:
+            newly_inactive = conn.execute("SELECT situation_id FROM road_situations WHERE active=1").fetchall()
+            conn.execute("UPDATE road_situations SET active=0 WHERE active=1")
+        for r in newly_inactive:
+            _mark_rss_item_resolved(conn, f"road-situation-{r['situation_id']}", fetched_at)
+        conn.execute(
+            """INSERT INTO road_fetch_status (id, last_success_at) VALUES (1, :now)
+               ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
+            {"now": fetched_at},
+        )
+        conn.commit()
+    except Exception as e:
+        print("[collector] fout bij ophalen wegsituaties:")
+        traceback.print_exc()
+        conn.execute(
+            """INSERT INTO road_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
+               ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
+            {"now": fetched_at, "err": str(e)[:500]},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def check_cancellation_alerts_job():
     """Legt permanent een RSS-melding vast (rss_feed_items, zie db.py) zodra
     het uitvalpercentage van VANDAAG voor een vervoerder boven
@@ -674,11 +759,13 @@ def start_scheduler():
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
     scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
+    scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
     fetch_rail_alerts_job()
     check_cancellation_alerts_job()
+    fetch_road_situations_job()
     # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
     # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
     # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen

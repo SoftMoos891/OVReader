@@ -95,6 +95,32 @@ CREATE TABLE IF NOT EXISTS ns_fetch_status (
     last_error TEXT
 );
 
+-- Actuele wegsituaties (Rijkswaterstaat-hoofdwegennet, NDW open data) binnen
+-- de provincie Utrecht -- zie app/road_situations.py. Zelfde active-
+-- boekhouding als rail_alerts.
+CREATE TABLE IF NOT EXISTS road_situations (
+    situation_id TEXT PRIMARY KEY,
+    first_seen INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    record_type TEXT,
+    type_label TEXT,
+    comment TEXT,
+    severity TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    active INTEGER DEFAULT 1
+);
+
+-- Zelfde reden als ns_fetch_status hierboven: road_situations krijgt alleen
+-- rijen zolang er daadwerkelijk iets relevants is, dus apart bijhouden
+-- wanneer de job voor het laatst succesvol/met een fout afrondde.
+CREATE TABLE IF NOT EXISTS road_fetch_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT
+);
+
 -- Permanente geschiedenis van RSS-meldingen (/lite/rss.xml): items worden
 -- hier één keer geschreven door de collector zodra een gebeurtenis zich
 -- voordoet (uitval boven de signaleringsgrens, een nieuwe NS-storing) en

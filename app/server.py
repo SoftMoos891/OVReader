@@ -167,6 +167,10 @@ CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt spora
 # minuten geeft ruimte voor een paar gemiste cycli (bv. een tijdelijke
 # NS-API-hik) voordat dit als stilgevallen wordt gemeld.
 RAIL_ALERTS_STALE_AFTER_SECONDS = 600
+# fetch_road_situations_job() draait elke 5 minuten; 20 minuten geeft ruimte
+# voor een paar gemiste cycli. Publieke, sleutelloze bron (geen
+# 'not_configured' zoals bij NS_API_KEY) -- hoort altijd te draaien.
+ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200
 
 
 @app.route("/api/health")
@@ -199,6 +203,9 @@ def api_health():
         ns_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM ns_fetch_status WHERE id = 1"
         ).fetchone()
+        road_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM road_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -213,12 +220,17 @@ def api_health():
         rail_alerts_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
     else:
         rail_alerts_component = component(ns_status["last_success_at"], stale_after=RAIL_ALERTS_STALE_AFTER_SECONDS)
+    road_situations_component = component(
+        road_status["last_success_at"] if road_status else None,
+        stale_after=ROAD_SITUATIONS_STALE_AFTER_SECONDS,
+    )
 
     components = {
         "vehicle_positions": component(vp_last),
         "trip_delays": component(td_last),
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
         "rail_alerts": rail_alerts_component,
+        "road_situations": road_situations_component,
     }
     # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
     # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
@@ -390,6 +402,36 @@ def api_rail_alerts():
         for r in rows
     ]
     return jsonify({"alerts": alerts, "count": len(alerts)})
+
+
+@app.route("/api/road-situations")
+def api_road_situations():
+    """Actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de
+    provincie Utrecht -- aparte databron t.o.v. /api/alerts (zie
+    app/road_situations.py). Publieke, sleutelloze bron (NDW), dus altijd
+    actief -- niet afhankelijk van een env var zoals NS_API_KEY."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM road_situations WHERE active=1 ORDER BY first_seen DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    situations = [
+        {
+            "situation_id": r["situation_id"],
+            "record_type": r["record_type"],
+            "type_label": r["type_label"],
+            "comment": r["comment"],
+            "severity": r["severity"],
+            "start_time": r["start_time"],
+            "end_time": r["end_time"],
+            "first_seen": r["first_seen"],
+            "last_seen": r["last_seen"],
+        }
+        for r in rows
+    ]
+    return jsonify({"situations": situations, "count": len(situations)})
 
 
 @app.route("/api/stats")
