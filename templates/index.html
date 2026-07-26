@@ -407,10 +407,18 @@ async function refreshVehicles() {
     const color = delayColor(v.delay_seconds);
     const followLabel = key === followedVehicleId ? '✕ Stop met volgen' : '📍 Volg dit voertuig';
     const destination = v.headsign ? ` richting ${v.headsign}` : '';
-    const movement = v.current_status === 'STOPPED_AT' ? 'Staat bij een halte'
-      : v.current_status === 'IN_TRANSIT_TO' ? 'Onderweg naar volgende halte' : null;
+    // current_status zegt waar stop_id op slaat: bij STOPPED_AT staat het
+    // voertuig er nu, anders (INCOMING_AT/IN_TRANSIT_TO) is het de eerst-
+    // volgende halte -- vandaar drie net iets andere formuleringen i.p.v.
+    // één generieke "huidige halte".
+    const stopLine = v.current_stop_name
+      ? (v.current_status === 'STOPPED_AT' ? `Staat bij halte: ${v.current_stop_name}`
+        : v.current_status === 'INCOMING_AT' ? `Nadert halte: ${v.current_stop_name}`
+        : `Onderweg naar halte: ${v.current_stop_name}`)
+      : null;
     const html = `<b>Lijn ${v.route_short_name}</b>${destination} (U-OV, ${v.operator})<br>` +
-                 `Status: ${delayText(v.delay_seconds)}${movement ? ` &middot; ${movement}` : ''}<br>` +
+                 `Status: ${delayText(v.delay_seconds)}<br>` +
+                 `${stopLine ? `${stopLine}<br>` : ''}` +
                  `Voertuig ${v.vehicle_id || v.trip_id}` +
                  `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
                  `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;

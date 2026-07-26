@@ -101,6 +101,10 @@ def fetch_vehicle_positions(index: UtrechtIndex):
             "route_id": resolved_route,
             "direction_id": vp.trip.direction_id if vp.HasField("trip") and vp.trip.HasField("direction_id") else None,
             "current_status": _CURRENT_STATUS_NAMES.get(vp.current_status, "IN_TRANSIT_TO"),
+            # De halte waar current_status betrekking op heeft: bij STOPPED_AT
+            # de halte waar het voertuig nu stilstaat, anders de eerstvolgende
+            # halte (INCOMING_AT/IN_TRANSIT_TO).
+            "stop_id": vp.stop_id or None,
             "lat": vp.position.latitude,
             "lon": vp.position.longitude,
             "speed": vp.position.speed if vp.position.HasField("speed") else None,

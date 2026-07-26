@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS vehicle_positions (
     -- current_status (IN_TRANSIT_TO/STOPPED_AT/INCOMING_AT) -- allebei al
     -- in de feed aanwezig, tot nu toe ongebruikt.
     direction_id INTEGER,
-    current_status TEXT
+    current_status TEXT,
+    -- Halte waar current_status betrekking op heeft (zie gtfs_rt.py) --
+    -- voor "Huidige halte: X" in de voertuig-popup.
+    stop_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_vp_fetched_at ON vehicle_positions(fetched_at);
 CREATE INDEX IF NOT EXISTS idx_vp_route ON vehicle_positions(route_id);
@@ -266,6 +269,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE vehicle_positions ADD COLUMN direction_id INTEGER")
     if "current_status" not in vp_cols:
         conn.execute("ALTER TABLE vehicle_positions ADD COLUMN current_status TEXT")
+    if "stop_id" not in vp_cols:
+        conn.execute("ALTER TABLE vehicle_positions ADD COLUMN stop_id TEXT")
 
     alert_cols = {r["name"] for r in conn.execute("PRAGMA table_info(alerts)")}
     if "valid_from" not in alert_cols:

@@ -324,6 +324,7 @@ def api_vehicles():
             continue
         meta = route_meta(r["route_id"])
         trip_meta = _timetable.trip_meta.get(r["trip_id"], {})
+        stop = _timetable.stops.get(r["stop_id"]) if r["stop_id"] else None
         vehicles.append({
             "ident": r["ident"],
             "vehicle_id": r["vehicle_id"],
@@ -335,6 +336,7 @@ def api_vehicles():
             "headsign": trip_meta.get("headsign") or None,
             "direction_id": r["direction_id"],
             "current_status": r["current_status"],
+            "current_stop_name": stop["name"] if stop else None,
             "lat": r["lat"],
             "lon": r["lon"],
             "bearing": r["bearing"],
