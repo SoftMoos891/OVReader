@@ -150,7 +150,14 @@ def parse_road_situations(root):
                 if e is not None and e.text:
                     end_time = e.text
 
-        if not any(_in_utrecht(lng, lat) for lng, lat in all_points):
+        # De DATEX II-locatiereferentie in deze feed gebruikt AlertC-codes
+        # (een losse, hier niet meegeleverde opzoektabel) i.p.v. leesbare
+        # weg-/plaatsnamen -- vandaar geen "A12"-achtig veld. Coordinaten zijn
+        # er wel, dus het EERSTE punt binnen Utrecht bewaren we als
+        # representatieve locatie (voor een kaartlink), i.p.v. 'm na de
+        # relevantie-check weg te gooien.
+        utrecht_point = next(((lng, lat) for lng, lat in all_points if _in_utrecht(lng, lat)), None)
+        if utrecht_point is None:
             continue
 
         record_type = next((t for t in _TYPE_PRIORITY if t in record_types), record_types[0])
@@ -162,6 +169,8 @@ def parse_road_situations(root):
             "severity": severity,
             "start_time": start_time,
             "end_time": end_time,
+            "lon": utrecht_point[0],
+            "lat": utrecht_point[1],
         })
     return results
 

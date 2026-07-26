@@ -108,7 +108,13 @@ CREATE TABLE IF NOT EXISTS road_situations (
     severity TEXT,
     start_time TEXT,
     end_time TEXT,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    -- Representatief punt (eerste coordinaat binnen Utrecht) voor een
+    -- kaartlink -- zonder dit veld was nergens te zien WAAR een wegsituatie
+    -- zich voordoet (de feed zelf gebruikt AlertC-locatiecodes, geen
+    -- leesbare weg-/plaatsnaam).
+    lat REAL,
+    lon REAL
 );
 
 -- Zelfde reden als ns_fetch_status hierboven: road_situations krijgt alleen
@@ -259,6 +265,12 @@ def _migrate(conn):
     rail_alert_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rail_alerts)")}
     if "consequence_level" not in rail_alert_cols:
         conn.execute("ALTER TABLE rail_alerts ADD COLUMN consequence_level TEXT")
+
+    road_situation_cols = {r["name"] for r in conn.execute("PRAGMA table_info(road_situations)")}
+    if "lat" not in road_situation_cols:
+        conn.execute("ALTER TABLE road_situations ADD COLUMN lat REAL")
+    if "lon" not in road_situation_cols:
+        conn.execute("ALTER TABLE road_situations ADD COLUMN lon REAL")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook

@@ -426,6 +426,8 @@ def api_road_situations():
             "severity": r["severity"],
             "start_time": r["start_time"],
             "end_time": r["end_time"],
+            "lat": r["lat"],
+            "lon": r["lon"],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
         }

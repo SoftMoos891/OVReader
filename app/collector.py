@@ -587,13 +587,13 @@ def fetch_road_situations_job():
             conn.execute(
                 """INSERT INTO road_situations
                    (situation_id, first_seen, last_seen, record_type, type_label,
-                    comment, severity, start_time, end_time, active)
+                    comment, severity, start_time, end_time, lat, lon, active)
                    VALUES (:situation_id, :now, :now, :record_type, :type_label,
-                           :comment, :severity, :start_time, :end_time, 1)
+                           :comment, :severity, :start_time, :end_time, :lat, :lon, 1)
                    ON CONFLICT(situation_id) DO UPDATE SET
                        last_seen=:now, record_type=:record_type, type_label=:type_label,
                        comment=:comment, severity=:severity, start_time=:start_time,
-                       end_time=:end_time, active=1""",
+                       end_time=:end_time, lat=:lat, lon=:lon, active=1""",
                 {
                     "situation_id": s["situation_id"],
                     "now": fetched_at,
@@ -603,6 +603,8 @@ def fetch_road_situations_job():
                     "severity": s["severity"],
                     "start_time": s["start_time"],
                     "end_time": s["end_time"],
+                    "lat": s["lat"],
+                    "lon": s["lon"],
                 },
             )
             # Permanente RSS-melding, alleen voor de echt urgente typen (een
