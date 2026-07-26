@@ -26,6 +26,7 @@ from flask import Flask, Response, jsonify, render_template, request
 from . import db
 from .collector import FETCH_INTERVAL_SECONDS
 from .concession_mapping import TRANSDEV_TRAM
+from .road_situations import SEVERE_ROAD_TYPES
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -239,11 +240,14 @@ def lite_api_rail_alerts():
 def lite_api_road_situations():
     """Zelfde vorm als het volledige /api/road-situations in app/server.py --
     actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de provincie
-    Utrecht."""
+    Utrecht, beperkt tot de urgente typen (zie aldaar)."""
+    types = tuple(sorted(SEVERE_ROAD_TYPES))
     conn = db.get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM road_situations WHERE active=1 ORDER BY first_seen DESC"
+            "SELECT * FROM road_situations WHERE active=1 "
+            f"AND record_type IN ({','.join('?' * len(types))}) ORDER BY first_seen DESC",
+            types,
         ).fetchall()
     finally:
         conn.close()

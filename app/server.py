@@ -15,6 +15,7 @@ from flask import Flask, Response, jsonify, render_template, request, send_file
 from . import db, records
 from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
+from .road_situations import SEVERE_ROAD_TYPES
 from .timetable import Timetable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -409,11 +410,19 @@ def api_road_situations():
     """Actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de
     provincie Utrecht -- aparte databron t.o.v. /api/alerts (zie
     app/road_situations.py). Publieke, sleutelloze bron (NDW), dus altijd
-    actief -- niet afhankelijk van een env var zoals NS_API_KEY."""
+    actief -- niet afhankelijk van een env var zoals NS_API_KEY.
+
+    Alleen de urgente typen (SEVERE_ROAD_TYPES: ongeval/abnormale
+    verkeersdrukte). De collector bewaart wel alle situaties -- de rest is
+    vrijwel altijd langlopende wegwerkzaamheden/omleidingen die de lijst
+    zouden overspoelen zonder iets te zeggen over de actuele situatie."""
+    types = tuple(sorted(SEVERE_ROAD_TYPES))
     conn = db.get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM road_situations WHERE active=1 ORDER BY first_seen DESC"
+            "SELECT * FROM road_situations WHERE active=1 "
+            f"AND record_type IN ({','.join('?' * len(types))}) ORDER BY first_seen DESC",
+            types,
         ).fetchall()
     finally:
         conn.close()

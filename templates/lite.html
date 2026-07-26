@@ -84,6 +84,17 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="mapModal" onclick="if(event.target===this)closeMapModal()">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span id="mapModalTitle">Locatie</span>
+      <button class="modal-close" onclick="closeMapModal()">✕</button>
+    </div>
+    <div class="modal-body map-body"><iframe id="mapFrame" title="Kaart" loading="lazy" src="about:blank"></iframe></div>
+    <div class="modal-footer"><a id="mapModalLink" href="#" target="_blank" rel="noopener noreferrer">Openen op openstreetmap.org &rarr;</a></div>
+  </div>
+</div>
+
 <main>
   <div class="grid2">
     <div class="section">
@@ -116,7 +127,7 @@
 
   <div class="section">
     <h2>Wegsituatie<span id="road-situations-count"></span></h2>
-    <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Rijkswaterstaat-hoofdwegennet (snelwegen) binnen de provincie Utrecht -- wegwerkzaamheden, ongevallen, omleidingen</div>
+    <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte) op het Rijkswaterstaat-hoofdwegennet binnen de provincie Utrecht</div>
     <div id="road-situations"><div class="empty">Laden...</div></div>
   </div>
 
@@ -253,33 +264,53 @@ async function refreshRailAlerts() {
 }
 
 // Wegsituaties (Rijkswaterstaat-hoofdwegennet, NDW open data, zie
-// /lite/api/road-situations en app/road_situations.py). Alleen Ongeval/
-// Abnormale verkeersdrukte tellen als ernstig -- de rest (wegwerkzaamheden,
-// omleidingen, snelheidsmaatregelen) is routine, geen incident.
-const SEVERE_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
-
+// /lite/api/road-situations en app/road_situations.py). De server levert hier
+// alleen nog de urgente typen (ongeval/abnormale verkeersdrukte) binnen de
+// provincie Utrecht -- wegwerkzaamheden/omleidingen zijn er al uit gefilterd,
+// dus elke melding hier krijgt de rode badge.
 async function refreshRoadSituations() {
   const res = await fetch('/lite/api/road-situations');
   const data = await res.json();
   document.getElementById('road-situations-count').textContent = data.count > 0 ? ` (${data.count})` : '';
   const el = document.getElementById('road-situations');
-  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele wegsituaties</div>'; return; }
-  const withSeverity = data.situations.map(s => ({ s, severe: SEVERE_ROAD_TYPES.has(s.record_type) }));
-  withSeverity.sort((a, b) => (b.severe ? 1 : 0) - (a.severe ? 1 : 0));
-  el.innerHTML = withSeverity.map(({ s, severe }) => {
-    const badge = `<span class="pill ${severe ? 'bad' : 'warn'}">${s.type_label}</span>`;
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen urgente wegsituaties</div>'; return; }
+  el.innerHTML = data.situations.map(s => {
     // De feed zelf geeft geen leesbare weg-/plaatsnaam (AlertC-locatiecodes,
-    // geen opzoektabel meegeleverd) -- wel coordinaten, dus een kaartlink
+    // geen opzoektabel meegeleverd) -- wel coordinaten, dus een kaart-pop-up
     // i.p.v. helemaal geen locatie-aanduiding.
     const mapLink = (s.lat && s.lon)
-      ? ` &middot; <a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lon}#map=14/${s.lat}/${s.lon}" target="_blank" rel="noopener noreferrer">Bekijk op kaart</a>`
+      ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${s.type_label}">Bekijk op kaart</a>`
       : '';
     return `
-    <div class="alert ${severe ? 'severe' : ''}">
-      <div class="hdr">${badge}${s.comment || s.type_label}</div>
+    <div class="alert severe">
+      <div class="hdr"><span class="pill bad">${s.type_label}</span>${s.comment || s.type_label}</div>
       <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${mapLink}</div>
     </div>`;
   }).join('');
+  el.querySelectorAll('.map-link').forEach(a => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    openMapModal(a.dataset.lat, a.dataset.lon, a.dataset.label);
+  }));
+}
+
+// Kaart-pop-up: een ingesloten OpenStreetMap i.p.v. een nieuw tabblad.
+// Bewust een iframe (geen Leaflet), zodat deze lichte pagina er geen
+// kaartbibliotheek voor hoeft te laden -- zelfde implementatie als index.html.
+function openMapModal(lat, lon, label) {
+  const la = Number(lat), lo = Number(lon);
+  const d = 0.012;  // ~1,3 km rondom het punt
+  const bbox = [lo - d, la - d, lo + d, la + d].map(v => v.toFixed(6)).join(',');
+  document.getElementById('mapModalTitle').textContent = label || 'Locatie';
+  document.getElementById('mapFrame').src =
+    `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${la},${lo}`;
+  document.getElementById('mapModalLink').href =
+    `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}`;
+  document.getElementById('mapModal').classList.add('open');
+}
+function closeMapModal() {
+  document.getElementById('mapModal').classList.remove('open');
+  // Leegmaken zodat de kaart niet op de achtergrond tegels blijft laden.
+  document.getElementById('mapFrame').src = 'about:blank';
 }
 
 function cancellationPillClass(pct) {
