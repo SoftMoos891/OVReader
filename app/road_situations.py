@@ -46,7 +46,7 @@ _TYPE_LABELS = {
 }
 _TYPE_PRIORITY = list(_TYPE_LABELS)
 
-# Deze typen tellen als "ernstig" (voor de RSS-feed en de meldingenlijst) --
+# Deze typen tellen als "ernstig" voor de meldingenlijst/kaart op de site --
 # de rest is vooral routine wegwerkzaamheden/snelheidsmaatregelen, geen
 # incident. VehicleObstruction leek eerst een logische toevoeging, maar
 # bleek in de praktijk (provincie Utrecht, steekproef) voor 78% gewoon een
@@ -55,6 +55,12 @@ _TYPE_PRIORITY = list(_TYPE_LABELS)
 # blanket-regel voor bus-meldingen. GeneralObstruction (bv. lading/object op
 # de weg) is wel een echt incident.
 SEVERE_ROAD_TYPES = {"Accident", "AbnormalTraffic", "GeneralObstruction"}
+
+# Smallere subset voor de RSS-feed: GeneralObstruction mag wel op de site
+# getoond worden (zie hierboven), maar hoeft geen RSS-melding te geven -- op
+# verzoek, waarschijnlijk omdat een obstakel op de weg minder vaak een echt
+# meldingswaardig incident is dan een ongeval/abnormale verkeersdrukte.
+RSS_ROAD_TYPES = {"Accident", "AbnormalTraffic"}
 
 
 def _load_utrecht_rings():
