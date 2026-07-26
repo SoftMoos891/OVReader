@@ -106,7 +106,13 @@ CREATE TABLE IF NOT EXISTS rss_feed_items (
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     pub_date INTEGER NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    -- Gezet zodra de onderliggende situatie weer normaal is (uitval weer
+    -- onder de grens, NS-storing/U-OV-melding niet meer actief) -- de titel
+    -- krijgt dan " (voorbij)" erachter, zodat een lezer van de feed/
+    -- geschiedenispagina meteen ziet dat het achterhaald is. guid/pub_date
+    -- blijven ongewijzigd (geen nieuwe melding, geen re-notify).
+    resolved_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_rss_items_pubdate ON rss_feed_items(pub_date);
 
@@ -216,6 +222,10 @@ def _migrate(conn):
         conn.execute("ALTER TABLE alerts ADD COLUMN valid_until INTEGER")
     if "cause" not in alert_cols:
         conn.execute("ALTER TABLE alerts ADD COLUMN cause TEXT")
+
+    rss_item_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rss_feed_items)")}
+    if "resolved_at" not in rss_item_cols:
+        conn.execute("ALTER TABLE rss_feed_items ADD COLUMN resolved_at INTEGER")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook

@@ -63,6 +63,21 @@ def _now():
     return int(time.time())
 
 
+def _mark_rss_item_resolved(conn, guid, now):
+    """Zet resolved_at op een rss_feed_items-rij zodra de onderliggende
+    situatie weer normaal is, en hangt ' (voorbij)' achter de titel -- geen
+    nieuwe melding (guid/pub_date blijven ongewijzigd, dus geen re-notify),
+    alleen het bestaande bericht bijgewerkt. Werkt alleen op nog-onopgeloste
+    rijen (idempotent: een tweede keer oproepen voor dezelfde guid doet niks
+    meer) en is een no-op als er geen rij met deze guid bestaat (bv. omdat de
+    onderliggende melding nooit als ernstig genoeg werd gelogd)."""
+    conn.execute(
+        """UPDATE rss_feed_items SET title = title || ' (voorbij)', resolved_at = :now
+           WHERE guid = :guid AND resolved_at IS NULL""",
+        {"guid": guid, "now": now},
+    )
+
+
 def collect_once():
     global _index
     if _index is None:
@@ -198,12 +213,19 @@ def collect_once():
                     )
             if seen_ids:
                 placeholders = ",".join("?" * len(seen_ids))
+                newly_inactive = conn.execute(
+                    f"SELECT alert_id FROM alerts WHERE active=1 AND alert_id NOT IN ({placeholders})",
+                    seen_ids,
+                ).fetchall()
                 conn.execute(
                     f"UPDATE alerts SET active=0 WHERE active=1 AND alert_id NOT IN ({placeholders})",
                     seen_ids,
                 )
             else:
+                newly_inactive = conn.execute("SELECT alert_id FROM alerts WHERE active=1").fetchall()
                 conn.execute("UPDATE alerts SET active=0 WHERE active=1")
+            for r in newly_inactive:
+                _mark_rss_item_resolved(conn, f"bus-alert-{r['alert_id']}", fetched_at)
         except Exception:
             print("[collector] fout bij ophalen alerts:")
             traceback.print_exc()
@@ -514,12 +536,19 @@ def fetch_rail_alerts_job():
             )
         if seen_ids:
             placeholders = ",".join("?" * len(seen_ids))
+            newly_inactive = conn.execute(
+                f"SELECT alert_id FROM rail_alerts WHERE active=1 AND alert_id NOT IN ({placeholders})",
+                seen_ids,
+            ).fetchall()
             conn.execute(
                 f"UPDATE rail_alerts SET active=0 WHERE active=1 AND alert_id NOT IN ({placeholders})",
                 seen_ids,
             )
         else:
+            newly_inactive = conn.execute("SELECT alert_id FROM rail_alerts WHERE active=1").fetchall()
             conn.execute("UPDATE rail_alerts SET active=0 WHERE active=1")
+        for r in newly_inactive:
+            _mark_rss_item_resolved(conn, f"rail-alert-{r['alert_id']}", fetched_at)
         conn.execute(
             """INSERT INTO ns_fetch_status (id, last_success_at) VALUES (1, :now)
                ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
@@ -595,10 +624,15 @@ def check_cancellation_alerts_job():
         today_display = time.strftime("%d-%m-%Y", time.localtime(now))
         for operator, a in per_operator.items():
             total = a["canceled"] + a["ran"]
+            guid = f"cancel-alert-{operator}-{today}"
             if total == 0:
                 continue
             pct = 100.0 * a["canceled"] / total
             if pct <= CANCELLATION_ALERT_THRESHOLD_PCT:
+                # Was eerder vandaag misschien wel boven de grens (vandaar een
+                # bestaande, nog onopgeloste rss_feed_items-rij) -- inmiddels
+                # weer normaal.
+                _mark_rss_item_resolved(conn, guid, now)
                 continue
             title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today_display})"
             description = (
@@ -610,7 +644,7 @@ def check_cancellation_alerts_job():
                 """INSERT OR IGNORE INTO rss_feed_items
                    (guid, kind, title, description, pub_date, created_at)
                    VALUES (:guid, 'cancellation', :title, :description, :now, :now)""",
-                {"guid": f"cancel-alert-{operator}-{today}", "title": title, "description": description, "now": now},
+                {"guid": guid, "title": title, "description": description, "now": now},
             )
         conn.commit()
     except Exception:
