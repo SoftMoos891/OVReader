@@ -36,6 +36,15 @@ _route_shapes = (
     json.loads(_ROUTE_SHAPES_PATH.read_text(encoding="utf-8")) if _ROUTE_SHAPES_PATH.exists() else {}
 )
 
+# Regio-vergelijking uitvalpercentage (GVB/RET/HTM, zie build_static_index.py
+# en de comparison-verwerking in collector.py). route_id -> {agency_id, city,
+# short_name, route_type}; alleen hier geladen (klein bestand, ~195 routes),
+# de collector laadt 'm zelf apart (los proces).
+_COMPARISON_ROUTES_PATH = PROJECT_ROOT / "data" / "regio_vergelijking_routes.json"
+_comparison_routes = (
+    json.loads(_COMPARISON_ROUTES_PATH.read_text(encoding="utf-8")) if _COMPARISON_ROUTES_PATH.exists() else {}
+)
+
 ON_TIME_MAX_DELAY = 180  # seconden; conform gangbare NL OV-definitie van "op tijd"
 ON_TIME_MIN_DELAY = -120  # meer dan 2 min te vroeg telt niet meer als "op tijd" (Dienstregeling)
 VEHICLE_FRESHNESS_SECONDS = 90
@@ -1208,6 +1217,72 @@ def api_cancellations():
         "per_month_by_operator": per_month_by_operator,
         "previous": previous,
     })
+
+
+@app.route("/api/cancellations/regio-vergelijking")
+def api_cancellations_regio_vergelijking():
+    """Uitvalpercentage van vandaag voor U-OV, naast GVB (Amsterdam), RET
+    (Rotterdam) en HTM (Den Haag) -- zie de comparison-verwerking in
+    collector.py. Zelfde trip_cancellations/trips_ran_daily-tabellen voor
+    alle vier, één query-paar (geen aparte opslag): de U-OV-rijen worden er
+    hier expliciet uitgefilterd via is_bus_route() (de Utrecht-index),
+    GVB/RET/HTM via _comparison_routes -- dat zijn twee disjuncte
+    deelverzamelingen van dezelfde resultaten.
+
+    Geen ?up_to_now=1-correctie zoals bij /api/cancellations -- dat zou een
+    aparte toggle en extra complexiteit vergen voor een simpele
+    vergelijkingstabel; kan later alsnog als daar behoefte aan blijkt."""
+    today = date.today().isoformat()
+    conn = db.get_conn()
+    try:
+        canceled_rows = conn.execute(
+            "SELECT route_id, COUNT(*) AS cnt FROM trip_cancellations WHERE service_date = ? GROUP BY route_id",
+            (today,),
+        ).fetchall()
+        ran_rows = conn.execute(
+            """SELECT r.route_id, COUNT(*) AS cnt FROM trips_ran_daily r
+               WHERE r.service_date = ? AND NOT EXISTS (
+                   SELECT 1 FROM trip_cancellations c
+                   WHERE c.trip_id = r.trip_id AND c.service_date = r.service_date
+               )
+               GROUP BY r.route_id""",
+            (today,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    UTRECHT_LABEL = "Utrecht (U-OV)"
+
+    def city_for(route_id):
+        if _index.is_bus_route(route_id):
+            return UTRECHT_LABEL
+        return _comparison_routes.get(route_id, {}).get("city")
+
+    per_city = {}
+    for r in canceled_rows:
+        city = city_for(r["route_id"])
+        if not city:
+            continue
+        per_city.setdefault(city, {"canceled": 0, "ran": 0})["canceled"] += r["cnt"]
+    for r in ran_rows:
+        city = city_for(r["route_id"])
+        if not city:
+            continue
+        per_city.setdefault(city, {"canceled": 0, "ran": 0})["ran"] += r["cnt"]
+
+    cities = [
+        {
+            "city": city,
+            "canceled": a["canceled"],
+            "ran": a["ran"],
+            "cancellation_pct": round(100.0 * a["canceled"] / (a["canceled"] + a["ran"]), 1)
+            if (a["canceled"] + a["ran"]) else 0.0,
+        }
+        for city, a in per_city.items()
+    ]
+    # Utrecht (U-OV) altijd bovenaan als referentiepunt, de rest alfabetisch.
+    cities.sort(key=lambda x: (x["city"] != UTRECHT_LABEL, x["city"]))
+    return jsonify({"date": today, "cities": cities})
 
 
 @app.route("/api/cancellations/trips")

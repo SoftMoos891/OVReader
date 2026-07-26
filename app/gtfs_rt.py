@@ -164,6 +164,56 @@ def parse_cancellations(feed, index: UtrechtIndex):
     return results
 
 
+def parse_comparison_activity(feed, comparison_routes):
+    """Lichtgewicht variant van parse_trip_delays()/parse_cancellations(),
+    voor de regio-vergelijking (GVB/RET/HTM, zie build_static_index.py). Geeft
+    per rit alleen terug of hij vandaag gereden of uitgevallen is -- geen
+    per-halte vertraging, dus geen trip_delays-rijen. Dat houdt deze
+    uitbreiding goedkoop (zie ook route_id_for()-achtige aanpak, maar hier
+    volstaat een directe dict-lookup: deze agency's geven altijd al een
+    route_id direct mee in de realtime feed, geen trip_id->route_id-mapping
+    nodig zoals bij UtrechtIndex).
+
+    GVB (Amsterdam) blijkt schedule_relationship=CANCELED te zetten op ritten
+    die toch nog een volledige stop_time_update-lijst met voorspellingen
+    hebben -- geen echte uitval, want bij U-OV en RET hebben genuine
+    CANCELED-ritten altijd 0 stop_time_updates. Onterecht meetellen gaf een
+    schijnbaar uitvalpercentage van >80% voor Amsterdam i.p.v. de
+    daadwerkelijke <1%. Daarom telt hier alleen CANCELED-zonder-
+    stop_time_updates als echte uitval, consistent met wat bij U-OV en RET
+    al klopt."""
+    results = []
+    seen_trip_ids = set()
+    for entity in feed.entity:
+        if not entity.HasField("trip_update"):
+            continue
+        tu = entity.trip_update
+        trip = tu.trip
+        route = comparison_routes.get(trip.route_id)
+        if not route:
+            continue
+        trip_id = trip.trip_id
+        if not trip_id or trip_id in seen_trip_ids:
+            continue  # dezelfde rit kan meermaals in de feed voorkomen
+        seen_trip_ids.add(trip_id)
+        service_date = None
+        if trip.start_date and len(trip.start_date) == 8:
+            service_date = f"{trip.start_date[0:4]}-{trip.start_date[4:6]}-{trip.start_date[6:8]}"
+        canceled = (
+            trip.schedule_relationship == gtfs_realtime_pb2.TripDescriptor.CANCELED
+            and len(tu.stop_time_update) == 0
+        )
+        results.append({
+            "trip_id": trip_id,
+            "route_id": trip.route_id,
+            "city": route["city"],
+            "service_date": service_date,  # None afgehandeld door caller (fallback op vandaag)
+            "start_time": trip.start_time or None,
+            "canceled": canceled,
+        })
+    return results
+
+
 def parse_skipped_stops(feed, index: UtrechtIndex):
     """Geeft lijst van dicts terug met individuele tussenhaltes die als
     SKIPPED gemeld zijn in de trip-updates feed (rit rijdt door, maar stopt

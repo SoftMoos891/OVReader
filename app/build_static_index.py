@@ -92,6 +92,40 @@ def find_uov_routes(zf):
     return routes
 
 
+# Regio-vergelijking (uitvalpercentage stadsvervoer): GVB/RET/HTM zitten in
+# dezelfde landelijke feed als U-OV, dus geen aparte databron nodig. Bewust
+# GEEN eigen trip_id->route_id-mapping of stop_times zoals bij U-OV -- de
+# realtime feed geeft voor deze agency's altijd al een route_id direct mee
+# (gecontroleerd), en voor deze vergelijking is alleen het uitvalpercentage
+# nodig, geen haltezoeker/dienstregeling-detail. Dat scheelt de twee duurste
+# bestanden (utrecht_trips.json ~4 MB, utrecht_stop_times.json ~117 MB) voor
+# deze uitbreiding volledig.
+COMPARISON_AGENCIES = {"GVB": "Amsterdam", "RET": "Rotterdam", "HTM": "Den Haag"}
+# Tram/metro/bus -- geen ferry (route_type 4, GVB's gratis IJ-veren): geen
+# vergelijkbare modaliteit met U-OV, zou de vergelijking scheeftrekken.
+COMPARISON_ROUTE_TYPES = {"0", "1", "3"}
+OUT_COMPARISON_ROUTES = DATA_DIR / "regio_vergelijking_routes.json"
+
+
+def find_comparison_routes(zf):
+    """Filtert routes.txt op GVB/RET/HTM (tram/metro/bus), voor de
+    uitval-vergelijking op /uitval. Losstaand bestand van utrecht_routes.json
+    (andere scope/doel), maar dezelfde compacte vorm."""
+    routes = {}
+    with zf.open("routes.txt") as f:
+        reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
+        for row in reader:
+            city = COMPARISON_AGENCIES.get(row.get("agency_id"))
+            if city and row.get("route_type") in COMPARISON_ROUTE_TYPES:
+                routes[row["route_id"]] = {
+                    "agency_id": row["agency_id"],
+                    "city": city,
+                    "short_name": row.get("route_short_name", ""),
+                    "route_type": row.get("route_type", ""),
+                }
+    return routes
+
+
 def load_agency_name(zf):
     with zf.open("agency.txt") as f:
         reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
@@ -291,6 +325,10 @@ def main():
         log(f"Filter routes.txt op agency_id={TARGET_AGENCY_ID!r}, bus (route_type=3) + U-tram (route_type=0)...")
         routes = find_uov_routes(zf)
         agency_name = load_agency_name(zf)
+
+        log("Filter routes.txt op GVB/RET/HTM (regio-vergelijking uitvalpercentage)...")
+        comparison_routes = find_comparison_routes(zf)
+        log(f"{len(comparison_routes)} vergelijkingslijnen gevonden ({', '.join(sorted(set(COMPARISON_AGENCIES.values())))}).")
         for r in routes.values():
             r["agency_name"] = agency_name
         log(f"{len(routes)} U-OV lijnen gevonden (bus + tram).")
@@ -343,9 +381,11 @@ def main():
     OUT_TRIP_META.write_text(json.dumps(trip_meta, ensure_ascii=False), encoding="utf-8")
     OUT_STOP_TIMES.write_text(json.dumps(stop_times_by_stop, ensure_ascii=False), encoding="utf-8")
     OUT_SHAPES.write_text(json.dumps(route_shape_points, ensure_ascii=False), encoding="utf-8")
+    OUT_COMPARISON_ROUTES.write_text(json.dumps(comparison_routes, ensure_ascii=False), encoding="utf-8")
     log(
         f"Weggeschreven: {OUT_STOPS.name}, {OUT_ROUTES.name}, {OUT_TRIPS.name}, "
-        f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, {OUT_SHAPES.name}"
+        f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, {OUT_SHAPES.name}, "
+        f"{OUT_COMPARISON_ROUTES.name}"
     )
 
 
