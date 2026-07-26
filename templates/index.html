@@ -12,6 +12,10 @@
 </script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+      integrity="sha256-YU3qCpj/P06tdPBJGPax0bm6Q1wltfwjsho5TR4+TYc=" crossorigin=""/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+      integrity="sha256-YSWCMtmNZNwqex4CEw1nQhvFub2lmU7vcCKP+XVwwXA=" crossorigin=""/>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
@@ -212,6 +216,8 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+        integrity="sha256-Hk4dIpcqOSb0hZjgyvFOP+cEmDXUKKNE/tT542ZbNQg=" crossorigin=""></script>
 <script>
 const map = L.map('map').setView([52.09, 5.20], 10);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -232,7 +238,15 @@ legend.onAdd = function () {
 };
 legend.addTo(map);
 
-const vehicleLayer = L.layerGroup().addTo(map);
+// disableClusteringAtZoom: op straatniveau altijd losse voertuigen (waar het
+// om lijnnummer/vertraging per bus gaat), alleen clusteren als je uitzoomt
+// naar bv. de hele provincie en bussen elkaar anders overlappen.
+const vehicleLayer = L.markerClusterGroup({
+  maxClusterRadius: 60,
+  disableClusteringAtZoom: 15,
+  spiderfyOnMaxZoom: false,
+  showCoverageOnHover: false,
+}).addTo(map);
 const routeShapeLayer = L.layerGroup().addTo(map);
 const roadSituationLayer = L.layerGroup().addTo(map);
 const markers = {};
@@ -262,8 +276,22 @@ function matchesFilter(operator, shortName) {
   return true;
 }
 
+// Deeplink naar een specifieke lijn, bv. /?lijn=74 -- filtert meteen bij het
+// laden van de pagina, en houdt de URL bijgewerkt zodat de huidige weergave
+// ook weer te delen/bookmarken is.
+function applyLineFilterFromUrl() {
+  const lijn = new URLSearchParams(location.search).get('lijn');
+  if (!lijn) return;
+  document.getElementById('line-filter').value = lijn;
+  filterState.lineText = lijn.trim().toLowerCase();
+}
+
 document.getElementById('line-filter').addEventListener('input', (e) => {
   filterState.lineText = e.target.value.trim().toLowerCase();
+  const url = new URL(location.href);
+  if (e.target.value.trim()) url.searchParams.set('lijn', e.target.value.trim());
+  else url.searchParams.delete('lijn');
+  history.replaceState(null, '', url);
   refreshVehicles().catch(console.error);
   refreshStats().catch(console.error);
 });
@@ -344,19 +372,59 @@ function busIcon(shortName, color, operator) {
 
 const markerState = {}; // ident -> laatst gerenderde {route_short_name, color, operator}
 
+// --- Voertuig volgen: kaart blijft automatisch mee-pannen met één bus ------
+let followedVehicleId = null;
+
+function updateFollowIndicator(label) {
+  const el = document.querySelector('.follow-indicator');
+  if (!el) return;
+  if (followedVehicleId) {
+    el.style.display = 'block';
+    document.getElementById('followLabel').textContent = `📍 Volgen: lijn ${label}`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+function toggleFollowVehicle(ident, label) {
+  followedVehicleId = (followedVehicleId === ident) ? null : ident;
+  updateFollowIndicator(label);
+  refreshVehicles().catch(console.error);  // popup-knoptekst direct bijwerken
+}
+function stopFollowing() {
+  followedVehicleId = null;
+  updateFollowIndicator();
+}
+
+const followControl = L.control({ position: 'topright' });
+followControl.onAdd = function () {
+  const div = L.DomUtil.create('div', 'map-legend follow-indicator');
+  div.style.display = 'none';
+  div.innerHTML = `<span id="followLabel"></span> <button id="stopFollowBtn" class="range-btn" style="padding:2px 8px;">✕</button>`;
+  L.DomEvent.disableClickPropagation(div);
+  div.querySelector('#stopFollowBtn').addEventListener('click', stopFollowing);
+  return div;
+};
+followControl.addTo(map);
+
 async function refreshVehicles() {
   const res = await fetch('/api/vehicles');
   const data = await res.json();
   const seen = new Set();
+  const operatorCounts = {};
+  let followedLatLng = null;
   for (const v of data.vehicles) {
     if (!matchesFilter(v.operator, v.route_short_name)) continue;
     const key = v.ident;
     seen.add(key);
+    operatorCounts[v.operator] = (operatorCounts[v.operator] || 0) + 1;
+    if (key === followedVehicleId) followedLatLng = [v.lat, v.lon];
     const color = delayColor(v.delay_seconds);
+    const followLabel = key === followedVehicleId ? '✕ Stop met volgen' : '📍 Volg dit voertuig';
     const html = `<b>Lijn ${v.route_short_name}</b> (U-OV, ${v.operator})<br>` +
                  `Status: ${delayText(v.delay_seconds)}<br>` +
                  `Rit ${v.vehicle_id || v.trip_id}` +
-                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>`;
+                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
+                 `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
       // Het icoon (een hele DOM-subboom: badge + operator-logo) alleen
@@ -384,8 +452,20 @@ async function refreshVehicles() {
   for (const id of Object.keys(markers)) {
     if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; delete markerState[id]; }
   }
+  // Clusters herberekenen na het verplaatsen van bestaande markers -- zonder
+  // dit blijft een marker in zijn oude cluster-positie hangen totdat er
+  // toevallig een cluster-herbouw door een andere wijziging plaatsvindt.
+  vehicleLayer.refreshClusters();
+
+  if (followedVehicleId && !followedLatLng) stopFollowing();  // rit is verdwenen (bv. beëindigd)
+  else if (followedLatLng) map.panTo(followedLatLng, { animate: true });
+
+  const operatorSummary = Object.entries(operatorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([op, n]) => `${op}: ${n}`)
+    .join(' · ');
   document.getElementById('lastupdate').textContent =
-    `${data.count} actieve bussen · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
+    `${data.count} actieve bussen${operatorSummary ? ` (${operatorSummary})` : ''} · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
 }
 
 // Alleen opgehaald bij een klik op een voertuig (popupopen), niet standaard
@@ -820,6 +900,7 @@ function slowTick() {
   refreshStopDepartures().catch(console.error);
   loadHealth().catch(console.error);
 }
+applyLineFilterFromUrl();
 initMeta().then(() => { fastTick(); slowTick(); }).catch(console.error);
 setInterval(fastTick, 20000);
 setInterval(slowTick, 45000);
