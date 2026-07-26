@@ -268,6 +268,11 @@ async function refreshRailAlerts() {
 // alleen nog de urgente typen (ongeval/abnormale verkeersdrukte) binnen de
 // provincie Utrecht -- wegwerkzaamheden/omleidingen zijn er al uit gefilterd,
 // dus elke melding hier krijgt de rode badge.
+// Zelfde typen als RSS_ROAD_TYPES in road_situations.py -- die krijgen de
+// rode "ernstig"-badge, de rest (bv. GeneralObstruction, een "gewoon"
+// obstakel) de mildere oranje stijl.
+const MOST_URGENT_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
+
 async function refreshRoadSituations() {
   const res = await fetch('/lite/api/road-situations');
   const data = await res.json();
@@ -285,9 +290,10 @@ async function refreshRoadSituations() {
     const mapLink = (s.lat && s.lon)
       ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
       : '';
+    const urgent = MOST_URGENT_ROAD_TYPES.has(s.record_type);
     return `
-    <div class="alert severe">
-      <div class="hdr"><span class="pill bad">${s.type_label}</span>${heading}</div>
+    <div class="alert ${urgent ? 'severe' : ''}">
+      <div class="hdr"><span class="pill ${urgent ? 'bad' : 'warn'}">${s.type_label}</span>${heading}</div>
       ${detail}
       <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${mapLink}</div>
     </div>`;

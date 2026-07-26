@@ -659,18 +659,19 @@ async function refreshRailAlerts() {
 
 // Wegsituaties (Rijkswaterstaat-hoofdwegennet, NDW open data, zie
 // /api/road-situations en app/road_situations.py). De server levert hier
-// alleen nog de urgente typen (ongeval/abnormale verkeersdrukte) binnen de
-// provincie Utrecht -- wegwerkzaamheden/omleidingen zijn er al uit gefilterd,
-// dus elke melding hier krijgt de rode badge.
-// Icoon voor wegsituaties op de kaart: zelfde rode "ernstig"-kleur als de
-// badge in de lijst, een uitroepteken i.p.v. lijnnummer zodat het duidelijk
-// geen bus is. Aparte laag (roadSituationLayer) i.p.v. de vehicleLayer, dus
-// altijd zichtbaar los van de lijn-/operatorfilter.
-function roadSituationIcon() {
+// alle typen uit SEVERE_ROAD_TYPES (incl. GeneralObstruction, een "gewoon"
+// obstakel op de weg), maar niet allemaal even urgent -- MOST_URGENT_ROAD_TYPES
+// (zelfde typen als RSS_ROAD_TYPES in road_situations.py) krijgt de rode
+// "ernstig"-badge, de rest (bv. GeneralObstruction) de mildere oranje stijl,
+// net als elders in de app het verschil tussen ernstig/routine.
+const MOST_URGENT_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
+
+function roadSituationIcon(urgent) {
+  const color = urgent ? '#d6006c' : cssVar('--warn');
   return L.divIcon({
     className: '',
     html: `<div style="position:relative; transform:translate(-11px, -11px);">
-             <div class="bus-badge" style="background:#d6006c; width:22px; height:22px; border-radius:50%;">⚠</div>
+             <div class="bus-badge" style="background:${color}; width:22px; height:22px; border-radius:50%;">⚠</div>
            </div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
@@ -687,7 +688,8 @@ async function refreshRoadSituations() {
     if (!s.lat || !s.lon) continue;
     const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
     const popupText = `<b>${s.type_label}</b>${where ? `<br>${where}` : ''}${s.comment ? `<br>${s.comment}` : ''}`;
-    L.marker([s.lat, s.lon], { icon: roadSituationIcon() }).bindPopup(popupText).addTo(roadSituationLayer);
+    const icon = roadSituationIcon(MOST_URGENT_ROAD_TYPES.has(s.record_type));
+    L.marker([s.lat, s.lon], { icon }).bindPopup(popupText).addTo(roadSituationLayer);
   }
 
   const el = document.getElementById('road-situations');
@@ -703,9 +705,10 @@ async function refreshRoadSituations() {
     const mapLink = (s.lat && s.lon)
       ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
       : '';
+    const urgent = MOST_URGENT_ROAD_TYPES.has(s.record_type);
     return `
-    <div class="alert severe">
-      <div class="hdr"><span class="pill bad">${s.type_label}</span>${heading}</div>
+    <div class="alert ${urgent ? 'severe' : ''}">
+      <div class="hdr"><span class="pill ${urgent ? 'bad' : 'warn'}">${s.type_label}</span>${heading}</div>
       ${detail}
       <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${mapLink}</div>
     </div>`;
