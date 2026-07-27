@@ -13,6 +13,7 @@ from .gtfs_rt import (
     parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
 )
 from .knmi_warnings import fetch_utrecht_warnings
+from .knmi_weather import fetch_de_bilt_weather
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
 from .road_situations import RSS_ROAD_TYPES, fetch_utrecht_road_situations
 
@@ -744,6 +745,58 @@ def fetch_knmi_warnings_job():
         conn.close()
 
 
+def fetch_knmi_weather_job():
+    """Haalt de actuele weerwaarneming op voor De Bilt (provincie Utrecht,
+    zie knmi_weather.py) en vervangt de knmi_weather-tabel volledig (één
+    rij, zelfde opzet als knmi_warnings). Het bronbestand is klein
+    (~150-200 KB) en verschijnt elke 10 minuten, maar elke 15 minuten
+    ophalen is voor een dashboard ruim actueel genoeg en scheelt onnodige
+    downloads t.o.v. elke keer pollen op de bron-cadans.
+
+    Zonder KNMI_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen
+    -- de rest van de app blijft gewoon werken."""
+    api_key = os.environ.get("KNMI_API_KEY")
+    if not api_key:
+        return
+    fetched_at = _now()
+    conn = db.get_conn()
+    try:
+        w = fetch_de_bilt_weather(api_key)
+        conn.execute(
+            """INSERT INTO knmi_weather
+               (id, station, observed_at, temperature, dew_point, humidity,
+                wind_speed_ms, wind_speed_bft, wind_gust_ms, wind_direction,
+                wind_direction_compass, pressure, cloud_cover_okta, last_updated)
+               VALUES (1, :station, :observed_at, :temperature, :dew_point, :humidity,
+                       :wind_speed_ms, :wind_speed_bft, :wind_gust_ms, :wind_direction,
+                       :wind_direction_compass, :pressure, :cloud_cover_okta, :now)
+               ON CONFLICT(id) DO UPDATE SET
+                   station=:station, observed_at=:observed_at, temperature=:temperature,
+                   dew_point=:dew_point, humidity=:humidity, wind_speed_ms=:wind_speed_ms,
+                   wind_speed_bft=:wind_speed_bft, wind_gust_ms=:wind_gust_ms,
+                   wind_direction=:wind_direction, wind_direction_compass=:wind_direction_compass,
+                   pressure=:pressure, cloud_cover_okta=:cloud_cover_okta, last_updated=:now""",
+            {**w, "now": fetched_at},
+        )
+        conn.execute(
+            """INSERT INTO knmi_weather_fetch_status (id, last_success_at) VALUES (1, :now)
+               ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
+            {"now": fetched_at},
+        )
+        conn.commit()
+    except Exception as e:
+        print("[collector] fout bij ophalen KNMI-weerwaarneming:")
+        traceback.print_exc()
+        conn.execute(
+            """INSERT INTO knmi_weather_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
+               ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
+            {"now": fetched_at, "err": str(e)[:500]},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def check_cancellation_alerts_job():
     """Legt permanent een RSS-melding vast (rss_feed_items, zie db.py) zodra
     het uitvalpercentage van VANDAAG voor een vervoerder boven
@@ -850,6 +903,7 @@ def start_scheduler():
     scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
     scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
     scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=30, id="knmi_warnings", max_instances=1)
+    scheduler.add_job(fetch_knmi_weather_job, "interval", minutes=15, id="knmi_weather", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
@@ -857,6 +911,7 @@ def start_scheduler():
     check_cancellation_alerts_job()
     fetch_road_situations_job()
     fetch_knmi_warnings_job()
+    fetch_knmi_weather_job()
     # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
     # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
     # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen

@@ -185,6 +185,9 @@ ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200
 # voor een paar gemiste cycli. Zonder KNMI_API_KEY 'not_configured', net als
 # bij NS_API_KEY.
 KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400
+# fetch_knmi_weather_job() draait elke 15 minuten; 45 minuten geeft ruimte
+# voor een paar gemiste cycli.
+KNMI_WEATHER_STALE_AFTER_SECONDS = 2700
 
 
 @app.route("/api/health")
@@ -223,6 +226,9 @@ def api_health():
         knmi_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM knmi_fetch_status WHERE id = 1"
         ).fetchone()
+        knmi_weather_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM knmi_weather_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -245,6 +251,10 @@ def api_health():
         knmi_warnings_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
     else:
         knmi_warnings_component = component(knmi_status["last_success_at"], stale_after=KNMI_WARNINGS_STALE_AFTER_SECONDS)
+    if knmi_weather_status is None:
+        knmi_weather_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
+    else:
+        knmi_weather_component = component(knmi_weather_status["last_success_at"], stale_after=KNMI_WEATHER_STALE_AFTER_SECONDS)
 
     components = {
         "vehicle_positions": component(vp_last),
@@ -253,6 +263,7 @@ def api_health():
         "rail_alerts": rail_alerts_component,
         "road_situations": road_situations_component,
         "knmi_warnings": knmi_warnings_component,
+        "knmi_weather": knmi_weather_component,
     }
     # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
     # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
@@ -503,6 +514,34 @@ def api_weather_warnings():
         for r in rows
     ]
     return jsonify({"warnings": warnings, "count": len(warnings)})
+
+
+@app.route("/api/weather")
+def api_weather():
+    """Actuele weerwaarneming (De Bilt, provincie Utrecht) via KNMI (zie
+    app/knmi_weather.py). Leeg object (niet een fout) als KNMI_API_KEY niet
+    is ingesteld of er nog geen waarneming binnen is."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT * FROM knmi_weather WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return jsonify({"weather": None})
+    return jsonify({"weather": {
+        "station": row["station"],
+        "observed_at": row["observed_at"],
+        "temperature": row["temperature"],
+        "dew_point": row["dew_point"],
+        "humidity": row["humidity"],
+        "wind_speed_ms": row["wind_speed_ms"],
+        "wind_speed_bft": row["wind_speed_bft"],
+        "wind_gust_ms": row["wind_gust_ms"],
+        "wind_direction": row["wind_direction"],
+        "wind_direction_compass": row["wind_direction_compass"],
+        "pressure": row["pressure"],
+        "cloud_cover_okta": row["cloud_cover_okta"],
+    }})
 
 
 @app.route("/api/stats")

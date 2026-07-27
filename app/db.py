@@ -165,6 +165,32 @@ CREATE TABLE IF NOT EXISTS knmi_fetch_status (
     last_error TEXT
 );
 
+-- Actueel weer (De Bilt) -- zie app/knmi_weather.py. Zelfde opzet als
+-- knmi_warnings: één rij, volledig vervangen bij elke fetch, geen log.
+CREATE TABLE IF NOT EXISTS knmi_weather (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    station TEXT,
+    observed_at TEXT,
+    temperature REAL,
+    dew_point REAL,
+    humidity REAL,
+    wind_speed_ms REAL,
+    wind_speed_bft INTEGER,
+    wind_gust_ms REAL,
+    wind_direction REAL,
+    wind_direction_compass TEXT,
+    pressure REAL,
+    cloud_cover_okta REAL,
+    last_updated INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS knmi_weather_fetch_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT
+);
+
 -- Permanente geschiedenis van RSS-meldingen (/lite/rss.xml): items worden
 -- hier één keer geschreven door de collector zodra een gebeurtenis zich
 -- voordoet (uitval boven de signaleringsgrens, een nieuwe NS-storing) en

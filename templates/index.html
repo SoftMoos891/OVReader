@@ -761,18 +761,41 @@ function closeWeatherModal() {
   document.getElementById('weatherModal').classList.remove('open');
 }
 
+// Actueel weer (De Bilt) + waarschuwingen worden allebei getoond in dezelfde
+// knop/modal -- één gecombineerde refresh i.p.v. twee losse, zodat de
+// koptekst-knop (temperatuur + kleurendot) altijd in één keer klopt.
+function weatherSummaryHtml(w) {
+  if (!w) return '<div class="empty">Actueel weer: nog geen waarneming binnen</div>';
+  const kmh = w.wind_speed_ms != null ? Math.round(w.wind_speed_ms * 3.6) : null;
+  const gustKmh = w.wind_gust_ms != null ? Math.round(w.wind_gust_ms * 3.6) : null;
+  const wind = kmh != null
+    ? `${w.wind_direction_compass || ''} ${w.wind_speed_bft ?? '?'} Bft (${kmh} km/u)${gustKmh ? `, windstoten ${gustKmh} km/u` : ''}`
+    : 'onbekend';
+  return `
+    <div style="font-size:28px; font-weight:700;">${w.temperature != null ? w.temperature + '&deg;C' : '–'}</div>
+    <div style="color:var(--muted); margin-bottom:10px;">
+      Wind: ${wind}<br>
+      Luchtvochtigheid: ${w.humidity != null ? w.humidity + '%' : '–'} &middot; Luchtdruk: ${w.pressure != null ? w.pressure + ' hPa' : '–'}<br>
+      Waargenomen om ${fmtWarningTime(w.observed_at)} (${w.station})
+    </div>`;
+}
+
 async function refreshWeatherWarnings() {
-  const res = await fetch('/api/weather-warnings');
-  const data = await res.json();
+  const [warnRes, weatherRes] = await Promise.all([
+    fetch('/api/weather-warnings'),
+    fetch('/api/weather'),
+  ]);
+  const data = await warnRes.json();
+  const weatherData = await weatherRes.json();
+  const w = weatherData.weather;
 
   const dot = document.getElementById('weatherDot');
   const label = document.getElementById('weatherLabel');
+  label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C` : 'Weer';
   if (data.count === 0) {
     dot.style.background = 'var(--good)';
-    label.textContent = 'Weer';
   } else {
     dot.style.background = KNMI_DOT_COLORS[data.warnings[0].color] || 'var(--warn)';
-    label.textContent = `Weer (${data.warnings[0].color_label})`;
   }
 
   const body = document.getElementById('weatherModalBody');
@@ -789,9 +812,7 @@ async function refreshWeatherWarnings() {
           <div class="routes">Vanaf ${fmtWarningTime(w.active_from)}${worst}</div>
         </div>`;
       }).join('');
-  body.innerHTML = `
-    <div class="empty" style="margin-bottom:12px;">Actueel weer: binnenkort beschikbaar</div>
-    ${warningsHtml}`;
+  body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}`;
 }
 
 // Kaart-pop-up: een ingesloten OpenStreetMap i.p.v. een nieuw tabblad.
@@ -1025,6 +1046,7 @@ async function loadHealth() {
       ['Spoorstoringen (NS)', data.components.rail_alerts, railNote],
       ['Wegsituaties', data.components.road_situations, null],
       ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiNote],
+      ['Actueel weer (KNMI)', data.components.knmi_weather, knmiNote],
     ];
     document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
       <div class="health-row">

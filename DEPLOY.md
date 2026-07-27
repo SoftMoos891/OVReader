@@ -103,11 +103,18 @@ app/ns_rail_alerts.py). Optioneel: zonder deze key blijft de rest van de
 app gewoon werken, alleen die sectie blijft leeg.
 
 Vul ook `KNMI_API_KEY` in (zie dataplatform.knmi.nl) voor weerwaarschuwingen
-in provincie Utrecht (zie app/knmi_warnings.py). Let op: dit vereist een key
-met toegang tot dataset "waarschuwingen_nederland_48h" -- dat is een ander
-product dan de reguliere KNMI Open Data-toegang en moet mogelijk apart
-aangevraagd worden op het portaal. Ook hier: optioneel, zonder key blijft
-de rest van de app gewoon werken.
+in provincie Utrecht (zie app/knmi_warnings.py) en het actuele weer in De
+Bilt (zie app/knmi_weather.py). Let op: dit vereist een key met toegang tot
+de datasets "waarschuwingen_nederland_48h" en
+"10-minute-in-situ-meteorological-observations" -- dat is een ander product
+dan de reguliere KNMI Open Data-toegang en moet mogelijk apart aangevraagd
+worden op het portaal. Ook hier: optioneel, zonder key blijven die secties
+leeg.
+
+Het actuele-weer-onderdeel parst het NetCDF/HDF5-bestand dat het KNMI
+aanlevert en heeft daarvoor `h5py` en `numpy` nodig (zie requirements.txt).
+Draai na een `git pull` dus altijd even
+`sudo -u utrechtbus ./venv/bin/pip install -r requirements.txt` mee.
 
 ## 5. systemd-services installeren
 
