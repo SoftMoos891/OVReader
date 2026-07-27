@@ -13,13 +13,13 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
-  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
-           align-items: center; gap: 14px; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0; }
-  header .sub { color: var(--muted); font-size: 13px; }
+  header { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex;
+           align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
   header a.nav-btn.push-right { margin-left: auto; }
   header a.nav-btn { background: var(--accent); color: #fff; font-weight: 600;
-                     text-decoration: none; padding: 7px 16px; border-radius: 6px; font-size: 13px;
+                     text-decoration: none; padding: 6px 13px; border-radius: 6px; font-size: 12.5px;
                      white-space: nowrap; transition: filter .15s; }
   header a.nav-btn:hover { filter: brightness(1.08); }
   main { padding: 20px; max-width: 1100px; margin: 0 auto; }
@@ -70,7 +70,7 @@
   <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist) — veel meer informatie dan deze lite-versie">🔒 Volledige versie &rarr;</a>
   <a href="https://dvznet.nl/dvzreader.html" class="nav-btn" target="_blank" rel="noopener noreferrer" title="DVZ Reader (RSS-tool op dvznet.nl)">📡 DVZ Reader &rarr;</a>
   <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-    <span id="weatherLabel">Weer</span>
+    <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span>
   </button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
@@ -336,6 +336,14 @@ const KNMI_BUTTON_STYLES = {
   ORANGE: 'background:#ff8c00; border-color:#ff8c00; color:#fff;',
   RED:    'background:#e60000; border-color:#e60000; color:#fff;',
 };
+const KNMI_CODE_LABELS = { GREEN: 'Code groen', YELLOW: 'Code geel', ORANGE: 'Code oranje', RED: 'Code rood' };
+function weatherIcon(cloudOkta) {
+  if (cloudOkta == null) return '🌡️';
+  if (cloudOkta <= 1) return '☀️';
+  if (cloudOkta <= 4) return '🌤️';
+  if (cloudOkta <= 6) return '⛅';
+  return '☁️';
+}
 
 function fmtWarningTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', {
@@ -380,11 +388,13 @@ async function refreshWeatherWarnings() {
   const w = weatherData.weather;
 
   const btn = document.getElementById('weatherBtn');
+  const icon = document.getElementById('weatherIcon');
   const label = document.getElementById('weatherLabel');
-  label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C` : 'Weer';
-  btn.style.cssText = data.count === 0
-    ? KNMI_BUTTON_STYLES.GREEN
-    : (KNMI_BUTTON_STYLES[data.warnings[0].color] || '');
+  const color = data.count === 0 ? 'GREEN' : (data.warnings[0].color || 'GREEN');
+  icon.textContent = weatherIcon(w ? w.cloud_cover_okta : null);
+  const codeLabel = KNMI_CODE_LABELS[color] || KNMI_CODE_LABELS.GREEN;
+  label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
+  btn.style.cssText = KNMI_BUTTON_STYLES[color] || KNMI_BUTTON_STYLES.GREEN;
 
   const body = document.getElementById('weatherModalBody');
   const warningsHtml = data.count === 0

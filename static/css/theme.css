@@ -61,10 +61,10 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   background: var(--panel2);
   border: 1px solid var(--border);
   color: var(--muted);
-  width: 32px; height: 32px;
+  width: 30px; height: 30px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 14px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   transition: background .15s, border-color .15s, color .15s;
@@ -110,8 +110,17 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 .status-btn {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
-  border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 600;
+  border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
   cursor: pointer; transition: all .15s; align-self: center; flex-shrink: 0;
+}
+/* Icoontje (weertype-emoji) vóór de knoptekst -- vaste, kleine hoogte met
+   overflow:hidden, want emoji-lettertypen (vooral het thermometer-icoon)
+   hebben soms een veel groter intern lettertype-vak dan gewone tekst,
+   waardoor de knop (en daarmee de header) anders ongewild hoger zou
+   worden dan de andere knoppen ernaast. */
+.status-btn .btn-icon {
+  font-size: 14px; line-height: 1; height: 14px; overflow: hidden;
+  display: inline-flex; align-items: center; flex-shrink: 0;
 }
 .status-btn:hover { background: var(--panel); border-color: var(--border2); color: var(--text); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
