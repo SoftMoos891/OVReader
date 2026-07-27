@@ -744,11 +744,11 @@ const KNMI_COLOR_STYLES = {
   ORANGE: 'background:#ff8c00; color:#fff;',
   RED: 'background:#e60000; color:#fff;',
 };
-// Kleur van de hele Weer-knop (niet alleen een stipje) -- bij een actieve
-// waarschuwing krijgt de knop de volle, verzadigde KNMI-huisstijlkleur als
-// achtergrond zodat die echt opvalt; zonder waarschuwing een rustige
-// groene tint (zelfde idee als een "ok"-status).
+// Kleur van de hele Weer-knop (niet alleen een stipje) -- altijd een volle,
+// verzadigde kleur als achtergrond (ook zonder waarschuwing gewoon fel
+// groen), zodat groen/geel/oranje/rood allemaal even duidelijk opvallen.
 const KNMI_BUTTON_STYLES = {
+  GREEN:  'background:#16a34a; border-color:#16a34a; color:#fff;',
   YELLOW: 'background:#ffd500; border-color:#ffd500; color:#000;',
   ORANGE: 'background:#ff8c00; border-color:#ff8c00; color:#fff;',
   RED:    'background:#e60000; border-color:#e60000; color:#fff;',
@@ -803,7 +803,7 @@ async function refreshWeatherWarnings() {
   const label = document.getElementById('weatherLabel');
   label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C` : 'Weer';
   btn.style.cssText = data.count === 0
-    ? 'background:var(--good-bg); border-color:var(--good); color:var(--good);'
+    ? KNMI_BUTTON_STYLES.GREEN
     : (KNMI_BUTTON_STYLES[data.warnings[0].color] || '');
 
   const body = document.getElementById('weatherModalBody');
