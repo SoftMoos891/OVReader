@@ -69,6 +69,9 @@
   <a href="/lite/geschiedenis" class="nav-btn push-right" title="Log van uitval-signaleringen, NS-storingen en ernstige U-OV-meldingen">🕒 Geschiedenis &rarr;</a>
   <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist) — veel meer informatie dan deze lite-versie">🔒 Volledige versie &rarr;</a>
   <a href="https://dvznet.nl/dvzreader.html" class="nav-btn" target="_blank" rel="noopener noreferrer" title="DVZ Reader (RSS-tool op dvznet.nl)">📡 DVZ Reader &rarr;</a>
+  <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
+    <span class="status-dot" id="weatherDot"></span><span id="weatherLabel">Weer</span>
+  </button>
   <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
@@ -81,6 +84,17 @@
     </div>
     <div class="modal-body" id="healthBody"><div class="empty">Laden...</div></div>
     <div class="modal-footer">Collector haalt elke <span id="healthInterval">30</span>s nieuwe data op</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="weatherModal" onclick="if(event.target===this)closeWeatherModal()">
+  <div class="modal">
+    <div class="modal-header">
+      Weer &amp; waarschuwingen
+      <button class="modal-close" onclick="closeWeatherModal()">✕</button>
+    </div>
+    <div class="modal-body" id="weatherModalBody"><div class="empty">Laden...</div></div>
+    <div class="modal-footer">Provincie Utrecht &middot; bron: KNMI</div>
   </div>
 </div>
 
@@ -129,12 +143,6 @@
     <h2>Wegsituatie<span id="road-situations-count"></span></h2>
     <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte, obstakel op de weg) op het Rijkswaterstaat-hoofdwegennet binnen de provincie Utrecht</div>
     <div id="road-situations"><div class="empty">Laden...</div></div>
-  </div>
-
-  <div class="section">
-    <h2>Weerwaarschuwingen<span id="weather-warnings-count"></span></h2>
-    <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">KNMI-waarschuwingen voor provincie Utrecht, komende 48 uur</div>
-    <div id="weather-warnings"><div class="empty">Laden...</div></div>
   </div>
 
   <div id="lastupdate">–</div>
@@ -319,6 +327,7 @@ const KNMI_COLOR_STYLES = {
   ORANGE: 'background:#ff8c00; color:#fff;',
   RED: 'background:#e60000; color:#fff;',
 };
+const KNMI_DOT_COLORS = { YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000' };
 
 function fmtWarningTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', {
@@ -326,23 +335,48 @@ function fmtWarningTime(iso) {
   });
 }
 
+// Weerknop in de kop: kleurendot volgt de ernstigste actieve waarschuwing
+// (of groen/neutraal als er geen zijn). Klik opent een modal met details --
+// zelfde patroon als de Status-knop -- met ruimte voor het actuele weer
+// zodra die databron er is (nu alleen de waarschuwingen).
+function openWeatherModal() {
+  document.getElementById('weatherModal').classList.add('open');
+}
+function closeWeatherModal() {
+  document.getElementById('weatherModal').classList.remove('open');
+}
+
 async function refreshWeatherWarnings() {
   const res = await fetch('/lite/api/weather-warnings');
   const data = await res.json();
-  document.getElementById('weather-warnings-count').textContent = data.count > 0 ? ` (${data.count})` : '';
-  const el = document.getElementById('weather-warnings');
-  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele weerwaarschuwingen</div>'; return; }
-  el.innerHTML = data.warnings.map(w => {
-    const style = KNMI_COLOR_STYLES[w.color] || '';
-    const badge = `<span class="pill" style="${style}">${w.color_label}</span>`;
-    const worst = w.worst_at !== w.active_from ? ` &middot; ergst rond ${fmtWarningTime(w.worst_at)}` : '';
-    return `
-    <div class="alert ${w.color === 'RED' ? 'severe' : ''}">
-      <div class="hdr">${badge}${w.phenomenon_label}${w.header ? `: ${w.header}` : ''}</div>
-      <div>${w.description || ''}</div>
-      <div class="routes">Vanaf ${fmtWarningTime(w.active_from)}${worst}</div>
-    </div>`;
-  }).join('');
+
+  const dot = document.getElementById('weatherDot');
+  const label = document.getElementById('weatherLabel');
+  if (data.count === 0) {
+    dot.style.background = 'var(--good)';
+    label.textContent = 'Weer';
+  } else {
+    dot.style.background = KNMI_DOT_COLORS[data.warnings[0].color] || 'var(--warn)';
+    label.textContent = `Weer (${data.warnings[0].color_label})`;
+  }
+
+  const body = document.getElementById('weatherModalBody');
+  const warningsHtml = data.count === 0
+    ? '<div class="empty">Geen actuele weerwaarschuwingen</div>'
+    : data.warnings.map(w => {
+        const style = KNMI_COLOR_STYLES[w.color] || '';
+        const badge = `<span class="pill" style="${style}">${w.color_label}</span>`;
+        const worst = w.worst_at !== w.active_from ? ` &middot; ergst rond ${fmtWarningTime(w.worst_at)}` : '';
+        return `
+        <div class="alert ${w.color === 'RED' ? 'severe' : ''}">
+          <div class="hdr">${badge}${w.phenomenon_label}${w.header ? `: ${w.header}` : ''}</div>
+          <div>${w.description || ''}</div>
+          <div class="routes">Vanaf ${fmtWarningTime(w.active_from)}${worst}</div>
+        </div>`;
+      }).join('');
+  body.innerHTML = `
+    <div class="empty" style="margin-bottom:12px;">Actueel weer: binnenkort beschikbaar</div>
+    ${warningsHtml}`;
 }
 
 // Kaart-pop-up: een ingesloten OpenStreetMap i.p.v. een nieuw tabblad.
