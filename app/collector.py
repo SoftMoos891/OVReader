@@ -12,6 +12,7 @@ from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
     parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
 )
+from .knmi_warnings import fetch_utrecht_warnings
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
 from .road_situations import RSS_ROAD_TYPES, fetch_utrecht_road_situations
 
@@ -695,6 +696,54 @@ def fetch_road_situations_job():
         conn.close()
 
 
+def fetch_knmi_warnings_job():
+    """Haalt de actuele KNMI-weerwaarschuwingen op voor provincie Utrecht
+    (zie knmi_warnings.py) en vervangt de knmi_warnings-tabel volledig --
+    dit is een huidige-status-snapshot (max 7 fenomenen), geen groeiende
+    log zoals rail_alerts/road_situations, dus geen active/inactive-
+    boekhouding nodig: gewoon DELETE + INSERT.
+
+    Het bronbestand is ~2-3 MB en verandert maar een paar keer per dag, dus
+    elke 30 minuten is ruim actueel genoeg en scheelt onnodige downloads.
+
+    Zonder KNMI_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen
+    -- de rest van de app blijft gewoon werken."""
+    api_key = os.environ.get("KNMI_API_KEY")
+    if not api_key:
+        return
+    fetched_at = _now()
+    conn = db.get_conn()
+    try:
+        warnings = fetch_utrecht_warnings(api_key)
+        conn.execute("DELETE FROM knmi_warnings")
+        for w in warnings:
+            conn.execute(
+                """INSERT INTO knmi_warnings
+                   (phenomenon_id, phenomenon_label, color, color_label,
+                    active_from, worst_at, header, description, last_updated)
+                   VALUES (:phenomenon_id, :phenomenon_label, :color, :color_label,
+                           :active_from, :worst_at, :header, :description, :now)""",
+                {**w, "now": fetched_at},
+            )
+        conn.execute(
+            """INSERT INTO knmi_fetch_status (id, last_success_at) VALUES (1, :now)
+               ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
+            {"now": fetched_at},
+        )
+        conn.commit()
+    except Exception as e:
+        print("[collector] fout bij ophalen KNMI-weerwaarschuwingen:")
+        traceback.print_exc()
+        conn.execute(
+            """INSERT INTO knmi_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
+               ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
+            {"now": fetched_at, "err": str(e)[:500]},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def check_cancellation_alerts_job():
     """Legt permanent een RSS-melding vast (rss_feed_items, zie db.py) zodra
     het uitvalpercentage van VANDAAG voor een vervoerder boven
@@ -800,12 +849,14 @@ def start_scheduler():
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
     scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
     scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
+    scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=30, id="knmi_warnings", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
     fetch_rail_alerts_job()
     check_cancellation_alerts_job()
     fetch_road_situations_job()
+    fetch_knmi_warnings_job()
     # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
     # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
     # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen

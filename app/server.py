@@ -181,6 +181,10 @@ RAIL_ALERTS_STALE_AFTER_SECONDS = 600
 # voor een paar gemiste cycli. Publieke, sleutelloze bron (geen
 # 'not_configured' zoals bij NS_API_KEY) -- hoort altijd te draaien.
 ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200
+# fetch_knmi_warnings_job() draait elke 30 minuten; 90 minuten geeft ruimte
+# voor een paar gemiste cycli. Zonder KNMI_API_KEY 'not_configured', net als
+# bij NS_API_KEY.
+KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400
 
 
 @app.route("/api/health")
@@ -216,6 +220,9 @@ def api_health():
         road_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM road_fetch_status WHERE id = 1"
         ).fetchone()
+        knmi_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM knmi_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -234,6 +241,10 @@ def api_health():
         road_status["last_success_at"] if road_status else None,
         stale_after=ROAD_SITUATIONS_STALE_AFTER_SECONDS,
     )
+    if knmi_status is None:
+        knmi_warnings_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
+    else:
+        knmi_warnings_component = component(knmi_status["last_success_at"], stale_after=KNMI_WARNINGS_STALE_AFTER_SECONDS)
 
     components = {
         "vehicle_positions": component(vp_last),
@@ -241,6 +252,7 @@ def api_health():
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
         "rail_alerts": rail_alerts_component,
         "road_situations": road_situations_component,
+        "knmi_warnings": knmi_warnings_component,
     }
     # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
     # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
@@ -462,6 +474,35 @@ def api_road_situations():
         for r in rows
     ]
     return jsonify({"situations": situations, "count": len(situations)})
+
+
+@app.route("/api/weather-warnings")
+def api_weather_warnings():
+    """Actuele KNMI-weerwaarschuwingen voor provincie Utrecht (zie
+    app/knmi_warnings.py). Leeg (niet een fout) als KNMI_API_KEY niet is
+    ingesteld: de collector slaat die bron dan stilzwijgend over."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM knmi_warnings ORDER BY "
+            "CASE color WHEN 'RED' THEN 3 WHEN 'ORANGE' THEN 2 WHEN 'YELLOW' THEN 1 ELSE 0 END DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    warnings = [
+        {
+            "phenomenon_id": r["phenomenon_id"],
+            "phenomenon_label": r["phenomenon_label"],
+            "color": r["color"],
+            "color_label": r["color_label"],
+            "active_from": r["active_from"],
+            "worst_at": r["worst_at"],
+            "header": r["header"],
+            "description": r["description"],
+        }
+        for r in rows
+    ]
+    return jsonify({"warnings": warnings, "count": len(warnings)})
 
 
 @app.route("/api/stats")

@@ -46,6 +46,7 @@ VEHICLE_FRESHNESS_SECONDS = 90
 CANCELLATION_STALE_AFTER_SECONDS = 26 * 3600  # ruim over 24u: uitval komt sporadisch binnen, geen 30s-heartbeat
 RAIL_ALERTS_STALE_AFTER_SECONDS = 600  # zelfde marge als in app/server.py (job draait elke 2 min)
 ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200  # zelfde marge als in app/server.py (job draait elke 5 min)
+KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400  # zelfde marge als in app/server.py (job draait elke 30 min)
 
 app = Flask(
     __name__,
@@ -187,6 +188,9 @@ def lite_api_health():
         road_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM road_fetch_status WHERE id = 1"
         ).fetchone()
+        knmi_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM knmi_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -205,6 +209,10 @@ def lite_api_health():
         road_status["last_success_at"] if road_status else None,
         stale_after=ROAD_SITUATIONS_STALE_AFTER_SECONDS,
     )
+    if knmi_status is None:
+        knmi_warnings_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
+    else:
+        knmi_warnings_component = component(knmi_status["last_success_at"], stale_after=KNMI_WARNINGS_STALE_AFTER_SECONDS)
 
     components = {
         "vehicle_positions": component(vp_last),
@@ -212,6 +220,7 @@ def lite_api_health():
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
         "rail_alerts": rail_alerts_component,
         "road_situations": road_situations_component,
+        "knmi_warnings": knmi_warnings_component,
     }
     latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
@@ -298,6 +307,34 @@ def lite_api_road_situations():
         for r in rows
     ]
     return jsonify({"situations": situations, "count": len(situations)})
+
+
+@app.route("/lite/api/weather-warnings")
+def lite_api_weather_warnings():
+    """Zelfde vorm als het volledige /api/weather-warnings in app/server.py --
+    actuele KNMI-weerwaarschuwingen voor provincie Utrecht."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM knmi_warnings ORDER BY "
+            "CASE color WHEN 'RED' THEN 3 WHEN 'ORANGE' THEN 2 WHEN 'YELLOW' THEN 1 ELSE 0 END DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    warnings = [
+        {
+            "phenomenon_id": r["phenomenon_id"],
+            "phenomenon_label": r["phenomenon_label"],
+            "color": r["color"],
+            "color_label": r["color_label"],
+            "active_from": r["active_from"],
+            "worst_at": r["worst_at"],
+            "header": r["header"],
+            "description": r["description"],
+        }
+        for r in rows
+    ]
+    return jsonify({"warnings": warnings, "count": len(warnings)})
 
 
 @app.route("/lite/api/alerts")

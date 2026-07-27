@@ -102,6 +102,13 @@ als je storingen op het spoor binnen de provincie Utrecht wilt tonen (zie
 app/ns_rail_alerts.py). Optioneel: zonder deze key blijft de rest van de
 app gewoon werken, alleen die sectie blijft leeg.
 
+Vul ook `KNMI_API_KEY` in (zie dataplatform.knmi.nl) voor weerwaarschuwingen
+in provincie Utrecht (zie app/knmi_warnings.py). Let op: dit vereist een key
+met toegang tot dataset "waarschuwingen_nederland_48h" -- dat is een ander
+product dan de reguliere KNMI Open Data-toegang en moet mogelijk apart
+aangevraagd worden op het portaal. Ook hier: optioneel, zonder key blijft
+de rest van de app gewoon werken.
+
 ## 5. systemd-services installeren
 
 Er zijn drie aparte services: één die op de achtergrond data verzamelt, één

@@ -141,6 +141,30 @@ CREATE TABLE IF NOT EXISTS road_fetch_status (
     last_error TEXT
 );
 
+-- Weerwaarschuwingen (KNMI) voor provincie Utrecht -- zie app/knmi_warnings.py.
+-- In tegenstelling tot rail_alerts/road_situations geen active-boekhouding
+-- met eigen id's: dit is een compacte huidige-status-snapshot (max 7 rijen,
+-- één per fenomeen), die de collector bij elke fetch volledig vervangt
+-- (DELETE + INSERT) i.p.v. bij te houden wat er ooit is langsgekomen.
+CREATE TABLE IF NOT EXISTS knmi_warnings (
+    phenomenon_id TEXT PRIMARY KEY,
+    phenomenon_label TEXT,
+    color TEXT,
+    color_label TEXT,
+    active_from TEXT,
+    worst_at TEXT,
+    header TEXT,
+    description TEXT,
+    last_updated INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS knmi_fetch_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT
+);
+
 -- Permanente geschiedenis van RSS-meldingen (/lite/rss.xml): items worden
 -- hier één keer geschreven door de collector zodra een gebeurtenis zich
 -- voordoet (uitval boven de signaleringsgrens, een nieuwe NS-storing) en
