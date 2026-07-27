@@ -70,7 +70,7 @@
   <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist) — veel meer informatie dan deze lite-versie">🔒 Volledige versie &rarr;</a>
   <a href="https://dvznet.nl/dvzreader.html" class="nav-btn" target="_blank" rel="noopener noreferrer" title="DVZ Reader (RSS-tool op dvznet.nl)">📡 DVZ Reader &rarr;</a>
   <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-    <span class="status-dot weather-dot" id="weatherDot"></span><span id="weatherLabel">Weer</span>
+    <span id="weatherLabel">Weer</span>
   </button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
@@ -327,7 +327,15 @@ const KNMI_COLOR_STYLES = {
   ORANGE: 'background:#ff8c00; color:#fff;',
   RED: 'background:#e60000; color:#fff;',
 };
-const KNMI_DOT_COLORS = { YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000' };
+// Kleur van de hele Weer-knop (niet alleen een stipje) -- bij een actieve
+// waarschuwing krijgt de knop de volle, verzadigde KNMI-huisstijlkleur als
+// achtergrond zodat die echt opvalt; zonder waarschuwing een rustige
+// groene tint (zelfde idee als een "ok"-status).
+const KNMI_BUTTON_STYLES = {
+  YELLOW: 'background:#ffd500; border-color:#ffd500; color:#000;',
+  ORANGE: 'background:#ff8c00; border-color:#ff8c00; color:#fff;',
+  RED:    'background:#e60000; border-color:#e60000; color:#fff;',
+};
 
 function fmtWarningTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', {
@@ -371,12 +379,12 @@ async function refreshWeatherWarnings() {
   const weatherData = await weatherRes.json();
   const w = weatherData.weather;
 
-  const dot = document.getElementById('weatherDot');
+  const btn = document.getElementById('weatherBtn');
   const label = document.getElementById('weatherLabel');
   label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C` : 'Weer';
-  const dotColor = data.count === 0 ? cssVar('--good') : (KNMI_DOT_COLORS[data.warnings[0].color] || cssVar('--warn'));
-  dot.style.background = dotColor;
-  dot.style.color = dotColor;
+  btn.style.cssText = data.count === 0
+    ? 'background:var(--good-bg); border-color:var(--good); color:var(--good);'
+    : (KNMI_BUTTON_STYLES[data.warnings[0].color] || '');
 
   const body = document.getElementById('weatherModalBody');
   const warningsHtml = data.count === 0
