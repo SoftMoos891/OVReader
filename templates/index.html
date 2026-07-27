@@ -121,8 +121,8 @@
   <a href="/trends" class="nav-btn">📈 Trends &amp; analyse &rarr;</a>
   <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
   <a href="/lite" class="nav-btn">📱 Lite-versie &rarr;</a>
-  <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-    <span class="status-dot" id="weatherDot"></span><span id="weatherLabel">Weer</span>
+  <button class="weather-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
+    <span class="weather-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span>
   </button>
   <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
@@ -742,7 +742,20 @@ const KNMI_COLOR_STYLES = {
   ORANGE: 'background:#ff8c00; color:#fff;',
   RED: 'background:#e60000; color:#fff;',
 };
-const KNMI_DOT_COLORS = { YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000' };
+// Kleur van de hele Weer-knop (niet alleen een stipje) -- zachte tint als
+// achtergrond, de officiële KNMI-kleur als rand en tekstkleur.
+const KNMI_BUTTON_STYLES = {
+  YELLOW: 'background:rgba(255,213,0,.16); border-color:#ffd500; color:#8a6d00;',
+  ORANGE: 'background:rgba(255,140,0,.16); border-color:#ff8c00; color:#ff8c00;',
+  RED:    'background:rgba(230,0,0,.16); border-color:#e60000; color:#e60000;',
+};
+function weatherIcon(cloudOkta) {
+  if (cloudOkta == null) return '🌡️';
+  if (cloudOkta <= 1) return '☀️';
+  if (cloudOkta <= 4) return '🌤️';
+  if (cloudOkta <= 6) return '⛅';
+  return '☁️';
+}
 
 function fmtWarningTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', {
@@ -789,14 +802,14 @@ async function refreshWeatherWarnings() {
   const weatherData = await weatherRes.json();
   const w = weatherData.weather;
 
-  const dot = document.getElementById('weatherDot');
+  const btn = document.getElementById('weatherBtn');
+  const icon = document.getElementById('weatherIcon');
   const label = document.getElementById('weatherLabel');
+  icon.textContent = weatherIcon(w ? w.cloud_cover_okta : null);
   label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C` : 'Weer';
-  if (data.count === 0) {
-    dot.style.background = 'var(--good)';
-  } else {
-    dot.style.background = KNMI_DOT_COLORS[data.warnings[0].color] || 'var(--warn)';
-  }
+  btn.style.cssText = data.count === 0
+    ? ''
+    : (KNMI_BUTTON_STYLES[data.warnings[0].color] || '');
 
   const body = document.getElementById('weatherModalBody');
   const warningsHtml = data.count === 0
