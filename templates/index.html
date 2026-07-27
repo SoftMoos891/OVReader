@@ -54,6 +54,7 @@
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.early { background: var(--early-bg); color: var(--early); }
   #topbar-stats { display: flex; gap: 24px; margin: 8px 0 4px; }
   .kpi { }
   .kpi .num { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; }
@@ -239,6 +240,7 @@ legend.onAdd = function () {
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:6px;"></span>Op tijd</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--warn);margin-right:6px;"></span>Lichte vertraging (3-6 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--bad);margin-right:6px;"></span>Grote vertraging (&gt;6 min)</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--early);margin-right:6px;"></span>Te vroeg (&gt;2 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--muted);margin-right:6px;"></span>Onbekend</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
   `;
@@ -328,7 +330,7 @@ function cssVar(name) {
 
 function delayColor(delay) {
   if (delay === null || delay === undefined) return cssVar('--muted');
-  if (delay < -120) return cssVar('--bad');  // meer dan 2 min te vroeg
+  if (delay < -120) return cssVar('--early');  // meer dan 2 min te vroeg
   if (delay <= 180) return cssVar('--good');
   if (delay <= 360) return cssVar('--warn');
   return cssVar('--bad');
@@ -336,7 +338,7 @@ function delayColor(delay) {
 
 function delayPillClass(delay) {
   if (delay === null || delay === undefined) return '';
-  if (delay < -120) return 'bad';  // meer dan 2 min te vroeg
+  if (delay < -120) return 'early';  // meer dan 2 min te vroeg
   if (delay <= 180) return 'good';
   if (delay <= 360) return 'warn';
   return 'bad';
