@@ -474,7 +474,7 @@ async function refreshVehicles() {
     .map(([op, n]) => `${op}: ${n}`)
     .join(' · ');
   document.getElementById('lastupdate').textContent =
-    `${data.count} actieve bussen${operatorSummary ? ` (${operatorSummary})` : ''} · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
+    `${data.count} actieve voertuigen${operatorSummary ? ` (${operatorSummary})` : ''} · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
 }
 
 // Alleen opgehaald bij een klik op een voertuig (popupopen), niet standaard
