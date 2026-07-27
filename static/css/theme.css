@@ -142,7 +142,11 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 .modal-overlay {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
-  z-index: 500; align-items: center; justify-content: center; padding: 16px;
+  /* Leaflet's eigen besturingselementen (zoomknoppen, attributie, legenda)
+     zitten standaard op z-index 1000 (.leaflet-top/.leaflet-bottom) -- ruim
+     daarboven, anders schemert de kaart (attributietekst, legenda) door de
+     modal heen op pagina's met een kaart. */
+  z-index: 1100; align-items: center; justify-content: center; padding: 16px;
 }
 .modal-overlay.open { display: flex; }
 .modal {
