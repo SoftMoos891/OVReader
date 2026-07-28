@@ -648,18 +648,22 @@ async function loadHealth() {
       : null;
     const railNote = data.components.rail_alerts.status === 'not_configured'
       ? 'NS_API_KEY niet ingesteld op de server'
-      : null;
-    const knmiNote = data.components.knmi_warnings.status === 'not_configured'
+      : 'ververst elke 2 min';
+    const roadNote = 'ververst elke 5 min';
+    const knmiWarningsNote = data.components.knmi_warnings.status === 'not_configured'
       ? 'KNMI_API_KEY niet ingesteld op de server'
-      : null;
+      : 'ververst elke 30 min';
+    const knmiWeatherNote = data.components.knmi_weather.status === 'not_configured'
+      ? 'KNMI_API_KEY niet ingesteld op de server'
+      : 'ververst elke 15 min';
     const rows = [
       ['Voertuigposities', data.components.vehicle_positions, null],
       ['Vertragingen', data.components.trip_delays, null],
       ['Uitval', data.components.cancellations, cancelNote],
       ['Spoorstoringen (NS)', data.components.rail_alerts, railNote],
-      ['Wegsituaties', data.components.road_situations, null],
-      ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiNote],
-      ['Actueel weer (KNMI)', data.components.knmi_weather, knmiNote],
+      ['Wegsituaties', data.components.road_situations, roadNote],
+      ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiWarningsNote],
+      ['Actueel weer (KNMI)', data.components.knmi_weather, knmiWeatherNote],
     ];
     document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
       <div class="health-row">
