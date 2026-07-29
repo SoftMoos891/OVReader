@@ -631,11 +631,17 @@ async function refreshAlerts() {
   const res = await fetch('/api/alerts');
   const data = await res.json();
 
-  // Unieke haltes verzamelen uit alle actieve meldingen die er een noemen
-  // (kan meerdere meldingen per halte zijn, en meerdere haltes per melding).
+  // Unieke haltes verzamelen uit alle meldingen die NU (en niet pas in de
+  // toekomst) een halte laten vervallen -- valid_from kan in de toekomst
+  // liggen (nog te beginnen werkzaamheden, zoals bij de urgent-badge-fix),
+  // en valid_until kan al voorbij zijn terwijl de melding nog even als
+  // active=1 in de feed blijft staan.
   closedStopsLayer.clearLayers();
+  const nowSec = Date.now() / 1000;
   const closedStops = new Map();
   for (const a of data.alerts) {
+    if (a.valid_from && a.valid_from > nowSec) continue;
+    if (a.valid_until && a.valid_until < nowSec) continue;
     for (const s of (a.stops || [])) {
       if (s.lat == null || s.lon == null) continue;
       if (!closedStops.has(s.stop_id)) closedStops.set(s.stop_id, { ...s, reasons: [] });
