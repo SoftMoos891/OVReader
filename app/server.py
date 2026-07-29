@@ -153,6 +153,11 @@ def route_meta(route_id):
     }
 
 
+def stop_meta(stop_id):
+    s = _index.stops.get(stop_id, {})
+    return {"stop_id": stop_id, "name": s.get("name", "?")}
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -397,6 +402,7 @@ def api_alerts():
     alerts = []
     for r in rows:
         route_ids = [rid for rid in (r["route_ids"] or "").split(",") if rid]
+        stop_ids = [sid for sid in (r["stop_ids"] or "").split(",") if sid]
         alerts.append({
             "alert_id": r["alert_id"],
             "header": r["header"],
@@ -404,6 +410,7 @@ def api_alerts():
             "effect": r["effect"],
             "cause": r["cause"],
             "routes": [route_meta(rid) for rid in route_ids],
+            "stops": [stop_meta(sid) for sid in stop_ids],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
             "valid_from": r["valid_from"],

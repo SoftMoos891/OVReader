@@ -236,6 +236,7 @@ def fetch_alerts(index: UtrechtIndex):
             continue
         alert = entity.alert
         route_ids = set()
+        stop_ids = set()
         relevant = False
         for ie in alert.informed_entity:
             rid = index.route_id_for(
@@ -247,6 +248,7 @@ def fetch_alerts(index: UtrechtIndex):
                 route_ids.add(rid)
             elif ie.stop_id and ie.stop_id in index.stops:
                 relevant = True
+                stop_ids.add(ie.stop_id)
         if not relevant:
             continue
 
@@ -267,6 +269,11 @@ def fetch_alerts(index: UtrechtIndex):
         results.append({
             "alert_id": entity.id,
             "route_ids": sorted(route_ids),
+            # Bij een melding die alleen een halte noemt (geen route/trip in
+            # informed_entity, bv. "halte vervalt i.v.m. brandweer") is
+            # route_ids leeg -- zonder dit veld is dan nergens te zien om
+            # welke halte het gaat.
+            "stop_ids": sorted(stop_ids),
             "header": best_text(alert.header_text),
             "description": best_text(alert.description_text),
             "effect": _EFFECT_NAMES.get(alert.effect, "UNKNOWN_EFFECT"),

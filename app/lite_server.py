@@ -59,18 +59,23 @@ app = Flask(
 
 class _LiteRouteIndex:
     """Minimale route-index voor de lite-app: leest alleen utrecht_routes.json
-    in (lijnnaam/operator-lookup) -- niet de trip-/halte-mappings uit
-    gtfs_rt.UtrechtIndex, die alleen nodig zijn om trip_id's te resolven bij
-    het ophalen van de realtime feed. De rijen die deze app leest (alerts/
-    trip_cancellations/trips_ran_daily) hebben route_id al klaarstaan."""
+    en utrecht_stops.json in (lijnnaam/operator- resp. haltenaam-lookup) --
+    niet de trip-mappings uit gtfs_rt.UtrechtIndex, die alleen nodig zijn om
+    trip_id's te resolven bij het ophalen van de realtime feed. De rijen die
+    deze app leest (alerts/trip_cancellations/trips_ran_daily) hebben
+    route_id al klaarstaan; stops zijn alleen nodig om bij een halte-only
+    melding (geen route/trip in informed_entity) de haltenaam te tonen."""
 
     def __init__(self):
         self.routes = {}
+        self.stops = {}
         self.reload()
 
     def reload(self):
         path = DATA_DIR / "utrecht_routes.json"
         self.routes = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        stops_path = DATA_DIR / "utrecht_stops.json"
+        self.stops = json.loads(stops_path.read_text(encoding="utf-8")) if stops_path.exists() else {}
 
     def is_bus_route(self, route_id):
         """Zelfde definitie als gtfs_rt.UtrechtIndex.is_bus_route(): telt niet
@@ -94,6 +99,11 @@ def route_meta(route_id):
         "agency_name": r.get("agency_name", "?"),
         "operator": r.get("operator", "Onbekend"),
     }
+
+
+def stop_meta(stop_id):
+    s = _index.stops.get(stop_id, {})
+    return {"stop_id": stop_id, "name": s.get("name", "?")}
 
 
 @app.route("/lite")
@@ -389,6 +399,7 @@ def lite_api_alerts():
     alerts = []
     for r in rows:
         route_ids = [rid for rid in (r["route_ids"] or "").split(",") if rid]
+        stop_ids = [sid for sid in (r["stop_ids"] or "").split(",") if sid]
         alerts.append({
             "alert_id": r["alert_id"],
             "header": r["header"],
@@ -396,6 +407,7 @@ def lite_api_alerts():
             "effect": r["effect"],
             "cause": r["cause"],
             "routes": [route_meta(rid) for rid in route_ids],
+            "stops": [stop_meta(sid) for sid in stop_ids],
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
             "valid_from": r["valid_from"],

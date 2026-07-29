@@ -242,11 +242,18 @@ async function refreshAlerts() {
   withSeverity.sort((x, y) => (y.label ? 1 : 0) - (x.label ? 1 : 0));
   el.innerHTML = withSeverity.map(({ a, label }) => {
     const badge = label ? `<span class="pill bad">⚠ ${label}</span>` : '';
+    // Een melding die alleen een halte noemt (geen route/trip in
+    // informed_entity, bv. "halte vervalt i.v.m. brandweer") heeft geen
+    // lijnen -- toon dan in elk geval de haltenaam, anders is nergens te
+    // zien waar de melding over gaat.
+    const lines = a.routes.length
+      ? `Lijnen: ${a.routes.map(r => r.short_name).join(', ')}`
+      : (a.stops && a.stops.length ? `Halte: ${a.stops.map(s => s.name).join(', ')}` : 'Lijnen: —');
     return `
     <div class="alert ${label ? 'severe' : ''}">
       <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
       <div>${a.description || ''}</div>
-      <div class="routes">Lijnen: ${a.routes.map(r => r.short_name).join(', ') || '—'}
+      <div class="routes">${lines}
         &middot; Gemeld om ${fmtAlertTime(a.first_seen)}${fmtValidity(a) ? ` &middot; ${fmtValidity(a)}` : ''}</div>
     </div>`;
   }).join('');

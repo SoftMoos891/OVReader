@@ -69,7 +69,13 @@ CREATE TABLE IF NOT EXISTS alerts (
     -- GTFS-RT Alert.cause (bv. ACCIDENT/POLICE_ACTIVITY/MEDICAL_EMERGENCY) --
     -- betrouwbaarder signaal voor de ernstig-badge dan tekst-keywords, als
     -- de vervoerder het veld daadwerkelijk vult (vaak UNKNOWN_CAUSE).
-    cause TEXT
+    cause TEXT,
+    -- Halte-ID's uit informed_entity die geen route/trip hebben (bv. een
+    -- melding die alleen een halte noemt, "halte vervalt i.v.m.
+    -- brandweer") -- zonder dit veld is nergens te zien welke halte het
+    -- betreft als route_ids leeg is. Komma-gescheiden, zelfde vorm als
+    -- route_ids.
+    stop_ids TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rail_alerts (
@@ -329,6 +335,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE alerts ADD COLUMN valid_until INTEGER")
     if "cause" not in alert_cols:
         conn.execute("ALTER TABLE alerts ADD COLUMN cause TEXT")
+    if "stop_ids" not in alert_cols:
+        conn.execute("ALTER TABLE alerts ADD COLUMN stop_ids TEXT")
 
     rss_item_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rss_feed_items)")}
     if "resolved_at" not in rss_item_cols:
