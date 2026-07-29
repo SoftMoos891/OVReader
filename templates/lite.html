@@ -194,6 +194,11 @@ const SEVERE_CAUSE_LABELS = {
   DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
 };
 function severeAlertLabel(a) {
+  // Nog te beginnen meldingen (valid_from in de toekomst) tellen niet als
+  // urgent, ook niet bij een woord als "stremming" -- dat is dan een
+  // aankondiging van gepland werk, geen actuele situatie. Zelfde regel als
+  // _is_severe_alert() in collector.py, bewust in sync houden.
+  if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
   if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);

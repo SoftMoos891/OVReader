@@ -53,7 +53,12 @@ SEVERE_ALERT_KEYWORDS = [
 SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMONSTRATION", "STRIKE"}
 
 
-def _is_severe_alert(header, description, cause):
+def _is_severe_alert(header, description, cause, valid_from=None, now=None):
+    """Nog te beginnen meldingen (valid_from ligt in de toekomst) tellen niet
+    als ernstig/urgent, ook niet bij een woord als "stremming" in de tekst --
+    dat is dan een aankondiging van gepland werk, geen actuele situatie."""
+    if valid_from and now and valid_from > now:
+        return False
     text = f"{header or ''} {description or ''}".lower()
     if any(kw in text for kw in SEVERE_ALERT_KEYWORDS):
         return True
@@ -214,7 +219,7 @@ def collect_once():
                 # uitval-meldingen: eenmalig vastgelegd bij eerste constatering
                 # (INSERT OR IGNORE op alert_id), blijft staan ook nadat de
                 # melding zelf weer inactief wordt.
-                if _is_severe_alert(a["header"], a["description"], a["cause"]):
+                if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at):
                     title = f"Melding U-OV: {a['header'] or (a['description'] or '')[:80] or 'zie details'}"
                     description = f"{a['description'] or a['header'] or ''} Klik hier voor meer data.".strip()
                     conn.execute(
