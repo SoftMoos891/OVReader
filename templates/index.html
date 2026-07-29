@@ -156,7 +156,7 @@
       <span id="mapModalTitle">Locatie</span>
       <button class="modal-close" onclick="closeMapModal()">✕</button>
     </div>
-    <div class="modal-body map-body"><iframe id="mapFrame" title="Kaart" loading="lazy" src="about:blank"></iframe></div>
+    <div class="modal-body map-body"><div id="mapFrame"></div></div>
     <div class="modal-footer"><a id="mapModalLink" href="#" target="_blank" rel="noopener noreferrer">Openen op openstreetmap.org &rarr;</a></div>
   </div>
 </div>
@@ -848,24 +848,35 @@ async function refreshWeatherWarnings() {
   body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}`;
 }
 
-// Kaart-pop-up: een ingesloten OpenStreetMap i.p.v. een nieuw tabblad.
-// Bewust een iframe en niet de Leaflet-kaart van deze pagina, zodat lite.html
-// (waar geen Leaflet geladen wordt) exact dezelfde implementatie kan gebruiken.
+// Kaart-pop-up: eigen Leaflet-kaartje (niet de ingesloten OpenStreetMap-
+// iframe van vroeger -- die liet uitzoomen onbetrouwbaar werken). Eén
+// kaartinstantie die bij elke opening hergebruikt wordt i.p.v. steeds
+// opnieuw aangemaakt (Leaflet staat niet toe een container twee keer te
+// initialiseren).
+let modalMap = null;
+let modalMapMarker = null;
 function openMapModal(lat, lon, label) {
   const la = Number(lat), lo = Number(lon);
-  const d = 0.012;  // ~1,3 km rondom het punt
-  const bbox = [lo - d, la - d, lo + d, la + d].map(v => v.toFixed(6)).join(',');
   document.getElementById('mapModalTitle').textContent = label || 'Locatie';
-  document.getElementById('mapFrame').src =
-    `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${la},${lo}`;
   document.getElementById('mapModalLink').href =
     `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}`;
   document.getElementById('mapModal').classList.add('open');
+  if (!modalMap) {
+    modalMap = L.map('mapFrame').setView([la, lo], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(modalMap);
+    modalMapMarker = L.marker([la, lo]).addTo(modalMap);
+  } else {
+    modalMap.setView([la, lo], 15);
+    modalMapMarker.setLatLng([la, lo]);
+  }
+  // De modal stond tot net op display:none, dus Leaflet kende de container
+  // nog geen juiste afmeting toe -- na het zichtbaar worden opnieuw meten.
+  setTimeout(() => modalMap.invalidateSize(), 0);
 }
 function closeMapModal() {
   document.getElementById('mapModal').classList.remove('open');
-  // Leegmaken zodat de kaart niet op de achtergrond tegels blijft laden.
-  document.getElementById('mapFrame').src = 'about:blank';
 }
 
 function cancellationPillClass(pct) {
