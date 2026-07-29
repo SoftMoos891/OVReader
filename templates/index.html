@@ -243,6 +243,7 @@ legend.onAdd = function () {
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--early);margin-right:6px;"></span>Te vroeg (&gt;2 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--muted);margin-right:6px;"></span>Onbekend</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;margin-right:6px;"></span>Halte vervalt</div>
   `;
   return div;
 };
@@ -251,6 +252,7 @@ legend.addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
 const routeShapeLayer = L.layerGroup().addTo(map);
 const roadSituationLayer = L.layerGroup().addTo(map);
+const closedStopsLayer = L.layerGroup().addTo(map);
 const markers = {};
 
 // --- Filter op lijn/operator ---------------------------------------------
@@ -610,9 +612,42 @@ function fmtValidity(a) {
   return '';
 }
 
+// Marker op de kaart voor haltes die door een actuele melding vervallen
+// (bv. de brandweer-sluiting) -- alleen mogelijk voor meldingen waarvan
+// de halte(s) bekend zijn (zie a.stops, gevuld door /api/alerts zodra de
+// melding geen route/trip in informed_entity heeft).
+function closedStopIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative; transform:translate(-11px, -11px);">
+             <div class="bus-badge" style="background:#475569; width:22px; height:22px; border-radius:50%;">🚫</div>
+           </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
 async function refreshAlerts() {
   const res = await fetch('/api/alerts');
   const data = await res.json();
+
+  // Unieke haltes verzamelen uit alle actieve meldingen die er een noemen
+  // (kan meerdere meldingen per halte zijn, en meerdere haltes per melding).
+  closedStopsLayer.clearLayers();
+  const closedStops = new Map();
+  for (const a of data.alerts) {
+    for (const s of (a.stops || [])) {
+      if (s.lat == null || s.lon == null) continue;
+      if (!closedStops.has(s.stop_id)) closedStops.set(s.stop_id, { ...s, reasons: [] });
+      closedStops.get(s.stop_id).reasons.push(a.header || a.description || effectLabel(a.effect));
+    }
+  }
+  for (const s of closedStops.values()) {
+    const reasons = s.reasons.map(r => `<div>${r}</div>`).join('');
+    L.marker([s.lat, s.lon], { icon: closedStopIcon() })
+      .bindPopup(`<b>Halte vervalt: ${s.name}</b>${reasons}`)
+      .addTo(closedStopsLayer);
+  }
 
   if (window.Notification && Notification.permission === 'granted') {
     const favs = getFavorites();

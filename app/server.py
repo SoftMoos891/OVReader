@@ -155,7 +155,14 @@ def route_meta(route_id):
 
 def stop_meta(stop_id):
     s = _index.stops.get(stop_id, {})
-    return {"stop_id": stop_id, "name": s.get("name", "?")}
+    return {
+        "stop_id": stop_id,
+        "name": s.get("name", "?"),
+        # lat/lon zodat de frontend de halte direct op de kaart kan tonen
+        # (bv. een 'halte vervalt'-marker) zonder aparte lookup.
+        "lat": s.get("lat"),
+        "lon": s.get("lon"),
+    }
 
 
 @app.route("/")
