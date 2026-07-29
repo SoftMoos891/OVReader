@@ -128,18 +128,30 @@ def find_records(conn, index):
         reliable = [r for r in series if r["ran"] >= MIN_RAN_TRIPS_CANCELLATION]
         return _extreme(reliable, "cancellation_pct", "total", min_total, "max", since_day)
 
+    def cancel_best(series, min_total, since_day=None):
+        # Zelfde betrouwbaarheidsdrempel als cancel_worst(): anders wint een
+        # dag met nauwelijks data (bv. een datagat) altijd als "beste dag".
+        reliable = [r for r in series if r["ran"] >= MIN_RAN_TRIPS_CANCELLATION]
+        return _extreme(reliable, "cancellation_pct", "total", min_total, "min", since_day)
+
     operators = sorted({op for _day, op in cancel_operator_by_key.keys()})
 
     result = {
         "cancellations": {
             "worst_all_time": cancel_worst(cancel_network_series, MIN_TRIPS_CANCELLATION),
             "worst_month": cancel_worst(cancel_network_series, MIN_TRIPS_CANCELLATION, month_start),
+            "best_all_time": cancel_best(cancel_network_series, MIN_TRIPS_CANCELLATION),
+            "best_month": cancel_best(cancel_network_series, MIN_TRIPS_CANCELLATION, month_start),
         },
         "cancellations_by_operator": {
             op: {
                 "worst_all_time": cancel_worst(
                     [r for r in cancel_operator_series if r["operator"] == op], MIN_TRIPS_CANCELLATION),
                 "worst_month": cancel_worst(
+                    [r for r in cancel_operator_series if r["operator"] == op], MIN_TRIPS_CANCELLATION, month_start),
+                "best_all_time": cancel_best(
+                    [r for r in cancel_operator_series if r["operator"] == op], MIN_TRIPS_CANCELLATION),
+                "best_month": cancel_best(
                     [r for r in cancel_operator_series if r["operator"] == op], MIN_TRIPS_CANCELLATION, month_start),
             }
             for op in operators

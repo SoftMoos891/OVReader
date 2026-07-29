@@ -46,9 +46,11 @@
   .record-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
                  padding: 14px 16px; position: relative; overflow: hidden; }
   .record-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bad); }
+  .record-card.good::before { background: var(--good); }
   .record-card .rc-period { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
   .record-card .rc-label { font-size: 12.5px; color: var(--text); margin: 4px 0 8px; font-weight: 600; }
   .record-card .rc-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; color: var(--bad); }
+  .record-card.good .rc-value { color: var(--good); }
   .record-card .rc-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
   .record-card.empty-card { color: var(--muted); font-style: italic; font-size: 12px;
                              display: flex; align-items: center; justify-content: center; min-height: 96px; text-align: center; }
@@ -169,11 +171,11 @@ function pillClass(pct) {
   return 'good';
 }
 
-function recordCard(label, period, rec) {
+function recordCard(label, period, rec, good) {
   if (!rec) {
     return `<div class="record-card empty-card">${label}<br>(${period.toLowerCase()}) nog niet genoeg data</div>`;
   }
-  return `<div class="record-card">
+  return `<div class="record-card${good ? ' good' : ''}">
     <div class="rc-period">${period}</div>
     <div class="rc-label">${label}</div>
     <div class="rc-value">${rec.cancellation_pct}%</div>
@@ -188,10 +190,14 @@ async function loadRecords() {
   const cards = [
     recordCard('Hoogste uitvalpercentage', 'Ooit', data.cancellations.worst_all_time),
     recordCard('Hoogste uitvalpercentage', 'Deze maand', data.cancellations.worst_month),
+    recordCard('Laagste uitvalpercentage', 'Ooit', data.cancellations.best_all_time, true),
+    recordCard('Laagste uitvalpercentage', 'Deze maand', data.cancellations.best_month, true),
   ];
   for (const [operator, rec] of Object.entries(data.cancellations_by_operator || {})) {
     cards.push(recordCard(`Hoogste uitval — ${operator}`, 'Ooit', rec.worst_all_time));
     cards.push(recordCard(`Hoogste uitval — ${operator}`, 'Deze maand', rec.worst_month));
+    cards.push(recordCard(`Laagste uitval — ${operator}`, 'Ooit', rec.best_all_time, true));
+    cards.push(recordCard(`Laagste uitval — ${operator}`, 'Deze maand', rec.best_month, true));
   }
   document.getElementById('records-grid').innerHTML = cards.join('');
   document.getElementById('records-hint').textContent =
