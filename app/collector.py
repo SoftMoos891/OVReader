@@ -600,8 +600,8 @@ def fetch_rail_alerts_job():
 
 
 def fetch_road_situations_job():
-    """Haalt actuele wegsituaties op (Rijkswaterstaat-hoofdwegennet, NDW open
-    data, zie road_situations.py) binnen de provincie Utrecht en
+    """Haalt actuele wegsituaties op (NDW open data -- RWS-snelwegen,
+    provinciale en lokale wegen, zie road_situations.py) binnen de provincie Utrecht en
     synchroniseert ze naar road_situations, met dezelfde first_seen/
     last_seen/active-boekhouding als rail_alerts. Publieke, sleutelloze bron
     (geen abonnementslimiet zoals bij NS) -- elke 5 minuten is ruim actueel

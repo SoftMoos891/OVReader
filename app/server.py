@@ -447,9 +447,9 @@ def api_rail_alerts():
 
 @app.route("/api/road-situations")
 def api_road_situations():
-    """Actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de
-    provincie Utrecht -- aparte databron t.o.v. /api/alerts (zie
-    app/road_situations.py). Publieke, sleutelloze bron (NDW), dus altijd
+    """Actuele wegsituaties (NDW open data -- RWS-snelwegen, provinciale en
+    lokale wegen) binnen de provincie Utrecht -- aparte databron t.o.v.
+    /api/alerts (zie app/road_situations.py). Publieke, sleutelloze bron (NDW), dus altijd
     actief -- niet afhankelijk van een env var zoals NS_API_KEY.
 
     Alleen de urgente typen (zie SEVERE_ROAD_TYPES in road_situations.py).

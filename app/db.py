@@ -103,9 +103,9 @@ CREATE TABLE IF NOT EXISTS ns_fetch_status (
     last_error TEXT
 );
 
--- Actuele wegsituaties (Rijkswaterstaat-hoofdwegennet, NDW open data) binnen
--- de provincie Utrecht -- zie app/road_situations.py. Zelfde active-
--- boekhouding als rail_alerts.
+-- Actuele wegsituaties (NDW open data -- RWS-snelwegen, provinciale en
+-- lokale wegen) binnen de provincie Utrecht -- zie app/road_situations.py.
+-- Zelfde active-boekhouding als rail_alerts.
 CREATE TABLE IF NOT EXISTS road_situations (
     situation_id TEXT PRIMARY KEY,
     first_seen INTEGER NOT NULL,

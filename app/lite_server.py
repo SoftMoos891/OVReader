@@ -285,8 +285,9 @@ def lite_api_rail_alerts():
 @app.route("/lite/api/road-situations")
 def lite_api_road_situations():
     """Zelfde vorm als het volledige /api/road-situations in app/server.py --
-    actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de provincie
-    Utrecht, beperkt tot de urgente typen (zie aldaar)."""
+    actuele wegsituaties (NDW open data -- RWS-snelwegen, provinciale en
+    lokale wegen) binnen de provincie Utrecht, beperkt tot de urgente
+    typen (zie aldaar)."""
     types = tuple(sorted(SEVERE_ROAD_TYPES))
     conn = db.get_conn()
     try:

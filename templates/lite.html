@@ -140,7 +140,7 @@
 
   <div class="section">
     <h2>Wegsituatie<span id="road-situations-count"></span></h2>
-    <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte, obstakel op de weg) op het Rijkswaterstaat-hoofdwegennet binnen de provincie Utrecht</div>
+    <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte, obstakel op de weg) binnen de provincie Utrecht, via NDW (o.a. Rijkswaterstaat, provincie en gemeenten)</div>
     <div id="road-situations"><div class="empty">Laden...</div></div>
   </div>
 
@@ -289,8 +289,8 @@ async function refreshRailAlerts() {
   }).join('');
 }
 
-// Wegsituaties (Rijkswaterstaat-hoofdwegennet, NDW open data, zie
-// /lite/api/road-situations en app/road_situations.py). De server levert hier
+// Wegsituaties (NDW open data -- RWS-snelwegen, provinciale en lokale
+// wegen, zie /lite/api/road-situations en app/road_situations.py). De server levert hier
 // alleen nog de urgente typen (ongeval/abnormale verkeersdrukte) binnen de
 // provincie Utrecht -- wegwerkzaamheden/omleidingen zijn er al uit gefilterd,
 // dus elke melding hier krijgt de rode badge.

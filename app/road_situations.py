@@ -1,12 +1,13 @@
-"""Actuele wegsituaties (Rijkswaterstaat-hoofdwegennet) binnen de provincie
-Utrecht -- wegwerkzaamheden, ongevallen, obstakels, omleidingen.
+"""Actuele wegsituaties binnen de provincie Utrecht -- wegwerkzaamheden,
+ongevallen, obstakels, omleidingen.
 
 Publieke, sleutelloze open-databron: NDW (Nationaal Dataportaal
-Wegverkeer, opendata.ndw.nu), DATEX II-formaat. Dit is vooral het
-Rijkswaterstaat-hoofdwegennet (snelwegen als A2/A12/A27/A28 en een deel van
-de provinciale wegen) -- geen fijnmazige data over binnenstadsstraten, maar
-wel bruikbare context bij bus-vertragingen (bv. een afsluiting op de A12
-bij Utrecht).
+Wegverkeer, opendata.ndw.nu), DATEX II-formaat. Dit is breder dan alleen
+het Rijkswaterstaat-hoofdwegennet: naast RWS-snelwegen (A2/A12/A27/A28,
+bron-ID's als RWS01/RWS10/NLRWS) leveren ook provincies en gemeenten mee
+via NDW (bron-ID's als NDW06/NDW08/MOS01/TSN01) -- in de praktijk komen
+hierdoor ook provinciale wegen (bv. N421) en lokale Utrechtse straten
+(bv. een "U"-wegnummer in Leidsche Rijn) voorbij, niet alleen snelwegen.
 
 "Binnen de provincie Utrecht" wordt net als bij ns_rail_alerts.py bepaald
 met een echte point-in-polygon-test tegen data/provincies.geojson, hier
