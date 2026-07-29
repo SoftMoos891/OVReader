@@ -549,10 +549,17 @@ map.on('popupclose', (e) => {
 // gebruiken i.p.v. daadwerkelijk extra dienst. In de praktijk (zie historie
 // in alerts-tabel) is verreweg de meeste ADDITIONAL_SERVICE-melding gewoon
 // een routine "halte vervalt i.v.m. Werkzaamheden/Optocht" -- geen incident.
-// De écht urgente gevallen (bv. "i.v.m. een ongeval", "Oorzaak: Stremming")
-// worden al gewoon door de keywords hieronder gedekt, dus de blanket-regel
-// gaf alleen valse ernstig-meldingen zonder iets extra's te vangen.
-const SEVERE_ALERT_KEYWORDS = ['stremming', 'verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
+// De écht urgente gevallen (bv. "i.v.m. een ongeval") worden al gewoon
+// door de keywords hieronder gedekt, dus de blanket-regel gaf alleen
+// valse ernstig-meldingen zonder iets extra's te vangen.
+//
+// "stremming" is bewust geen keyword (meer): de description van KV15-
+// afkomstige meldingen bevat standaard "Oorzaak : Stremming Effect :
+// Omleiding Maatregelen : ..." bij ELKE aangekondigde halte-verplaatsing,
+// ook routinematige, dagen van tevoren geplande -- niet alleen bij echte
+// actuele incidenten. Zelfde lijst als SEVERE_ALERT_KEYWORDS in
+// collector.py, bewust in sync houden.
+const SEVERE_ALERT_KEYWORDS = ['verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
 // GTFS-RT Alert.cause is een betrouwbaarder signaal dan tekst-keywords als
 // de vervoerder het daadwerkelijk vult (vaak UNKNOWN_CAUSE, maar als het wel
 // gezet is telt het). Alleen de ondubbelzinnig urgente oorzaken; MAINTENANCE/

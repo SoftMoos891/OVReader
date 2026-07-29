@@ -46,8 +46,15 @@ CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
 # lite.html (JS) -- hier geport naar Python zodat de RSS-feed ook zonder
 # browser kan bepalen welke U-OV-meldingen (bus/tram) "ernstig" zijn.
 # Bewust in sync houden met de JS-versie als die wijzigt.
+#
+# "stremming" is hier bewust geen keyword (meer): de description van KV15-
+# afkomstige meldingen (via OVapi) bevat standaard "Oorzaak : Stremming
+# Effect : Omleiding Maatregelen : ..." bij ELKE aangekondigde halte-
+# verplaatsing, ook routinematige, dagen van tevoren geplande -- niet
+# alleen bij echte actuele incidenten. Met cause daarbij op OTHER_CAUSE
+# (niet ACCIDENT e.d.) is dat woord dus geen betrouwbaar ernst-signaal.
 SEVERE_ALERT_KEYWORDS = [
-    "stremming", "verstoring", "storing", "brand", "hulpdiensten", "politie",
+    "verstoring", "storing", "brand", "hulpdiensten", "politie",
     "ongeval", "aanrijding", "ambulance", "gewonde", "calamiteit",
 ]
 SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMONSTRATION", "STRIKE"}
