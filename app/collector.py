@@ -887,12 +887,9 @@ def check_cancellation_alerts_job():
                 continue
             title = f"Verhoogd uitvalpercentage {operator}: {pct:.1f}% ({today_display})"
             description = (
-                f"{operator} heeft op {today_display} een uitvalpercentage van {pct:.1f}% "
-                f"({a['canceled']} van de {total} ritten) bereikt, boven de "
-                f"{CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%-signaleringsgrens. Klik hier voor meer data. "
-                "Let op: de data kunnen licht afwijken van de precieze cijfers. Gebruik deze "
-                "data niet los maar alleen in combinatie met een reactie van het "
-                "vervoersbedrijf en benoem geen exacte percentages."
+                f"Bij {operator} is vandaag {pct:.1f}% van de busritten uitgevallen. "
+                "Klik hier voor meer. Let op: data kunnen licht afwijken van precieze "
+                "cijfers. Gebruik bij evt. berichtgeving geen exacte percentages."
             )
             conn.execute(
                 """INSERT OR IGNORE INTO rss_feed_items
