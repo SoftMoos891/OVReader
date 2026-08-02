@@ -616,6 +616,23 @@ function fmtValidity(a) {
   return '';
 }
 
+// Zelfde soort geldigheidsperiode als fmtValidity hierboven, maar dan voor
+// wegsituaties (NDW/DATEX II com:overallStartTime/overallEndTime -- ISO
+// 8601-tekst, geen Unix-timestamp zoals bij alerts, dus een eigen
+// tijdformatter i.p.v. fmtAlertTime hergebruiken). "Tot" is informatiever
+// (zegt wanneer het voorbij is) dus die krijgt voorrang als beide bekend
+// zijn.
+function fmtRoadTime(iso) {
+  return new Date(iso).toLocaleString('nl-NL', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+function fmtRoadValidity(s) {
+  if (s.end_time) return `Tot ${fmtRoadTime(s.end_time)}`;
+  if (s.start_time) return `Sinds ${fmtRoadTime(s.start_time)}`;
+  return '';
+}
+
 // Marker op de kaart voor haltes die door een actuele melding vervallen
 // (bv. de brandweer-sluiting) -- alleen mogelijk voor meldingen waarvan
 // de halte(s) bekend zijn (zie a.stops, gevuld door /api/alerts zodra de
@@ -746,6 +763,12 @@ async function refreshRailAlerts() {
 // net als elders in de app het verschil tussen ernstig/routine.
 const MOST_URGENT_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
 
+// DATEX II overallSeverity -- 'unknown'/'none' zeggen niets (verreweg de
+// meeste situaties vallen daaronder) dus die tonen we bewust niet.
+const ROAD_SEVERITY_LABELS = {
+  highest: 'Zeer ernstig', high: 'Ernstig', medium: 'Matig', low: 'Licht', lowest: 'Gering',
+};
+
 function roadSituationIcon(urgent) {
   const color = urgent ? '#d6006c' : cssVar('--warn');
   return L.divIcon({
@@ -786,19 +809,22 @@ async function refreshRoadSituations() {
     // vaak specifieker dan het type-label en regelmatig gevuld terwijl
     // comment leeg is -- alleen tonen als het iets toevoegt.
     const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
+    const severityText = ROAD_SEVERITY_LABELS[s.severity] || '';
     const detailParts = [];
     if (where && s.comment) detailParts.push(s.comment);
     if (causeText) detailParts.push(`Oorzaak: ${causeText}`);
+    if (severityText) detailParts.push(`Ernst: ${severityText}`);
     const detail = detailParts.length ? `<div>${detailParts.join(' &middot; ')}</div>` : '';
     const mapLink = (s.lat && s.lon)
       ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
       : '';
+    const validity = fmtRoadValidity(s);
     const urgent = MOST_URGENT_ROAD_TYPES.has(s.record_type);
     return `
     <div class="alert ${urgent ? 'severe' : ''}">
       <div class="hdr"><span class="pill ${urgent ? 'bad' : 'warn'}">${s.type_label}</span>${heading}</div>
       ${detail}
-      <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${mapLink}</div>
+      <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${validity ? ` &middot; ${validity}` : ''}${mapLink}</div>
     </div>`;
   }).join('');
   el.querySelectorAll('.map-link').forEach(a => a.addEventListener('click', (e) => {
@@ -868,7 +894,7 @@ function weatherSummaryHtml(w) {
     <div style="font-size:28px; font-weight:700;">${w.temperature != null ? w.temperature + '&deg;C' : '–'}</div>
     <div style="color:var(--muted); margin-bottom:10px;">
       Wind: ${wind}<br>
-      Luchtvochtigheid: ${w.humidity != null ? w.humidity + '%' : '–'} &middot; Luchtdruk: ${w.pressure != null ? w.pressure + ' hPa' : '–'}<br>
+      Luchtvochtigheid: ${w.humidity != null ? w.humidity + '%' : '–'} &middot; Luchtdruk: ${w.pressure != null ? w.pressure + ' hPa' : '–'} &middot; Dauwpunt: ${w.dew_point != null ? w.dew_point + '&deg;C' : '–'}<br>
       Waargenomen om ${fmtWarningTime(w.observed_at)} (${w.station})
     </div>`;
 }
