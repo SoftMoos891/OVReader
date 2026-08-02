@@ -18,6 +18,7 @@ import json
 import time
 from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
+from urllib.parse import quote as url_quote
 from xml.sax.saxutils import escape as xml_escape
 from pathlib import Path
 
@@ -535,10 +536,16 @@ def lite_rss_uitval():
     finally:
         conn.close()
 
+    # <link> kreeg vroeger voor elk item dezelfde LITE_BASE_URL -- <guid> was
+    # dan wel al uniek, maar sommige RSS-lezers gebruiken (mede) de link om
+    # items te herkennen/als gelezen te markeren, dus identieke links lieten
+    # zo'n lezer bij het openen van 1 melding alles als gelezen zien. Het
+    # guid als fragment erachter plakken maakt elke link uniek zonder dat er
+    # een echte pagina achter dat fragment hoeft te bestaan.
     items = [f"""
     <item>
       <title>{xml_escape(r['title'])}</title>
-      <link>{xml_escape(LITE_BASE_URL)}</link>
+      <link>{xml_escape(LITE_BASE_URL)}#{xml_escape(url_quote(r['guid'], safe=''))}</link>
       <guid isPermaLink="false">{xml_escape(r['guid'])}</guid>
       <pubDate>{format_datetime(datetime.fromtimestamp(r['pub_date'], tz=timezone.utc))}</pubDate>
       <description>{xml_escape(r['description'])}</description>
