@@ -100,7 +100,7 @@
   </div>
 
   <label style="display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted); margin-bottom:20px; cursor:pointer;">
-    <input type="checkbox" id="up-to-now-toggle">
+    <input type="checkbox" id="up-to-now-toggle" checked>
     Tot nu toe (i.p.v. hele dag) — telt voor vandaag alleen ritten mee waarvan de vertrektijd al is verstreken
   </label>
 
@@ -184,7 +184,7 @@
 <script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
 <script>
 let currentRange = 'week';
-let upToNow = false;
+let upToNow = true;
 let cancellationData = null;
 let routeSort = { key: 'canceled', dir: -1 };
 let tripPage = 0;
@@ -670,13 +670,18 @@ async function loadTrips() {
 }
 
 // Deeplinks: periode + 'tot nu toe'-toggle in de URL, zodat een specifieke
-// weergave te bookmarken/delen is (bv. /uitval?range=last_month&up_to_now=1).
+// weergave te bookmarken/delen is (bv. /uitval?range=last_month&up_to_now=0).
 // replaceState i.p.v. pushState: elke klik als browsergeschiedenis-stap zou
 // de terugknop onbruikbaar maken.
+// 'Tot nu toe' is de default (geen param nodig); alleen het EXPLICIET
+// uitzetten ervan wordt in de URL vastgelegd (up_to_now=0), zodat een link
+// zonder param altijd de huidige default volgt i.p.v. voor altijd aan het
+// oude gedrag vast te zitten. Oudere gedeelde links met ?up_to_now=1 blijven
+// ook gewoon werken (evalueert nog steeds naar true).
 function syncUrl() {
   const params = new URLSearchParams();
   if (currentRange !== 'week') params.set('range', currentRange);
-  if (upToNow) params.set('up_to_now', '1');
+  if (!upToNow) params.set('up_to_now', '0');
   const qs = params.toString();
   history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
 }
@@ -689,7 +694,7 @@ function applyUrlState() {
     document.querySelectorAll('.range-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.range === range));
   }
-  upToNow = params.get('up_to_now') === '1';
+  upToNow = params.get('up_to_now') !== '0';
   document.getElementById('up-to-now-toggle').checked = upToNow;
 }
 
