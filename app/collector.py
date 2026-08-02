@@ -40,7 +40,7 @@ ON_TIME_MIN_DELAY = -120
 ON_TIME_MAX_DELAY = 180
 # Vanaf welk uitvalpercentage (van vandaag, per vervoerder) een permanente
 # RSS-melding wordt vastgelegd (zie check_cancellation_alerts_job()).
-CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
+CANCELLATION_ALERT_THRESHOLD_PCT = 5.0
 
 # Zelfde ernst-detectie als severeAlertLabel() in templates/index.html en
 # lite.html (JS) -- hier geport naar Python zodat de RSS-feed ook zonder
