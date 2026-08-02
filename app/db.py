@@ -119,6 +119,10 @@ CREATE TABLE IF NOT EXISTS road_situations (
     record_type TEXT,
     type_label TEXT,
     comment TEXT,
+    -- DATEX II sit:cause/sit:causeDescription -- vaak specifieker dan
+    -- comment (bv. "Demonstratie", "Wegwerkzaamheden", "Door grenscontrole")
+    -- en regelmatig gevuld terwijl comment leeg is.
+    cause TEXT,
     severity TEXT,
     start_time TEXT,
     end_time TEXT,
@@ -355,6 +359,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE road_situations ADD COLUMN road_number TEXT")
     if "road_location" not in road_situation_cols:
         conn.execute("ALTER TABLE road_situations ADD COLUMN road_location TEXT")
+    if "cause" not in road_situation_cols:
+        conn.execute("ALTER TABLE road_situations ADD COLUMN cause TEXT")
 
     # Vervangen door de covering indexes hierboven (idx_td_route_covering /
     # idx_td_fetched_route_covering dekken elke query die deze twee ook

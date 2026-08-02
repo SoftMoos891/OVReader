@@ -486,6 +486,7 @@ def api_road_situations():
             "record_type": r["record_type"],
             "type_label": r["type_label"],
             "comment": r["comment"],
+            "cause": r["cause"],
             "severity": r["severity"],
             "start_time": r["start_time"],
             "end_time": r["end_time"],

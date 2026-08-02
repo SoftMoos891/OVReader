@@ -188,6 +188,7 @@ def parse_road_situations(root):
         all_points = []
         record_types = []
         comment = None
+        cause = None
         start_time = end_time = None
         for rec in records:
             rtype = rec.get(_XSI_TYPE, "")
@@ -199,6 +200,14 @@ def parse_road_situations(root):
                 c = rec.find(".//sit:generalPublicComment/sit:comment/com:values/com:value", _NS)
                 if c is not None and c.text:
                     comment = c.text
+            if cause is None:
+                # bv. "Demonstratie"/"Wegwerkzaamheden"/"Door grenscontrole" --
+                # los van generalPublicComment, dat vaak leeg is terwijl dit
+                # veld wel gevuld is (zie ovreader_road_situations_cause_gap
+                # memory: dit veld werd voorheen helemaal niet geparsed).
+                ca = rec.find(".//sit:cause/sit:causeDescription/com:values/com:value", _NS)
+                if ca is not None and ca.text:
+                    cause = ca.text
             if start_time is None:
                 s = rec.find(".//com:overallStartTime", _NS)
                 if s is not None and s.text:
@@ -225,6 +234,7 @@ def parse_road_situations(root):
             "record_type": record_type,
             "type_label": _TYPE_LABELS.get(record_type, "Verkeersmelding"),
             "comment": comment,
+            "cause": cause,
             "severity": severity,
             "start_time": start_time,
             "end_time": end_time,

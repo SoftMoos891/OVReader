@@ -319,7 +319,14 @@ async function refreshRoadSituations() {
     // vrije tekst, en anders op het type.
     const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
     const heading = where || s.comment || s.type_label;
-    const detail = (where && s.comment) ? `<div>${s.comment}</div>` : '';
+    // cause (sit:causeDescription, bv. "Demonstratie"/"Wegwerkzaamheden") is
+    // vaak specifieker dan het type-label en regelmatig gevuld terwijl
+    // comment leeg is -- alleen tonen als het iets toevoegt.
+    const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
+    const detailParts = [];
+    if (where && s.comment) detailParts.push(s.comment);
+    if (causeText) detailParts.push(`Oorzaak: ${causeText}`);
+    const detail = detailParts.length ? `<div>${detailParts.join(' &middot; ')}</div>` : '';
     const mapLink = (s.lat && s.lon)
       ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
       : '';

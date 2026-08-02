@@ -616,14 +616,14 @@ def fetch_road_situations_job():
             conn.execute(
                 """INSERT INTO road_situations
                    (situation_id, first_seen, last_seen, record_type, type_label,
-                    comment, severity, start_time, end_time, lat, lon,
+                    comment, cause, severity, start_time, end_time, lat, lon,
                     road_number, road_location, active)
                    VALUES (:situation_id, :now, :now, :record_type, :type_label,
-                           :comment, :severity, :start_time, :end_time, :lat, :lon,
+                           :comment, :cause, :severity, :start_time, :end_time, :lat, :lon,
                            :road_number, :road_location, 1)
                    ON CONFLICT(situation_id) DO UPDATE SET
                        last_seen=:now, record_type=:record_type, type_label=:type_label,
-                       comment=:comment, severity=:severity, start_time=:start_time,
+                       comment=:comment, cause=:cause, severity=:severity, start_time=:start_time,
                        end_time=:end_time, lat=:lat, lon=:lon,
                        road_number=:road_number, road_location=:road_location, active=1""",
                 {
@@ -632,6 +632,7 @@ def fetch_road_situations_job():
                     "record_type": s["record_type"],
                     "type_label": s["type_label"],
                     "comment": s["comment"],
+                    "cause": s["cause"],
                     "severity": s["severity"],
                     "start_time": s["start_time"],
                     "end_time": s["end_time"],
@@ -649,9 +650,16 @@ def fetch_road_situations_job():
                 where = " ".join(p for p in (s["road_number"], s["road_location"]) if p)
                 title = f"Wegsituatie ({s['type_label']}): {where or s['comment'] or s['type_label']}"
                 parts = [f"{s['type_label']} op {where}." if where else f"{s['type_label']}."]
+                # cause (sit:causeDescription, bv. "Demonstratie") is vaak
+                # specifieker dan het generieke type_label en regelmatig
+                # gevuld terwijl comment leeg is -- eerst toevoegen, comment
+                # erna alleen als het niet gewoon hetzelfde zegt.
+                if s["cause"] and s["cause"] != s["type_label"]:
+                    parts.append(s["cause"])
                 # De vrije tekst is lang niet altijd gevuld, en soms een
-                # letterlijke herhaling van het type -- dan niets toevoegen.
-                if s["comment"] and s["comment"] != s["type_label"]:
+                # letterlijke herhaling van het type of van cause -- dan
+                # niets toevoegen.
+                if s["comment"] and s["comment"] != s["type_label"] and s["comment"] != s["cause"]:
                     parts.append(s["comment"])
                 parts.append("Klik hier voor meer data.")
                 description = " ".join(parts)

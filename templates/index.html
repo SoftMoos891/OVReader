@@ -763,7 +763,8 @@ async function refreshRoadSituations() {
   for (const s of data.situations) {
     if (!s.lat || !s.lon) continue;
     const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
-    const popupText = `<b>${s.type_label}</b>${where ? `<br>${where}` : ''}${s.comment ? `<br>${s.comment}` : ''}`;
+    const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
+    const popupText = `<b>${s.type_label}</b>${where ? `<br>${where}` : ''}${causeText ? `<br>Oorzaak: ${causeText}` : ''}${s.comment ? `<br>${s.comment}` : ''}`;
     const icon = roadSituationIcon(MOST_URGENT_ROAD_TYPES.has(s.record_type));
     L.marker([s.lat, s.lon], { icon }).bindPopup(popupText).addTo(roadSituationLayer);
   }
@@ -777,7 +778,14 @@ async function refreshRoadSituations() {
     // vrije tekst, en anders op het type.
     const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
     const heading = where || s.comment || s.type_label;
-    const detail = (where && s.comment) ? `<div>${s.comment}</div>` : '';
+    // cause (sit:causeDescription, bv. "Demonstratie"/"Wegwerkzaamheden") is
+    // vaak specifieker dan het type-label en regelmatig gevuld terwijl
+    // comment leeg is -- alleen tonen als het iets toevoegt.
+    const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
+    const detailParts = [];
+    if (where && s.comment) detailParts.push(s.comment);
+    if (causeText) detailParts.push(`Oorzaak: ${causeText}`);
+    const detail = detailParts.length ? `<div>${detailParts.join(' &middot; ')}</div>` : '';
     const mapLink = (s.lat && s.lon)
       ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
       : '';
