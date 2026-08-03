@@ -50,6 +50,8 @@
   th:hover { color: var(--text); }
   th.sorted::after { content: ' \25BE'; }
   tr:hover td { background: var(--panel2); }
+  tr.row-current td { border-left: 3px solid var(--accent); }
+  tr.row-current td:first-child { font-weight: 600; }
   tr.clickable { cursor: pointer; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
@@ -545,6 +547,25 @@ function renderAgencyTable() {
     </tr>`).join('') + '</table>';
 }
 
+function currentIsoWeekKey() {
+  // Zelfde ISO 8601-weeksleutel als Python's date.isocalendar() in
+  // _iso_week_key() op de server, zodat 'huidige week' hier en daar exact
+  // overeenkomt.
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const isoYear = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${isoYear}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function fmtWeekLabel(weekKey, weekStartIso) {
   const start = new Date(weekStartIso + 'T00:00:00');
   const end = new Date(start);
@@ -574,6 +595,7 @@ function renderWeekTable() {
     rowByOpWeek[op] = Object.fromEntries(perOp[op].map(w => [w.week, w]));
   });
 
+  const thisWeek = currentIsoWeekKey();
   const header = `<tr><th>Week</th>${operators.map(op => `<th>${op}</th>`).join('')}</tr>`;
   const body = weeks.map(week => {
     const cells = operators.map(op => {
@@ -582,7 +604,8 @@ function renderWeekTable() {
       return `<td><span class="pill ${pillClass(w.cancellation_pct)}">${w.cancellation_pct}%</span>
         <span style="color:var(--muted); font-size:11px;">(${w.canceled}/${w.canceled + w.ran})</span></td>`;
     }).join('');
-    return `<tr><td>${fmtWeekLabel(week, weekStartByKey.get(week))}</td>${cells}</tr>`;
+    const rowClass = week === thisWeek ? ' class="row-current"' : '';
+    return `<tr${rowClass}><td>${fmtWeekLabel(week, weekStartByKey.get(week))}</td>${cells}</tr>`;
   }).join('');
 
   container.innerHTML = `<table>${header}${body}</table>`;
@@ -658,6 +681,7 @@ function renderMonthTable() {
     rowByOpMonth[op] = Object.fromEntries(perOp[op].map(m => [m.month, m]));
   });
 
+  const thisMonth = currentMonthKey();
   const header = `<tr><th>Maand</th>${operators.map(op => `<th>${op}</th>`).join('')}</tr>`;
   const body = months.map(month => {
     const cells = operators.map(op => {
@@ -666,7 +690,8 @@ function renderMonthTable() {
       return `<td><span class="pill ${pillClass(m.cancellation_pct)}">${m.cancellation_pct}%</span>
         <span style="color:var(--muted); font-size:11px;">(${m.canceled}/${m.canceled + m.ran})</span></td>`;
     }).join('');
-    return `<tr><td>${fmtMonthLabel(month)}</td>${cells}</tr>`;
+    const rowClass = month === thisMonth ? ' class="row-current"' : '';
+    return `<tr${rowClass}><td>${fmtMonthLabel(month)}</td>${cells}</tr>`;
   }).join('');
 
   container.innerHTML = `<table>${header}${body}</table>`;
