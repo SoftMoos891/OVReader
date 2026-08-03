@@ -63,6 +63,11 @@ SEVERE_ROAD_TYPES = {"Accident", "AbnormalTraffic", "GeneralObstruction"}
 # meldingswaardig incident is dan een ongeval/abnormale verkeersdrukte.
 RSS_ROAD_TYPES = {"Accident", "AbnormalTraffic"}
 
+# DATEX II overallSeverity-waarde die overeenkomt met "Gering" in de UI (zie
+# ROAD_SEVERITY_LABELS in templates/index.html en lite.html) -- op verzoek
+# nooit urgent en nooit een RSS-melding, ongeacht het record_type.
+NEGLIGIBLE_SEVERITY = "lowest"
+
 
 def _load_utrecht_rings():
     geojson = json.loads((DATA_DIR / "provincies.geojson").read_text(encoding="utf-8"))
