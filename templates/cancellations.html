@@ -153,7 +153,10 @@
 
   <div class="grid2">
     <div class="panel">
-      <h2>Uitval per week — per vervoerder</h2>
+      <div class="panel-header">
+        <h2>Uitval per week — per vervoerder</h2>
+        <button class="status-btn" onclick="exportWeekTableCsv()" title="Download deze tabel als CSV">⬇ CSV</button>
+      </div>
       <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Op basis van de gekozen periode hierboven; nieuwste week bovenaan. Alleen busvervoer.</div>
       <div class="table-scroll" id="week-table"><div class="empty">Laden...</div></div>
     </div>
@@ -583,6 +586,52 @@ function renderWeekTable() {
   }).join('');
 
   container.innerHTML = `<table>${header}${body}</table>`;
+}
+
+function csvField(v) {
+  return `"${String(v).replace(/"/g, '""')}"`;
+}
+
+function exportWeekTableCsv() {
+  const perOp = cancellationData?.per_week_by_operator || {};
+  const operators = Object.keys(perOp).sort();
+  if (operators.length === 0) return;
+
+  const weekStartByKey = new Map();
+  operators.forEach(op => perOp[op].forEach(w => weekStartByKey.set(w.week, w.week_start)));
+  const weeks = [...weekStartByKey.keys()].sort();
+
+  const rowByOpWeek = {};
+  operators.forEach(op => {
+    rowByOpWeek[op] = Object.fromEntries(perOp[op].map(w => [w.week, w]));
+  });
+
+  const isoDate = d => d.toISOString().slice(0, 10);
+  const header = ['Week', 'Weekstart', 'Weekeind',
+    ...operators.flatMap(op => [`${op} - uitgevallen`, `${op} - gereden`, `${op} - uitval%`])];
+  const lines = [header.map(csvField).join(';')];
+
+  weeks.forEach(week => {
+    const start = new Date(weekStartByKey.get(week) + 'T00:00:00');
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const cells = [week, isoDate(start), isoDate(end)];
+    operators.forEach(op => {
+      const w = rowByOpWeek[op][week];
+      cells.push(w ? w.canceled : '', w ? w.ran : '', w ? w.cancellation_pct : '');
+    });
+    lines.push(cells.map(csvField).join(';'));
+  });
+
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `uitval-per-week-per-vervoerder_${currentRange}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function fmtMonthLabel(monthKey) {
