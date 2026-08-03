@@ -112,6 +112,7 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
   border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
   cursor: pointer; transition: all .15s; align-self: center; flex-shrink: 0;
+  text-decoration: none;
 }
 /* Icoontje (weertype-emoji) vóór de knoptekst -- vaste, kleine hoogte met
    overflow:hidden, want emoji-lettertypen (vooral het thermometer-icoon)

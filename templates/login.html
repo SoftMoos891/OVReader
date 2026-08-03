@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Inloggen — DVZ OV-Monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'Inter', sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+  }
+  .theme-toggle-btn { position: fixed; top: 16px; right: 16px; }
+  .login-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px 30px; width: 100%; max-width: 340px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.08);
+  }
+  .login-card .dvz-logo-badge { width: 44px; height: 44px; font-size: 13px; margin: 0 auto 14px; }
+  .login-card h1 { font-size: 17px; margin: 0 0 4px; text-align: center; }
+  .login-card .sub { color: var(--muted); font-size: 13px; text-align: center; margin-bottom: 22px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
+  .field input {
+    width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 9px 11px; font-size: 14px; font-family: inherit;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .error {
+    background: var(--bad-bg); color: var(--bad); border-radius: 6px;
+    padding: 8px 11px; font-size: 13px; margin-bottom: 14px;
+  }
+  button[type=submit] {
+    width: 100%; background: var(--accent); color: #fff; border: none;
+    border-radius: 6px; padding: 10px; font-size: 14px; font-weight: 600;
+    font-family: inherit; cursor: pointer; transition: background .15s;
+  }
+  button[type=submit]:hover { background: var(--accent2); }
+</style>
+</head>
+<body>
+<button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+
+<div class="login-card">
+  <div class="dvz-logo-badge" title="DVZ Reader">DVZ</div>
+  <h1>OV-Monitor Utrecht</h1>
+  <div class="sub">Log in om verder te gaan</div>
+
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('login') }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="field">
+      <label for="username">Gebruikersnaam</label>
+      <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+    </div>
+    <div class="field">
+      <label for="password">Wachtwoord</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit">Inloggen</button>
+  </form>
+</div>
+
+<script>
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+  location.reload();
+}
+</script>
+</body>
+</html>

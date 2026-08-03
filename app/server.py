@@ -1,6 +1,7 @@
 """Flask-app: dashboard + JSON API voor het busvervoer-monitoringssysteem
 van U-OV (Keolis en Transdev, gezamenlijke concessiehouder busvervoer
 provincie Utrecht)."""
+import hashlib
 import hmac
 import json
 import os
@@ -10,7 +11,10 @@ from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request, send_file
+from flask import (
+    Flask, Response, jsonify, redirect, render_template, request, send_file,
+    session, url_for,
+)
 
 from . import db, records
 from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
@@ -115,26 +119,73 @@ AUTH_PASSWORD = os.environ.get("BUS_MONITOR_PASSWORD")
 AUTH_USER2 = os.environ.get("BUS_MONITOR_USER2")
 AUTH_PASSWORD2 = os.environ.get("BUS_MONITOR_PASSWORD2")
 
+# Sessie-secret voor de inlogpagina (zie login()/logout() hieronder). Afgeleid
+# van BUS_MONITOR_PASSWORD i.p.v. een losse env-var: zo blijven ingelogde
+# sessies geldig over een herstart/redeploy heen (de deploy-webhook herstart
+# de service bij elke push) zonder een tweede geheim te hoeven beheren. Zonder
+# BUS_MONITOR_PASSWORD is er sowieso geen auth actief.
+app.secret_key = hashlib.sha256(f"ovreader-session:{AUTH_PASSWORD or 'dev'}".encode()).hexdigest()
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = True
+
+
+def _valid_credentials(username, password):
+    if not username or not password:
+        return False
+    if hmac.compare_digest(username, AUTH_USER) and hmac.compare_digest(password, AUTH_PASSWORD):
+        return True
+    return bool(
+        AUTH_USER2 and AUTH_PASSWORD2
+        and hmac.compare_digest(username, AUTH_USER2)
+        and hmac.compare_digest(password, AUTH_PASSWORD2)
+    )
+
 
 @app.before_request
 def require_auth():
     if not AUTH_PASSWORD:
         return None
+    if request.path == "/login" or request.path.startswith("/static/"):
+        return None
+    if session.get("authenticated"):
+        return None
+    # Basic Auth blijft ook werken (naast de sessie-login hieronder) -- o.a.
+    # /api/backup/latest wordt vanaf een andere machine met `curl -u`
+    # opgehaald, en dat scriptje moet niet stuk gaan door deze wijziging.
     auth = request.authorization
-    valid = auth is not None and (
-        (hmac.compare_digest(auth.username, AUTH_USER) and hmac.compare_digest(auth.password, AUTH_PASSWORD))
-        or (
-            AUTH_USER2
-            and AUTH_PASSWORD2
-            and hmac.compare_digest(auth.username, AUTH_USER2)
-            and hmac.compare_digest(auth.password, AUTH_PASSWORD2)
-        )
-    )
-    if not valid:
+    if auth is not None and _valid_credentials(auth.username, auth.password):
+        return None
+    if request.path.startswith("/api/"):
         return Response(
             "Authenticatie vereist", 401, {"WWW-Authenticate": 'Basic realm="Bus Monitor"'}
         )
-    return None
+    return redirect(url_for("login", next=request.full_path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not AUTH_PASSWORD:
+        return redirect(url_for("index"))
+    next_url = request.values.get("next") or url_for("index")
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = url_for("index")  # open-redirect-guard: alleen relatieve paden
+    error = None
+    if request.method == "POST":
+        if _valid_credentials(request.form.get("username", ""), request.form.get("password", "")):
+            session.clear()
+            session["authenticated"] = True
+            session.permanent = True
+            return redirect(next_url)
+        error = "Onjuiste gebruikersnaam of wachtwoord."
+    if error:
+        return render_template("login.html", error=error, next=next_url), 401
+    return render_template("login.html", error=error, next=next_url)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 def route_meta(route_id):
