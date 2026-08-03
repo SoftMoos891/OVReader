@@ -167,8 +167,13 @@ def login():
     if not AUTH_PASSWORD:
         return redirect(url_for("index"))
     next_url = request.values.get("next") or url_for("index")
-    if not next_url.startswith("/") or next_url.startswith("//"):
-        next_url = url_for("index")  # open-redirect-guard: alleen relatieve paden
+    # Open-redirect-guard: alleen relatieve paden toestaan. Backslashes worden
+    # eerst genormaliseerd naar '/', want browsers doen dat ook -- zonder dit
+    # zou '/\evil.com' langs de '//'-check heen glippen en na normalisatie
+    # alsnog als protocol-relatieve URL naar een extern domein uitkomen.
+    normalized = next_url.replace("\\", "/")
+    if not normalized.startswith("/") or normalized.startswith("//"):
+        next_url = url_for("index")
     error = None
     if request.method == "POST":
         if _valid_credentials(request.form.get("username", ""), request.form.get("password", "")):
