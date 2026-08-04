@@ -121,10 +121,16 @@
   /* Zoekresultaten/vertrektijden zweven als los paneel onder het zoekveld,
      over de kaart heen, i.p.v. de zijbalk te vullen -- nu het zoekveld zelf
      in de filterbalk staat i.p.v. in een eigen sectie in de zijbalk.
+     position:fixed (i.p.v. absolute) is bewust: #filter-bar heeft
+     overflow-x:auto voor de horizontale scroll-noodgreep op smalle
+     schermen, en de CSS-spec zet overflow-y dan stiekem ook op auto (niet
+     visible) -- daardoor kapte #filter-bar dit paneel af zodra het buiten
+     de balk zelf uitstak. position:fixed ontsnapt aan die overflow-clip
+     van voorouders; top/left worden in JS gezet (zie positionStopDropdown()).
      z-index ruim boven Leaflet's eigen 1000 (zie ook .modal-overlay), anders
      schemert de kaart erdoorheen. */
   #stop-results, #stop-departures {
-    position: absolute; top: 100%; left: 0; margin-top: 6px; width: 320px;
+    position: fixed; width: 320px;
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     box-shadow: var(--shadow-md); z-index: 1100; padding: 8px; max-height: 320px; overflow-y: auto;
   }
@@ -1034,9 +1040,24 @@ document.getElementById('stop-search-input').addEventListener('input', (e) => {
   stopSearchDebounce = setTimeout(() => searchStops(q), 250);
 });
 
+// position:fixed plaatst t.o.v. het viewport, niet t.o.v. #stop-search-box
+// -- dus zelf de linker/onderkant van het zoekvak opzoeken en die coördinaten
+// meegeven. Wordt opnieuw berekend bij elke keer dat het paneel gaat tonen
+// (geen resize/scroll-listener nodig: het paneel is toch maar heel even
+// open, en de gebruiker scrollt/resized niet middenin een zoekopdracht).
+function positionStopDropdown() {
+  const rect = document.getElementById('stop-search-box').getBoundingClientRect();
+  for (const id of ['stop-results', 'stop-departures']) {
+    const el = document.getElementById(id);
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.bottom + 6}px`;
+  }
+}
+
 async function searchStops(q) {
   const resultsEl = document.getElementById('stop-results');
   if (!q) { resultsEl.innerHTML = ''; return; }
+  positionStopDropdown();
   const res = await fetch(`/api/stops?q=${encodeURIComponent(q)}`);
   const data = await res.json();
   if (data.stops.length === 0) {
@@ -1064,6 +1085,7 @@ async function selectStop(stopId, stopHint) {
 
 async function refreshStopDepartures() {
   if (!selectedStopId) return;
+  positionStopDropdown();
   const res = await fetch(`/api/stops/${encodeURIComponent(selectedStopId)}/departures`);
   const el = document.getElementById('stop-departures');
   if (!res.ok) {
