@@ -147,7 +147,7 @@
       <button class="modal-close" onclick="closeWeatherModal()">✕</button>
     </div>
     <div class="modal-body" id="weatherModalBody"><div class="empty">Laden...</div></div>
-    <div class="modal-footer">Provincie Utrecht &middot; bron: KNMI</div>
+    <div class="modal-footer">Provincie Utrecht &middot; bron: KNMI / RIVM Luchtmeetnet</div>
   </div>
 </div>
 
@@ -900,13 +900,44 @@ function weatherSummaryHtml(w) {
     </div>`;
 }
 
+// RIVM Luchtmeetnet-kleuren voor de LKI (Luchtkwaliteitsindex, schaal 1-11):
+// blauw/geel/oranje/rood/paars -- bewust een eigen, vijfdelige schaal, niet
+// hergebruikt van de vierdelige KNMI-waarschuwingskleuren.
+const LKI_COLOR_STYLES = {
+  BLUE: 'background:#2b6fd1; color:#fff;',
+  YELLOW: 'background:#ffd500; color:#000;',
+  ORANGE: 'background:#ff8c00; color:#fff;',
+  RED: 'background:#e60000; color:#fff;',
+  PURPLE: 'background:#9333ea; color:#fff;',
+};
+
+function airQualityHtml(aq) {
+  if (!aq || aq.lki == null) return '';
+  const style = LKI_COLOR_STYLES[aq.lki_color] || '';
+  const c = aq.concentrations || {};
+  const parts = ['NO2', 'O3', 'PM25', 'PM10']
+    .filter(k => c[k])
+    .map(k => `${c[k].label.replace('Fijnstof ', '')}: ${c[k].value} ${c[k].unit}`);
+  return `
+    <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+      <div style="font-weight:700; margin-bottom:6px;">Luchtkwaliteit</div>
+      <span class="pill" style="${style}">LKI ${aq.lki} &middot; ${aq.lki_label}</span>
+      <div style="color:var(--muted); margin-top:6px; font-size:12px;">
+        ${parts.join(' &middot; ')}<br>
+        Station ${aq.station} &middot; gemeten om ${fmtWarningTime(aq.measured_at)}
+      </div>
+    </div>`;
+}
+
 async function refreshWeatherWarnings() {
-  const [warnRes, weatherRes] = await Promise.all([
+  const [warnRes, weatherRes, airRes] = await Promise.all([
     fetch('/api/weather-warnings'),
     fetch('/api/weather'),
+    fetch('/api/air-quality'),
   ]);
   const data = await warnRes.json();
   const weatherData = await weatherRes.json();
+  const airData = await airRes.json();
   const w = weatherData.weather;
 
   const btn = document.getElementById('weatherBtn');
@@ -932,7 +963,7 @@ async function refreshWeatherWarnings() {
           <div class="routes">Vanaf ${fmtWarningTime(w.active_from)}${worst}</div>
         </div>`;
       }).join('');
-  body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}`;
+  body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}${airQualityHtml(airData.air_quality)}`;
 }
 
 // Kaart-pop-up: eigen Leaflet-kaartje (niet de ingesloten OpenStreetMap-
@@ -1181,6 +1212,7 @@ async function loadHealth() {
     const knmiWeatherNote = data.components.knmi_weather.status === 'not_configured'
       ? 'KNMI_API_KEY niet ingesteld op de server'
       : 'ververst elke 15 min';
+    const airQualityNote = 'ververst elke 30 min';
     const rows = [
       ['Voertuigposities', data.components.vehicle_positions, null],
       ['Vertragingen', data.components.trip_delays, null],
@@ -1189,6 +1221,7 @@ async function loadHealth() {
       ['Wegsituaties', data.components.road_situations, roadNote],
       ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiWarningsNote],
       ['Actueel weer (KNMI)', data.components.knmi_weather, knmiWeatherNote],
+      ['Luchtkwaliteit (RIVM)', data.components.air_quality, airQualityNote],
     ];
     document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
       <div class="health-row">

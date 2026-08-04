@@ -1,5 +1,6 @@
 """Achtergrondtaak die periodiek de realtime feeds ophaalt en in SQLite opslaat."""
 import datetime as dt
+import json
 import os
 import time
 import traceback
@@ -14,6 +15,7 @@ from .gtfs_rt import (
 )
 from .knmi_warnings import fetch_utrecht_warnings
 from .knmi_weather import fetch_de_bilt_weather
+from .luchtkwaliteit import fetch_air_quality
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
 from .road_situations import NEGLIGIBLE_SEVERITY, RSS_ROAD_TYPES, fetch_utrecht_road_situations
 
@@ -819,6 +821,44 @@ def fetch_knmi_weather_job():
         conn.close()
 
 
+def fetch_air_quality_job():
+    """Haalt de actuele luchtkwaliteit op (Utrecht-Griftpark, zie
+    luchtkwaliteit.py) en vervangt de air_quality-tabel volledig (één rij,
+    zelfde opzet als knmi_weather). Publieke, sleutelloze RIVM-bron -- geen
+    API-key-check nodig. RIVM levert zelf maar eens per uur een nieuwe
+    waarde; elke 30 minuten pollen is ruim actueel genoeg."""
+    fetched_at = _now()
+    conn = db.get_conn()
+    try:
+        aq = fetch_air_quality()
+        conn.execute(
+            """INSERT INTO air_quality
+               (id, station, measured_at, lki, lki_label, lki_color, concentrations, last_updated)
+               VALUES (1, :station, :measured_at, :lki, :lki_label, :lki_color, :concentrations, :now)
+               ON CONFLICT(id) DO UPDATE SET
+                   station=:station, measured_at=:measured_at, lki=:lki, lki_label=:lki_label,
+                   lki_color=:lki_color, concentrations=:concentrations, last_updated=:now""",
+            {**aq, "concentrations": json.dumps(aq["concentrations"]), "now": fetched_at},
+        )
+        conn.execute(
+            """INSERT INTO air_quality_fetch_status (id, last_success_at) VALUES (1, :now)
+               ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
+            {"now": fetched_at},
+        )
+        conn.commit()
+    except Exception as e:
+        print("[collector] fout bij ophalen luchtkwaliteit:")
+        traceback.print_exc()
+        conn.execute(
+            """INSERT INTO air_quality_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
+               ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
+            {"now": fetched_at, "err": str(e)[:500]},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def check_cancellation_alerts_job():
     """Legt permanent een RSS-melding vast (rss_feed_items, zie db.py) zodra
     het uitvalpercentage van VANDAAG voor een vervoerder boven
@@ -926,6 +966,7 @@ def start_scheduler():
     scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
     scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=30, id="knmi_warnings", max_instances=1)
     scheduler.add_job(fetch_knmi_weather_job, "interval", minutes=15, id="knmi_weather", max_instances=1)
+    scheduler.add_job(fetch_air_quality_job, "interval", minutes=30, id="air_quality", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
@@ -934,6 +975,7 @@ def start_scheduler():
     fetch_road_situations_job()
     fetch_knmi_warnings_job()
     fetch_knmi_weather_job()
+    fetch_air_quality_job()
     # Idem voor de rollup -- anders duurt het tot een uur voordat /trends
     # voordeel heeft van de nieuwe dagstatistieken. Veilig om hier synchroon
     # te doen: rollup_completed_days() verwerkt hooguit RETENTION_DAYS dagen

@@ -201,6 +201,28 @@ CREATE TABLE IF NOT EXISTS knmi_weather_fetch_status (
     last_error TEXT
 );
 
+-- Actuele luchtkwaliteit (Utrecht-Griftpark, RIVM Luchtmeetnet) -- zie
+-- app/luchtkwaliteit.py. Zelfde opzet als knmi_weather: één rij, volledig
+-- vervangen bij elke fetch, geen log. concentrations is een JSON-blob
+-- (variabele set stoffen per station, alleen voor weergave, niet bevraagd).
+CREATE TABLE IF NOT EXISTS air_quality (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    station TEXT,
+    measured_at TEXT,
+    lki REAL,
+    lki_label TEXT,
+    lki_color TEXT,
+    concentrations TEXT,
+    last_updated INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS air_quality_fetch_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT
+);
+
 -- Permanente geschiedenis van RSS-meldingen (/lite/rss.xml): items worden
 -- hier één keer geschreven door de collector zodra een gebeurtenis zich
 -- voordoet (uitval boven de signaleringsgrens, een nieuwe NS-storing) en

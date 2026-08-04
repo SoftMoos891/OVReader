@@ -256,6 +256,10 @@ KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400
 # fetch_knmi_weather_job() draait elke 15 minuten; 45 minuten geeft ruimte
 # voor een paar gemiste cycli.
 KNMI_WEATHER_STALE_AFTER_SECONDS = 2700
+# fetch_air_quality_job() draait elke 30 minuten; 90 minuten geeft ruimte
+# voor een paar gemiste cycli. Publieke, sleutelloze bron (geen
+# 'not_configured'), net als road_situations.
+AIR_QUALITY_STALE_AFTER_SECONDS = 5400
 
 
 @app.route("/api/health")
@@ -297,6 +301,9 @@ def api_health():
         knmi_weather_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM knmi_weather_fetch_status WHERE id = 1"
         ).fetchone()
+        air_quality_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM air_quality_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -323,6 +330,10 @@ def api_health():
         knmi_weather_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
     else:
         knmi_weather_component = component(knmi_weather_status["last_success_at"], stale_after=KNMI_WEATHER_STALE_AFTER_SECONDS)
+    air_quality_component = component(
+        air_quality_status["last_success_at"] if air_quality_status else None,
+        stale_after=AIR_QUALITY_STALE_AFTER_SECONDS,
+    )
 
     components = {
         "vehicle_positions": component(vp_last),
@@ -332,6 +343,7 @@ def api_health():
         "road_situations": road_situations_component,
         "knmi_warnings": knmi_warnings_component,
         "knmi_weather": knmi_weather_component,
+        "air_quality": air_quality_component,
     }
     # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
     # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
@@ -614,6 +626,28 @@ def api_weather():
         "wind_direction_compass": row["wind_direction_compass"],
         "pressure": row["pressure"],
         "cloud_cover_okta": row["cloud_cover_okta"],
+    }})
+
+
+@app.route("/api/air-quality")
+def api_air_quality():
+    """Actuele luchtkwaliteit (Utrecht-Griftpark) via het RIVM Luchtmeetnet
+    (zie app/luchtkwaliteit.py). Leeg object (niet een fout) als er nog geen
+    meting binnen is. Geen key-check nodig, publieke bron."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT * FROM air_quality WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return jsonify({"air_quality": None})
+    return jsonify({"air_quality": {
+        "station": row["station"],
+        "measured_at": row["measured_at"],
+        "lki": row["lki"],
+        "lki_label": row["lki_label"],
+        "lki_color": row["lki_color"],
+        "concentrations": json.loads(row["concentrations"]) if row["concentrations"] else {},
     }})
 
 

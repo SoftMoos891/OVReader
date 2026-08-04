@@ -49,6 +49,7 @@ RAIL_ALERTS_STALE_AFTER_SECONDS = 600  # zelfde marge als in app/server.py (job 
 ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200  # zelfde marge als in app/server.py (job draait elke 5 min)
 KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400  # zelfde marge als in app/server.py (job draait elke 30 min)
 KNMI_WEATHER_STALE_AFTER_SECONDS = 2700  # zelfde marge als in app/server.py (job draait elke 15 min)
+AIR_QUALITY_STALE_AFTER_SECONDS = 5400  # zelfde marge als in app/server.py (job draait elke 30 min)
 
 app = Flask(
     __name__,
@@ -206,6 +207,9 @@ def lite_api_health():
         knmi_weather_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM knmi_weather_fetch_status WHERE id = 1"
         ).fetchone()
+        air_quality_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM air_quality_fetch_status WHERE id = 1"
+        ).fetchone()
     finally:
         conn.close()
 
@@ -232,6 +236,10 @@ def lite_api_health():
         knmi_weather_component = {"last_fetched_at": None, "seconds_ago": None, "status": "not_configured"}
     else:
         knmi_weather_component = component(knmi_weather_status["last_success_at"], stale_after=KNMI_WEATHER_STALE_AFTER_SECONDS)
+    air_quality_component = component(
+        air_quality_status["last_success_at"] if air_quality_status else None,
+        stale_after=AIR_QUALITY_STALE_AFTER_SECONDS,
+    )
 
     components = {
         "vehicle_positions": component(vp_last),
@@ -241,6 +249,7 @@ def lite_api_health():
         "road_situations": road_situations_component,
         "knmi_warnings": knmi_warnings_component,
         "knmi_weather": knmi_weather_component,
+        "air_quality": air_quality_component,
     }
     latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
@@ -384,6 +393,27 @@ def lite_api_weather():
         "wind_direction_compass": row["wind_direction_compass"],
         "pressure": row["pressure"],
         "cloud_cover_okta": row["cloud_cover_okta"],
+    }})
+
+
+@app.route("/lite/api/air-quality")
+def lite_api_air_quality():
+    """Zelfde vorm als het volledige /api/air-quality in app/server.py --
+    actuele luchtkwaliteit (Utrecht-Griftpark, RIVM Luchtmeetnet)."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT * FROM air_quality WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return jsonify({"air_quality": None})
+    return jsonify({"air_quality": {
+        "station": row["station"],
+        "measured_at": row["measured_at"],
+        "lki": row["lki"],
+        "lki_label": row["lki_label"],
+        "lki_color": row["lki_color"],
+        "concentrations": json.loads(row["concentrations"]) if row["concentrations"] else {},
     }})
 
 
