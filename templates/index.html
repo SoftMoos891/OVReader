@@ -15,9 +15,10 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
-  header { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex;
-           align-items: center; gap: 10px; }
-  header h1 { font-size: 17px; margin: 0; }
+  header { padding: 8px 18px; border-bottom: 1px solid var(--border); display: flex;
+           flex-direction: column; gap: 6px; }
+  .header-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; white-space: nowrap; }
   header .sub { color: var(--muted); font-size: 12.5px; }
   #layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto; height: calc(100vh - 94px); }
   #map { grid-row: 1 / 2; grid-column: 1 / 2; }
@@ -83,7 +84,7 @@
   .kpi-box .num.warn { color: var(--warn); }
   .kpi-box .num.bad { color: var(--bad); }
   #filter-bar { display: flex; align-items: center; gap: 14px; padding: 8px 20px; border-bottom: 1px solid var(--border);
-                flex-wrap: wrap; font-size: 13px; }
+                flex-wrap: nowrap; overflow-x: auto; font-size: 13px; }
   #filter-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
   #filter-bar input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
         border-radius: 6px; padding: 4px 10px; font-size: 13px; width: 140px; }
@@ -104,7 +105,6 @@
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
 
   @media (max-width: 800px) {
-    header { flex-wrap: wrap; }
     #lastupdate { margin-left: 0; }
     #layout { display: block; height: auto; }
     #map { height: 45vh; }
@@ -115,18 +115,22 @@
 </head>
 <body>
 <header>
-  <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
-  <h1>OV-monitor Utrecht</h1>
-  <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis &amp; Transdev)</span>
-  <span id="lastupdate">–</span>
-  <a href="/trends" class="nav-btn">📈 Trends &amp; analyse &rarr;</a>
-  <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
-  <a href="/lite" class="nav-btn">📱 Lite-versie &rarr;</a>
-  <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-    <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span>
-  </button>
-  <a class="status-btn" href="/logout" title="Uitloggen">Uitloggen</a>
-  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+  <div class="header-row">
+    <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
+    <h1>OV-monitor Utrecht</h1>
+    <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis &amp; Transdev)</span>
+  </div>
+  <div class="header-row">
+    <span id="lastupdate">–</span>
+    <a href="/trends" class="nav-btn">📈 Trends &amp; analyse &rarr;</a>
+    <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
+    <a href="/lite" class="nav-btn">📱 Lite-versie &rarr;</a>
+    <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
+      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span>
+    </button>
+    <a class="status-btn" href="/logout" title="Uitloggen">Uitloggen</a>
+    <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+  </div>
 </header>
 
 <div class="modal-overlay" id="healthModal" onclick="if(event.target===this)closeHealthModal()">

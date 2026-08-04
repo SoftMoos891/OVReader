@@ -13,9 +13,10 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
-  header { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex;
-           align-items: center; gap: 10px; flex-wrap: wrap; }
-  header h1 { font-size: 17px; margin: 0; }
+  header { padding: 8px 18px; border-bottom: 1px solid var(--border); display: flex;
+           flex-direction: column; gap: 6px; }
+  .header-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; white-space: nowrap; }
   header .sub { color: var(--muted); font-size: 12.5px; }
   header a.nav-btn.push-right { margin-left: auto; }
   header a.nav-btn { background: var(--accent); color: #fff; font-weight: 600;
@@ -63,16 +64,20 @@
 </head>
 <body>
 <header>
-  <a href="https://ovreader.dvznet.nl/lite" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
-  <h1>OV Monitor Utrecht lite</h1>
-  <span class="sub">Actuele uitvalcijfers U-OV busvervoer en verstoringen bus en tram (Keolis en Transdev)</span>
-  <a href="/lite/geschiedenis" class="nav-btn push-right" title="Log van uitval-signaleringen, NS-storingen en ernstige U-OV-meldingen">🕒 Geschiedenis &rarr;</a>
-  <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist) — veel meer informatie dan deze lite-versie">🔒 Volledige versie &rarr;</a>
-  <a href="https://dvznet.nl/dvzreader.html" class="nav-btn" target="_blank" rel="noopener noreferrer" title="DVZ Reader (RSS-tool op dvznet.nl)">📡 DVZ Reader &rarr;</a>
-  <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-    <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span>
-  </button>
-  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+  <div class="header-row">
+    <a href="https://ovreader.dvznet.nl/lite" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
+    <h1>OV Monitor Utrecht lite</h1>
+    <span class="sub">Actuele uitvalcijfers U-OV busvervoer en verstoringen bus en tram (Keolis en Transdev)</span>
+  </div>
+  <div class="header-row">
+    <a href="/lite/geschiedenis" class="nav-btn push-right" title="Log van uitval-signaleringen, NS-storingen en ernstige U-OV-meldingen">🕒 Geschiedenis &rarr;</a>
+    <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist) — veel meer informatie dan deze lite-versie">🔒 Volledige versie &rarr;</a>
+    <a href="https://dvznet.nl/dvzreader.html" class="nav-btn" target="_blank" rel="noopener noreferrer" title="DVZ Reader (RSS-tool op dvznet.nl)">📡 DVZ Reader &rarr;</a>
+    <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
+      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span>
+    </button>
+    <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+  </div>
 </header>
 
 <div class="modal-overlay" id="healthModal" onclick="if(event.target===this)closeHealthModal()">
