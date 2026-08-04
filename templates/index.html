@@ -63,6 +63,7 @@
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.muted { background: var(--panel2); color: var(--muted); }
   .pill.early { background: var(--early-bg); color: var(--early); }
   .kpi { }
   .kpi .num { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
@@ -1122,8 +1123,12 @@ async function refreshStopDepartures() {
   el.innerHTML = `<div class="stop-name">${data.stop.name}</div>` +
     `<table><tr><th>Lijn</th><th>Richting</th>${showPlatform ? '<th>Perron</th>' : ''}<th>Vertrek</th><th>Status</th></tr>` +
     data.departures.map(d => {
+      // delay_seconds === null betekent dat er (nog) geen live vertragings-
+      // data voor dit specifieke vertrek is (bv. omdat de rit nog niet is
+      // begonnen) -- géén bevestiging dat de bus op tijd is. Voorheen stond
+      // hier ten onrechte altijd "op tijd", ook zonder enige live data.
       const status = d.delay_seconds === null
-        ? '<span class="pill">op tijd</span>'
+        ? '<span class="pill muted">Onbekend</span>'
         : `<span class="pill ${delayPillClass(d.delay_seconds)}">${delayText(d.delay_seconds)}</span>`;
       const time = d.estimated_time || d.scheduled_time;
       return `<tr>
