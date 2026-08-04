@@ -544,7 +544,7 @@ async function refreshVehicles() {
                  `Status: ${delayText(v.delay_seconds)}<br>` +
                  `${stopLine ? `${stopLine}<br>` : ''}` +
                  `Voertuig ${v.vehicle_id || v.trip_id}${v.vehicle_type ? ` (${v.vehicle_type})` : ''}` +
-                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor vorige/volgende halte</em></div>` +
+                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
                  `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
@@ -587,10 +587,10 @@ async function loadNearbyStops(tripId, marker) {
   try {
     const res = await fetch(`/api/trips/${encodeURIComponent(tripId)}/nearby-stops`);
     const data = await res.json();
-    const prev = data.previous_stop ? data.previous_stop.name : '—';
-    const next = data.next_stop ? data.next_stop.name : '—';
+    const first = data.first_stop ? data.first_stop.name : '—';
+    const last = data.last_stop ? data.last_stop.name : '—';
     const target = el();
-    if (target) target.innerHTML = `Vorige halte: ${prev}<br>Volgende halte: ${next}`;
+    if (target) target.innerHTML = `Beginpunt: ${first}<br>Eindpunt: ${last}`;
   } catch (e) {
     const target = el();
     if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';

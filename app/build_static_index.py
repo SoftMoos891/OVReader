@@ -254,8 +254,15 @@ def find_stop_times_for_trips(zf, trip_ids):
     Gebruikt bewust csv.reader (niet DictReader) met handmatige kolomindex, en
     slaat een match op als compacte tuple (niet als dict met vier keys): een
     dict per rij voor de volledige landelijke feed kost op een kleine VPS al
-    gauw te veel geheugen/CPU-tijd."""
+    gauw te veel geheugen/CPU-tijd.
+
+    Houdt ook, per trip, de halte met de laagste en hoogste stop_sequence bij
+    (trip_termini) -- dit is het echte begin- en eindpunt van de rit volgens
+    de dienstregeling, in tegenstelling tot een 'vorige/volgende halte'
+    afgeleid uit live posities (bleek onbetrouwbaar: die kon bv. een halte in
+    de tegenovergestelde richting tonen)."""
     stop_times_by_stop = {}
+    trip_termini = {}  # trip_id -> [min_seq, min_stop_id, max_seq, max_stop_id]
     with zf.open("stop_times.txt") as f:
         text = io.TextIOWrapper(f, encoding="utf-8-sig")
         reader = csv.reader(text)
@@ -271,10 +278,19 @@ def find_stop_times_for_trips(zf, trip_ids):
                 except (ValueError, IndexError):
                     stop_sequence = 0
                 time_str = row[i_dep] or row[i_arr]
-                stop_times_by_stop.setdefault(row[i_stop], []).append((trip_id, stop_sequence, time_str))
+                stop_id = row[i_stop]
+                stop_times_by_stop.setdefault(stop_id, []).append((trip_id, stop_sequence, time_str))
+                termini = trip_termini.get(trip_id)
+                if termini is None:
+                    trip_termini[trip_id] = [stop_sequence, stop_id, stop_sequence, stop_id]
+                else:
+                    if stop_sequence < termini[0]:
+                        termini[0], termini[1] = stop_sequence, stop_id
+                    if stop_sequence > termini[2]:
+                        termini[2], termini[3] = stop_sequence, stop_id
             if i % 2_000_000 == 0 and i:
                 log(f"  ...{i:,} stop_times regels verwerkt, {len(stop_times_by_stop):,} haltes gevonden")
-    return set(stop_times_by_stop), stop_times_by_stop
+    return set(stop_times_by_stop), stop_times_by_stop, trip_termini
 
 
 def load_stop_info(zf, stop_ids):
@@ -311,9 +327,14 @@ def main():
         calendar = find_calendar_for_services(zf, service_ids)
 
         log("Bepaal haltes en halte-tijden die deze trips aandoen (doorzoekt een groot bestand, even geduld)...")
-        stop_ids, stop_times_by_stop = find_stop_times_for_trips(zf, set(trip_to_route))
+        stop_ids, stop_times_by_stop, trip_termini = find_stop_times_for_trips(zf, set(trip_to_route))
         stop_info = load_stop_info(zf, stop_ids)
         log(f"{len(stop_info):,} haltes gevonden, {sum(len(v) for v in stop_times_by_stop.values()):,} halte-tijden.")
+
+        for trip_id, (_min_seq, first_stop_id, _max_seq, last_stop_id) in trip_termini.items():
+            if trip_id in trip_meta:
+                trip_meta[trip_id]["first_stop_id"] = first_stop_id
+                trip_meta[trip_id]["last_stop_id"] = last_stop_id
 
         route_shapes = find_dominant_shapes(shape_counts)
         needed_shape_ids = {sid for shapes in route_shapes.values() for sid in shapes.values()}

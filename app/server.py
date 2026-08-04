@@ -1116,52 +1116,24 @@ def api_route_shape(route_id):
 
 @app.route("/api/trips/<trip_id>/nearby-stops")
 def api_trip_nearby_stops(trip_id):
-    """Vorige en volgende halte voor een rit (voor het kaart-popup), puur
-    afgeleid uit de al opgeslagen trip_delays -- geen aparte statische
-    rit-haltevolgorde nodig. De realtime feed rapporteert per rit steeds de
-    nog resterende haltes; de laatste fetch-cyclus geeft dus de 'volgende'
-    halte (laagste stop_sequence), en een halte die in een eerdere cyclus nog
-    meekwam maar nu niet meer is de 'vorige' (net gepasseerde) halte."""
-    conn = db.get_conn()
-    try:
-        latest_row = conn.execute(
-            "SELECT MAX(fetched_at) AS t FROM trip_delays WHERE trip_id = ?", (trip_id,)
-        ).fetchone()
-        latest_ts = latest_row["t"] if latest_row else None
-        if latest_ts is None:
-            current_rows, earlier_rows = [], []
-        else:
-            current_rows = conn.execute(
-                "SELECT stop_id, stop_sequence FROM trip_delays WHERE trip_id = ? AND fetched_at = ?",
-                (trip_id, latest_ts),
-            ).fetchall()
-            earlier_rows = conn.execute(
-                """
-                SELECT stop_id, stop_sequence, MAX(fetched_at) AS last_seen
-                FROM trip_delays
-                WHERE trip_id = ? AND fetched_at < ?
-                GROUP BY stop_id
-                ORDER BY stop_sequence DESC
-                """,
-                (trip_id, latest_ts),
-            ).fetchall()
-    finally:
-        conn.close()
+    """Begin- en eindpunt van de rit (voor het kaart-popup), rechtstreeks uit
+    de statische dienstregeling (eerste/laatste halte op stop_sequence,
+    gevuld door build_static_index.py). Eerder werd dit afgeleid uit live
+    trip_delays-posities ('vorige/volgende halte t.o.v. nu'), maar dat bleek
+    onbetrouwbaar -- kon zelfs een halte in de tegenovergestelde richting
+    tonen (trip_delays-snapshots liepen soms niet netjes op stop_sequence
+    op)."""
+    meta = _timetable.trip_meta.get(trip_id, {})
 
-    next_stop = min(current_rows, key=lambda r: r["stop_sequence"], default=None)
-    current_stop_ids = {r["stop_id"] for r in current_rows}
-    previous_stop = next((r for r in earlier_rows if r["stop_id"] not in current_stop_ids), None)
-
-    def stop_info(row):
-        if row is None:
+    def stop_info(stop_id):
+        if not stop_id:
             return None
-        stop_id = row["stop_id"]
         return {"stop_id": stop_id, "name": _index.stops.get(stop_id, {}).get("name", stop_id)}
 
     return jsonify({
         "trip_id": trip_id,
-        "previous_stop": stop_info(previous_stop),
-        "next_stop": stop_info(next_stop),
+        "first_stop": stop_info(meta.get("first_stop_id")),
+        "last_stop": stop_info(meta.get("last_stop_id")),
     })
 
 
