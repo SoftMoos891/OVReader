@@ -133,16 +133,18 @@
   .stop-result:hover { background: var(--panel2); }
   #stop-departures table { width: 100%; }
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
-  .operator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .operator-grid h2 { margin-top: 0; }
-  .operator-grid > div:first-child { border-right: 1px solid var(--border); padding-right: 24px; }
+  /* Uitval/Punctualiteit per operator als twee losse kaarten naast elkaar
+     i.p.v. één kaart met interne scheidingslijn -- dat laatste bleek in de
+     praktijk (ook bij mezelf, in een kleine preview) net zo te "lezen" als
+     twee losse dingen door de brede gap, dus dan kunnen het net zo goed
+     gewoon twee nette .section-kaarten zijn met een normale tussenruimte. */
+  .operator-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
   @media (max-width: 800px) {
     #layout { display: block; height: auto; }
     #map { height: 45vh; }
     #stats { overflow-y: visible; }
-    .operator-grid { grid-template-columns: 1fr; gap: 16px; }
-    .operator-grid > div:first-child { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: 16px; }
+    .operator-row { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -230,12 +232,12 @@
     </div>
   </div>
   <div id="stats">
-    <div class="section operator-grid">
-      <div>
+    <div class="operator-row">
+      <div class="section">
         <h2>Uitval per operator (vandaag)</h2>
         <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
       </div>
-      <div>
+      <div class="section">
         <h2>Punctualiteit per operator</h2>
         <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
         <div id="agency-stats"><div class="empty">Laden...</div></div>
