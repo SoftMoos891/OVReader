@@ -160,6 +160,15 @@
     #filter-scroll { flex-basis: 100%; }
     #stop-search-box { flex: 1 1 auto; }
     .nav-btn, .status-btn { padding: 6px 12px; font-size: 12px; }
+    /* De subtitel is lang genoeg om altijd op zijn eigen regel te breken,
+       waarna de knoppen erna (Trends/Uitval/Lite/Weer/Uitloggen/thema) op
+       een rommelige, willekeurige plek middenin de vorige regel verder
+       gingen wrappen i.p.v. netjes gezamenlijk op een verse regel te
+       beginnen. Subtitel dwingt nu een volledige eigen regel af, en
+       .push-right (die op desktop de knoppen naar rechts duwt) wordt hier
+       uitgeschakeld zodat de eerste knop niet een extra gat veroorzaakt. */
+    header .sub { flex-basis: 100%; }
+    .push-right { margin-left: 0; }
   }
 </style>
 </head>
