@@ -145,6 +145,14 @@ def _valid_credentials(username, password):
 def require_auth():
     if not AUTH_PASSWORD:
         return None
+    # Onbekende paden nooit naar /login sturen: anders krijgt elke scanner die
+    # op goed geluk paden probeert (bv. webshell-scans op /fw.php) alsnog een
+    # 200'de loginpagina te zien, en missen bot-detectiescenario's (die op 404
+    # letten) dit verkeer. request.url_rule staat hier al vast (Flask matcht
+    # de route voordat before_request draait), dus onbekende paden kunnen
+    # gewoon direct de normale 404-afhandeling in.
+    if request.url_rule is None:
+        return None
     if request.path == "/login" or request.path.startswith("/static/"):
         return None
     if session.get("authenticated"):
