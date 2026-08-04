@@ -1093,10 +1093,25 @@ def api_stop_departures(stop_id):
 
 @app.route("/api/routes/<route_id>/shape")
 def api_route_shape(route_id):
-    """Vereenvoudigd routetraject (lijst van [lat,lon]-lijsten -- meestal 2:
-    heen en terug) voor het tekenen van de lijn op de kaart. Leeg als de lijn
-    geen shape_id had in de GTFS-feed of niet bestaat."""
-    return jsonify({"route_id": route_id, "shapes": _route_shapes.get(route_id, [])})
+    """Vereenvoudigd routetraject (lijst van [lat,lon]-lijsten) voor het
+    tekenen van de lijn op de kaart. Zonder ?direction_id= worden alle
+    bekende richtingen teruggegeven (meestal 2: heen en terug, over elkaar
+    getekend); met een geldige ?direction_id=0|1 alleen het traject van die
+    kant op, zodat een specifiek voertuig niet per ongeluk mede de terugrit
+    laat zien. Leeg als de lijn geen shape_id had in de GTFS-feed of niet
+    bestaat."""
+    shapes_by_direction = _route_shapes.get(route_id, {})
+    direction_id = request.args.get("direction_id")
+    if isinstance(shapes_by_direction, list):
+        # Oude data/utrecht_shapes.json (vóór de richting-uitsplitsing, zie
+        # build_static_index.py) -- voorkomt een crash totdat de statische
+        # index opnieuw is gebouwd; valt terug op alle richtingen tonen.
+        shapes = shapes_by_direction
+    elif direction_id is not None and direction_id in shapes_by_direction:
+        shapes = [shapes_by_direction[direction_id]]
+    else:
+        shapes = list(shapes_by_direction.values())
+    return jsonify({"route_id": route_id, "shapes": shapes})
 
 
 @app.route("/api/trips/<trip_id>/nearby-stops")

@@ -142,13 +142,15 @@ def find_dominant_shapes(shape_counts):
     gebruikt -- dat is in de praktijk het 'normale' tracé; zeldzame
     omleidingsvarianten met een eigen shape_id (soms tientallen per lijn,
     bv. na dienstregelingswijzigingen) vallen zo weg. Geeft terug:
-    route_id -> lijst met unieke shape_id's (meestal 1-2: heen en terug)."""
+    route_id -> {direction_id: shape_id}. De richting blijft hier expliciet
+    bewaard (i.p.v. afgevlakt tot één lijst) zodat de kaart later alleen het
+    traject van de kant op kan tekenen die het geselecteerde voertuig ook
+    daadwerkelijk rijdt, in plaats van heen- en terugrit altijd over elkaar
+    heen te tonen."""
     route_shapes = {}
-    for (route_id, _direction), counts in shape_counts.items():
+    for (route_id, direction), counts in shape_counts.items():
         dominant_shape = max(counts.items(), key=lambda kv: kv[1])[0]
-        route_shapes.setdefault(route_id, [])
-        if dominant_shape not in route_shapes[route_id]:
-            route_shapes[route_id].append(dominant_shape)
+        route_shapes.setdefault(route_id, {})[direction] = dominant_shape
     return route_shapes
 
 
@@ -314,14 +316,17 @@ def main():
         log(f"{len(stop_info):,} haltes gevonden, {sum(len(v) for v in stop_times_by_stop.values()):,} halte-tijden.")
 
         route_shapes = find_dominant_shapes(shape_counts)
-        needed_shape_ids = {sid for shapes in route_shapes.values() for sid in shapes}
+        needed_shape_ids = {sid for shapes in route_shapes.values() for sid in shapes.values()}
         log(f"Bepaal {len(needed_shape_ids)} dominante routetraject(en) (van {sum(len(c) for c in shape_counts.values())} totaal) en vereenvoudig ze...")
         simplified_shapes = load_and_simplify_shapes(zf, needed_shape_ids)
         route_shape_points = {
-            route_id: [simplified_shapes[sid] for sid in shape_ids if sid in simplified_shapes]
-            for route_id, shape_ids in route_shapes.items()
+            route_id: {
+                direction: simplified_shapes[sid]
+                for direction, sid in shapes.items() if sid in simplified_shapes
+            }
+            for route_id, shapes in route_shapes.items()
         }
-        total_points = sum(len(s) for shapes in route_shape_points.values() for s in shapes)
+        total_points = sum(len(s) for shapes in route_shape_points.values() for s in shapes.values())
         log(f"Routetrajecten vereenvoudigd: {total_points:,} punten voor {len(route_shape_points)} lijnen.")
 
     line_names = sorted({r["short_name"] for r in routes.values()}, key=lambda s: (len(s), s))

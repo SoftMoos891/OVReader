@@ -544,7 +544,7 @@ async function refreshVehicles() {
                  `Status: ${delayText(v.delay_seconds)}<br>` +
                  `${stopLine ? `${stopLine}<br>` : ''}` +
                  `Voertuig ${v.vehicle_id || v.trip_id}${v.vehicle_type ? ` (${v.vehicle_type})` : ''}` +
-                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
+                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor vorige/volgende halte</em></div>` +
                  `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
@@ -554,10 +554,12 @@ async function refreshVehicles() {
       }
       markers[key].setPopupContent(html);
       markers[key].routeId = v.route_id;
+      markers[key].directionId = v.direction_id;
       if (markers[key].isPopupOpen()) loadNearbyStops(v.trip_id, markers[key]);
     } else {
       const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
       m.routeId = v.route_id;
+      m.directionId = v.direction_id;
       vehicleLayer.addLayer(m);
       markers[key] = m;
     }
@@ -588,17 +590,18 @@ async function loadNearbyStops(tripId, marker) {
     const prev = data.previous_stop ? data.previous_stop.name : '—';
     const next = data.next_stop ? data.next_stop.name : '—';
     const target = el();
-    if (target) target.innerHTML = `Beginpunt: ${prev}<br>Eindpunt: ${next}`;
+    if (target) target.innerHTML = `Vorige halte: ${prev}<br>Volgende halte: ${next}`;
   } catch (e) {
     const target = el();
     if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';
   }
 }
-async function loadRouteShape(routeId) {
+async function loadRouteShape(routeId, directionId) {
   routeShapeLayer.clearLayers();
   if (!routeId) return;
   try {
-    const res = await fetch(`/api/routes/${encodeURIComponent(routeId)}/shape`);
+    const qs = (directionId === null || directionId === undefined) ? '' : `?direction_id=${encodeURIComponent(directionId)}`;
+    const res = await fetch(`/api/routes/${encodeURIComponent(routeId)}/shape${qs}`);
     const data = await res.json();
     for (const shape of data.shapes) {
       L.polyline(shape, { color: '#fff', weight: 8, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(routeShapeLayer);
@@ -615,7 +618,7 @@ map.on('popupopen', (e) => {
   const marker = Object.values(markers).find(m => m.getPopup() === e.popup);
   if (marker) {
     loadNearbyStops(tripId, marker);
-    loadRouteShape(marker.routeId);
+    loadRouteShape(marker.routeId, marker.directionId);
   }
 });
 map.on('popupclose', (e) => {
