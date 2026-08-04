@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>DVZ OV-Monitor — v2 preview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme_v2.css') }}">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
+  .preview-banner {
+    background: var(--accent); color: #fff; text-align: center; font-size: 12px;
+    font-weight: 600; padding: 6px 10px;
+  }
+  .preview-banner a { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+  header {
+    padding: 12px 20px; display: flex; flex-direction: column; gap: 8px;
+    background: var(--panel); box-shadow: var(--shadow-sm); position: relative; z-index: 10;
+  }
+  .header-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; white-space: nowrap; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  #layout {
+    display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto;
+    gap: 16px; padding: 16px; height: calc(100vh - 130px);
+  }
+  #map { grid-row: 1 / 2; grid-column: 1 / 2; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-md); }
+  #side {
+    grid-row: 1 / 3; grid-column: 2 / 3; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  #stats { grid-row: 2 / 3; grid-column: 1 / 2; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px; box-shadow: var(--shadow-sm); transition: box-shadow .15s;
+  }
+  .section:hover { box-shadow: var(--shadow-md); }
+  .section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+                 color: var(--muted); margin: 0 0 12px; font-weight: 700; }
+  .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 10px 12px;
+           margin-bottom: 8px; border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
+  .alert.severe { background: var(--bad-bg); border-left: 3px solid var(--bad); }
+  .alert .hdr { font-weight: 600; margin-bottom: 3px; }
+  .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; background: var(--bad); color: #fff;
+                       text-transform: uppercase; letter-spacing: .02em; }
+  .alert .routes { color: var(--muted); font-size: 12px; }
+  #alerts { max-height: 220px; overflow-y: auto; }
+  #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
+  #agency-stats table, #agency-cancel-stats table { table-layout: fixed; }
+  #agency-stats th:nth-child(1), #agency-stats td:nth-child(1),
+  #agency-cancel-stats th:nth-child(1), #agency-cancel-stats td:nth-child(1) { width: 46%; }
+  #agency-stats th:nth-child(2), #agency-stats td:nth-child(2),
+  #agency-cancel-stats th:nth-child(2), #agency-cancel-stats td:nth-child(2) { width: 28%; }
+  #agency-stats th:nth-child(3), #agency-stats td:nth-child(3),
+  #agency-cancel-stats th:nth-child(3), #agency-cancel-stats td:nth-child(3) { width: 26%; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.early { background: var(--early-bg); color: var(--early); }
+  .kpi { }
+  .kpi .num { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
+  .kpi .label { color: var(--muted); font-size: 12px; }
+  .leaflet-container { background: var(--panel2); }
+  .bus-badge { display: flex; align-items: center; justify-content: center;
+               font-weight: 700; font-size: 12px; color: #fff; border-radius: 8px;
+               border: 2px solid rgba(255,255,255,.9); box-shadow: 0 1px 4px rgba(0,0,0,.5);
+               white-space: nowrap; padding: 0 5px; line-height: 1; will-change: transform; }
+  .operator-logo { position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
+                    border-radius: 50%; background: #fff; padding: 1.5px; object-fit: contain;
+                    box-shadow: 0 1px 3px rgba(0,0,0,.6); will-change: transform; }
+  .veh-stops { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  #lastupdate { color: var(--muted); font-size: 12px; font-family: 'IBM Plex Mono', monospace; }
+  .push-right { margin-left: auto; }
+  .nav-btn { background: var(--accent); color: #fff; font-weight: 600; text-decoration: none;
+             padding: 7px 15px; border-radius: 9px; font-size: 12.5px; white-space: nowrap;
+             box-shadow: var(--shadow-sm); transition: filter .15s, box-shadow .15s; }
+  .nav-btn:hover { filter: brightness(1.08); box-shadow: var(--shadow-md); }
+  .range-toggle { display: flex; gap: 6px; }
+  .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+               border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; transition: all .15s; }
+  .range-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
+  .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .kpi-box {
+    background: var(--panel2); border-radius: var(--radius); padding: 14px 18px;
+  }
+  .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 700; }
+  .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .kpi-box .num.good { color: var(--good); }
+  .kpi-box .num.warn { color: var(--warn); }
+  .kpi-box .num.bad { color: var(--bad); }
+  #filter-bar {
+    display: flex; align-items: center; gap: 14px; margin: 16px 16px 0; padding: 12px 18px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); flex-wrap: nowrap; overflow-x: auto; font-size: 13px;
+  }
+  #filter-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+  #operator-filters { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  #filter-bar input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 5px 11px; font-size: 13px; width: 140px; }
+  #notif-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+               border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; transition: all .15s; }
+  #notif-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
+  #notif-btn.on { background: var(--good); color: #fff; border-color: var(--good); font-weight: 600; }
+  .fav-star { cursor: pointer; color: var(--muted); margin-right: 4px; user-select: none; }
+  .fav-star.active { color: var(--warn); }
+  #stop-search-box { position: relative; }
+  #stop-search-input { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 7px 11px; font-size: 13px; }
+  #stop-results { margin-top: 6px; max-height: 160px; overflow-y: auto; }
+  .stop-result { padding: 6px 9px; font-size: 13px; border-radius: 6px; cursor: pointer; }
+  .stop-result:hover { background: var(--panel2); }
+  #stop-departures { margin-top: 10px; overflow-x: auto; }
+  #stop-departures table { width: 100%; }
+  #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
+
+  @media (max-width: 800px) {
+    #layout { display: block; height: auto; }
+    #map { height: 45vh; }
+    #stats { overflow-y: visible; }
+  }
+</style>
+</head>
+<body>
+<div class="preview-banner">🧪 PREVIEW — nieuwe vormgeving, nog niet definitief &middot; <a href="/">terug naar de huidige versie</a></div>
+<header>
+  <div class="header-row">
+    <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
+    <h1>OV-monitor Utrecht</h1>
+    <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis &amp; Transdev)</span>
+    <a href="/trends" class="nav-btn push-right">📈 Trends &amp; analyse &rarr;</a>
+    <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
+    <a href="/lite" class="nav-btn">📱 Lite-versie &rarr;</a>
+    <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
+      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span><span class="status-dot" id="lkiDot" style="display:none;" title="Luchtkwaliteit"></span>
+    </button>
+    <a class="status-btn" href="/logout" title="Uitloggen">Uitloggen</a>
+    <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+  </div>
+  <div class="header-row">
+    <span id="lastupdate">–</span>
+  </div>
+</header>
+
+<div class="modal-overlay" id="healthModal" onclick="if(event.target===this)closeHealthModal()">
+  <div class="modal">
+    <div class="modal-header">
+      Systeemstatus
+      <button class="modal-close" onclick="closeHealthModal()">✕</button>
+    </div>
+    <div class="modal-body" id="healthBody"><div class="empty">Laden...</div></div>
+    <div class="modal-footer">Collector haalt elke <span id="healthInterval">30</span>s nieuwe data op</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="weatherModal" onclick="if(event.target===this)closeWeatherModal()">
+  <div class="modal">
+    <div class="modal-header">
+      Weer &amp; waarschuwingen
+      <button class="modal-close" onclick="closeWeatherModal()">✕</button>
+    </div>
+    <div class="modal-body" id="weatherModalBody"><div class="empty">Laden...</div></div>
+    <div class="modal-footer">Provincie Utrecht &middot; bron: KNMI / RIVM Luchtmeetnet</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="mapModal" onclick="if(event.target===this)closeMapModal()">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span id="mapModalTitle">Locatie</span>
+      <button class="modal-close" onclick="closeMapModal()">✕</button>
+    </div>
+    <div class="modal-body map-body"><div id="mapFrame"></div></div>
+    <div class="modal-footer"><a id="mapModalLink" href="#" target="_blank" rel="noopener noreferrer">Openen op openstreetmap.org &rarr;</a></div>
+  </div>
+</div>
+
+<div id="filter-bar">
+  <span style="color:var(--muted);">Filter:</span>
+  <div id="operator-filters"></div>
+  <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
+  <button id="notif-btn">🔔 Meldingen aanzetten</button>
+</div>
+<div id="layout">
+  <div id="map"></div>
+  <div id="side">
+    <div class="section">
+      <h2>Halte zoeken</h2>
+      <div id="stop-search-box">
+        <input type="text" id="stop-search-input" placeholder="Zoek een halte op naam...">
+        <div id="stop-results"></div>
+      </div>
+      <div id="stop-departures"></div>
+    </div>
+    <div class="section">
+      <h2>Actuele storingen &amp; meldingen<span id="alerts-count"></span></h2>
+      <div id="alerts"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
+      <h2>Storingen op het spoor (NS)<span id="rail-alerts-count"></span></h2>
+      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen storingen die een station in de provincie Utrecht raken</div>
+      <div id="rail-alerts"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
+      <h2>Wegsituatie<span id="road-situations-count"></span></h2>
+      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte, obstakel op de weg) binnen de provincie Utrecht, via NDW (o.a. Rijkswaterstaat, provincie en gemeenten)</div>
+      <div id="road-situations"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
+      <h2>Punctualiteit per operator</h2>
+      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
+      <div id="agency-stats"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+  <div id="stats">
+    <div class="section">
+      <h2>Uitval per operator (vandaag)</h2>
+      <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="section">
+      <h2>Punctualiteit per lijn</h2>
+      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
+      <div id="route-stats"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="cancellations" class="section" style="margin:16px;">
+  <div style="display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
+    <h2 style="margin:0;">Uitgevallen ritten vandaag</h2>
+    <a href="/uitval" class="range-btn" style="text-decoration:none;">Volledig uitval-dashboard &rarr;</a>
+  </div>
+  <div style="color:var(--muted); font-size:12px; margin-top:2px;">Alleen busvervoer (Keolis + Transdev) — de U-tram 20/21/22 telt niet mee in deze uitvalcijfers.</div>
+  <label style="display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); margin:8px 0 0; cursor:pointer;">
+    <input type="checkbox" id="up-to-now-toggle" checked>
+    Tot nu toe (i.p.v. hele dag) — telt alleen ritten mee waarvan de vertrektijd al is verstreken
+  </label>
+  <div id="cancel-kpis" style="display:flex; gap:16px; margin:14px 0; flex-wrap:wrap;"></div>
+</div>
+
+<footer class="site-footer">
+  Copyright (c) 2026 DVZNET - Alle rechten voorbehouden &bull; Brondata door OVapi/NDOV Loket, NS API, NDW en KNMI &bull; Locatieinformatie via GTFS
+  &bull; <button class="footer-status-btn" onclick="openHealthModal()"><span class="status-dot" id="healthDot"></span>Systeemstatus</button>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const map = L.map('map').setView([52.09, 5.20], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+}).addTo(map);
+
+const legend = L.control({ position: 'bottomleft' });
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div', 'map-legend');
+  div.innerHTML = `
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:6px;"></span>Op tijd</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--warn);margin-right:6px;"></span>Lichte vertraging (3-6 min)</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--bad);margin-right:6px;"></span>Grote vertraging (&gt;6 min)</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--early);margin-right:6px;"></span>Te vroeg (&gt;2 min)</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--muted);margin-right:6px;"></span>Onbekend</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;margin-right:6px;"></span>Halte vervalt</div>
+  `;
+  return div;
+};
+legend.addTo(map);
+
+const vehicleLayer = L.layerGroup().addTo(map);
+const routeShapeLayer = L.layerGroup().addTo(map);
+const roadSituationLayer = L.layerGroup().addTo(map);
+const closedStopsLayer = L.layerGroup().addTo(map);
+const markers = {};
+
+// --- Filter op lijn/operator ---------------------------------------------
+const filterState = { operators: new Set(), lineText: '' };
+
+async function initMeta() {
+  const res = await fetch('/api/meta');
+  const meta = await res.json();
+  filterState.operators = new Set(meta.operators); // standaard: alle operators aan
+  const box = document.getElementById('operator-filters');
+  box.innerHTML = meta.operators.map(op => `
+    <label><input type="checkbox" data-operator="${op}" checked> ${op}</label>
+  `).join('');
+  box.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+    if (cb.checked) filterState.operators.add(cb.dataset.operator);
+    else filterState.operators.delete(cb.dataset.operator);
+    refreshVehicles().catch(console.error);
+    refreshStats().catch(console.error);
+  }));
+}
+
+function matchesFilter(operator, shortName) {
+  if (!filterState.operators.has(operator)) return false;
+  if (filterState.lineText && !shortName.toLowerCase().includes(filterState.lineText)) return false;
+  return true;
+}
+
+function applyLineFilterFromUrl() {
+  const lijn = new URLSearchParams(location.search).get('lijn');
+  if (!lijn) return;
+  document.getElementById('line-filter').value = lijn;
+  filterState.lineText = lijn.trim().toLowerCase();
+}
+
+document.getElementById('line-filter').addEventListener('input', (e) => {
+  filterState.lineText = e.target.value.trim().toLowerCase();
+  const url = new URL(location.href);
+  if (e.target.value.trim()) url.searchParams.set('lijn', e.target.value.trim());
+  else url.searchParams.delete('lijn');
+  history.replaceState(null, '', url);
+  refreshVehicles().catch(console.error);
+  refreshStats().catch(console.error);
+});
+
+// --- Favorieten + browser-notificaties -----------------------------------
+const FAVORITES_KEY = 'busmonitor_favorite_routes';
+function getFavorites() {
+  try { return new Set(JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function toggleFavorite(routeId) {
+  const favs = getFavorites();
+  if (favs.has(routeId)) favs.delete(routeId); else favs.add(routeId);
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favs]));
+  refreshStats().catch(console.error);
+}
+
+let seenAlertIds = null;
+const notifBtn = document.getElementById('notif-btn');
+function updateNotifBtn() {
+  const granted = window.Notification && Notification.permission === 'granted';
+  notifBtn.textContent = granted ? '🔔 Meldingen staan aan' : '🔔 Meldingen aanzetten';
+  notifBtn.classList.toggle('on', granted);
+}
+notifBtn.addEventListener('click', () => {
+  if (!window.Notification) { alert('Deze browser ondersteunt geen meldingen.'); return; }
+  Notification.requestPermission().then(updateNotifBtn);
+});
+updateNotifBtn();
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function delayColor(delay) {
+  if (delay === null || delay === undefined) return cssVar('--muted');
+  if (delay < -120) return cssVar('--early');
+  if (delay <= 180) return cssVar('--good');
+  if (delay <= 360) return cssVar('--warn');
+  return cssVar('--bad');
+}
+
+function delayPillClass(delay) {
+  if (delay === null || delay === undefined) return '';
+  if (delay < -120) return 'early';
+  if (delay <= 180) return 'good';
+  if (delay <= 360) return 'warn';
+  return 'bad';
+}
+
+function delayText(delay) {
+  if (delay === null || delay === undefined) return 'onbekend';
+  const min = Math.round(delay / 60);
+  if (min === 0) return 'Op tijd';
+  return (min > 0 ? '+' : '') + min + ' min';
+}
+
+const OPERATOR_LOGOS = {
+  'Keolis': '/static/img/keolis.png',
+  'Transdev': '/static/img/transdev.png',
+  'Transdev tram': '/static/img/transdev.png',
+};
+
+function busIcon(shortName, color, operator) {
+  const width = Math.max(24, 12 + shortName.length * 9);
+  const logo = OPERATOR_LOGOS[operator];
+  const logoHtml = logo ? `<img src="${logo}" class="operator-logo" alt="${operator}">` : '';
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative; transform:translate(${-width / 2}px, -11px);">
+             <div class="bus-badge" style="background:${color}; width:${width}px; height:22px;">${shortName}</div>
+             ${logoHtml}
+           </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
+const markerState = {};
+
+let followedVehicleId = null;
+
+function updateFollowIndicator(label) {
+  const el = document.querySelector('.follow-indicator');
+  if (!el) return;
+  if (followedVehicleId) {
+    el.style.display = 'block';
+    document.getElementById('followLabel').textContent = `📍 Volgen: lijn ${label}`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+function toggleFollowVehicle(ident, label) {
+  followedVehicleId = (followedVehicleId === ident) ? null : ident;
+  updateFollowIndicator(label);
+  refreshVehicles().catch(console.error);
+}
+function stopFollowing() {
+  followedVehicleId = null;
+  updateFollowIndicator();
+}
+
+const followControl = L.control({ position: 'topright' });
+followControl.onAdd = function () {
+  const div = L.DomUtil.create('div', 'map-legend follow-indicator');
+  div.style.display = 'none';
+  div.innerHTML = `<span id="followLabel"></span> <button id="stopFollowBtn" class="range-btn" style="padding:2px 8px;">✕</button>`;
+  L.DomEvent.disableClickPropagation(div);
+  div.querySelector('#stopFollowBtn').addEventListener('click', stopFollowing);
+  return div;
+};
+followControl.addTo(map);
+
+async function refreshVehicles() {
+  const res = await fetch('/api/vehicles');
+  const data = await res.json();
+  const seen = new Set();
+  const operatorCounts = {};
+  let followedLatLng = null;
+  for (const v of data.vehicles) {
+    if (!matchesFilter(v.operator, v.route_short_name)) continue;
+    const key = v.ident;
+    seen.add(key);
+    operatorCounts[v.operator] = (operatorCounts[v.operator] || 0) + 1;
+    if (key === followedVehicleId) followedLatLng = [v.lat, v.lon];
+    const color = delayColor(v.delay_seconds);
+    const followLabel = key === followedVehicleId ? '✕ Stop met volgen' : '📍 Volg dit voertuig';
+    const destination = v.headsign ? ` richting ${v.headsign}` : '';
+    const stopLine = v.current_stop_name
+      ? (v.current_status === 'STOPPED_AT' ? `Staat bij halte: ${v.current_stop_name}`
+        : v.current_status === 'INCOMING_AT' ? `Nadert halte: ${v.current_stop_name}`
+        : `Onderweg naar halte: ${v.current_stop_name}`)
+      : null;
+    const html = `<b>Lijn ${v.route_short_name}</b>${destination} (U-OV, ${v.operator})<br>` +
+                 `Status: ${delayText(v.delay_seconds)}<br>` +
+                 `${stopLine ? `${stopLine}<br>` : ''}` +
+                 `Voertuig ${v.vehicle_id || v.trip_id}${v.vehicle_type ? ` (${v.vehicle_type})` : ''}` +
+                 `<div class="veh-stops" data-trip-id="${v.trip_id}"><em>Klik voor begin- en eindpunt</em></div>` +
+                 `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
+    if (markers[key]) {
+      markers[key].setLatLng([v.lat, v.lon]);
+      const prev = markerState[key];
+      if (!prev || prev.route_short_name !== v.route_short_name || prev.color !== color || prev.operator !== v.operator) {
+        markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
+      }
+      markers[key].setPopupContent(html);
+      markers[key].routeId = v.route_id;
+      if (markers[key].isPopupOpen()) loadNearbyStops(v.trip_id, markers[key]);
+    } else {
+      const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
+      m.routeId = v.route_id;
+      vehicleLayer.addLayer(m);
+      markers[key] = m;
+    }
+    markerState[key] = { route_short_name: v.route_short_name, color, operator: v.operator };
+  }
+  for (const id of Object.keys(markers)) {
+    if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; delete markerState[id]; }
+  }
+
+  if (followedVehicleId && !followedLatLng) stopFollowing();
+  else if (followedLatLng) map.panTo(followedLatLng, { animate: true });
+
+  const operatorSummary = Object.entries(operatorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([op, n]) => `${op}: ${n}`)
+    .join(' · ');
+  document.getElementById('lastupdate').textContent =
+    `${data.count} actieve voertuigen${operatorSummary ? ` (${operatorSummary})` : ''} · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
+}
+
+async function loadNearbyStops(tripId, marker) {
+  const popup = marker.getPopup();
+  if (!popup) return;
+  const el = () => popup.getElement()?.querySelector('.veh-stops');
+  try {
+    const res = await fetch(`/api/trips/${encodeURIComponent(tripId)}/nearby-stops`);
+    const data = await res.json();
+    const prev = data.previous_stop ? data.previous_stop.name : '—';
+    const next = data.next_stop ? data.next_stop.name : '—';
+    const target = el();
+    if (target) target.innerHTML = `Beginpunt: ${prev}<br>Eindpunt: ${next}`;
+  } catch (e) {
+    const target = el();
+    if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';
+  }
+}
+async function loadRouteShape(routeId) {
+  routeShapeLayer.clearLayers();
+  if (!routeId) return;
+  try {
+    const res = await fetch(`/api/routes/${encodeURIComponent(routeId)}/shape`);
+    const data = await res.json();
+    for (const shape of data.shapes) {
+      L.polyline(shape, { color: '#fff', weight: 8, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(routeShapeLayer);
+      L.polyline(shape, { color: '#d6006c', weight: 4, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }).addTo(routeShapeLayer);
+    }
+  } catch (e) {
+  }
+}
+
+map.on('popupopen', (e) => {
+  const el = e.popup.getElement()?.querySelector('.veh-stops');
+  const tripId = el?.dataset.tripId;
+  if (!tripId) return;
+  const marker = Object.values(markers).find(m => m.getPopup() === e.popup);
+  if (marker) {
+    loadNearbyStops(tripId, marker);
+    loadRouteShape(marker.routeId);
+  }
+});
+map.on('popupclose', (e) => {
+  const el = e.popup.getElement()?.querySelector('.veh-stops');
+  if (!el) return;
+  routeShapeLayer.clearLayers();
+});
+
+const SEVERE_ALERT_KEYWORDS = ['verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
+const SEVERE_CAUSE_LABELS = {
+  ACCIDENT: 'Ongeval', POLICE_ACTIVITY: 'Politie', MEDICAL_EMERGENCY: 'Medisch noodgeval',
+  DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
+};
+function severeAlertLabel(a) {
+  if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
+  const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
+  const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
+  if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
+  return SEVERE_CAUSE_LABELS[a.cause] || null;
+}
+
+function effectLabel(effect) {
+  const map = {
+    NO_SERVICE: 'Geen dienst', REDUCED_SERVICE: 'Beperkte dienst',
+    SIGNIFICANT_DELAYS: 'Grote vertraging', DETOUR: 'Omleiding',
+    ADDITIONAL_SERVICE: 'Extra dienst', MODIFIED_SERVICE: 'Aangepaste dienst',
+    STOP_MOVED: 'Halte verplaatst', ACCESSIBILITY_ISSUE: 'Toegankelijkheid',
+    OTHER_EFFECT: 'Melding', UNKNOWN_EFFECT: 'Melding', NO_EFFECT: 'Melding',
+  };
+  return map[effect] || 'Melding';
+}
+
+function fmtAlertTime(ts) {
+  return new Date(ts * 1000).toLocaleString('nl-NL', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function fmtValidity(a) {
+  const nowSec = Date.now() / 1000;
+  if (a.valid_from && a.valid_from > nowSec) return `Geldig vanaf ${fmtAlertTime(a.valid_from)}`;
+  if (a.valid_until) return `Geldig t/m ${fmtAlertTime(a.valid_until)}`;
+  return '';
+}
+
+function fmtRoadTime(iso) {
+  return new Date(iso).toLocaleString('nl-NL', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+function fmtRoadValidity(s) {
+  if (s.end_time) return `Tot ${fmtRoadTime(s.end_time)}`;
+  if (s.start_time) return `Sinds ${fmtRoadTime(s.start_time)}`;
+  return '';
+}
+
+function closedStopIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative; transform:translate(-11px, -11px);">
+             <div class="bus-badge" style="background:#475569; width:22px; height:22px; border-radius:50%;">🚫</div>
+           </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
+async function refreshAlerts() {
+  const res = await fetch('/api/alerts');
+  const data = await res.json();
+
+  closedStopsLayer.clearLayers();
+  const nowSec = Date.now() / 1000;
+  const closedStops = new Map();
+  for (const a of data.alerts) {
+    if (a.valid_from && a.valid_from > nowSec) continue;
+    if (a.valid_until && a.valid_until < nowSec) continue;
+    for (const s of (a.stops || [])) {
+      if (s.lat == null || s.lon == null) continue;
+      if (!closedStops.has(s.stop_id)) closedStops.set(s.stop_id, { ...s, reasons: [] });
+      closedStops.get(s.stop_id).reasons.push(a.header || a.description || effectLabel(a.effect));
+    }
+  }
+  for (const s of closedStops.values()) {
+    const reasons = s.reasons.map(r => `<div>${r}</div>`).join('');
+    L.marker([s.lat, s.lon], { icon: closedStopIcon() })
+      .bindPopup(`<b>Halte vervalt: ${s.name}</b>${reasons}`)
+      .addTo(closedStopsLayer);
+  }
+
+  if (window.Notification && Notification.permission === 'granted') {
+    const favs = getFavorites();
+    if (seenAlertIds !== null) {
+      for (const a of data.alerts) {
+        if (seenAlertIds.has(a.alert_id)) continue;
+        if (!a.routes.some(r => favs.has(r.route_id))) continue;
+        new Notification(`${effectLabel(a.effect)}: lijn ${a.routes.map(r => r.short_name).join(', ')}`, {
+          body: a.header || a.description || '',
+        });
+      }
+    }
+    seenAlertIds = new Set(data.alerts.map(a => a.alert_id));
+  }
+
+  document.getElementById('alerts-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+
+  const el = document.getElementById('alerts');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
+  const withSeverity = data.alerts.map(a => ({ a, label: severeAlertLabel(a) }));
+  withSeverity.sort((x, y) => (y.label ? 1 : 0) - (x.label ? 1 : 0));
+  el.innerHTML = withSeverity.map(({ a, label }) => {
+    const badge = label ? `<span class="pill bad">⚠ ${label}</span>` : '';
+    const lines = a.routes.length
+      ? `Lijnen: ${a.routes.map(r => r.short_name).join(', ')}`
+      : (a.stops && a.stops.length ? `Halte: ${a.stops.map(s => s.name).join(', ')}` : 'Lijnen: —');
+    return `
+    <div class="alert ${label ? 'severe' : ''}">
+      <div class="hdr">${badge}${effectLabel(a.effect)}: ${a.header || '(geen titel)'}</div>
+      <div>${a.description || ''}</div>
+      <div class="routes">${lines}
+        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}${fmtValidity(a) ? ` &middot; ${fmtValidity(a)}` : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+function railAlertSeverity(a) {
+  return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
+}
+
+const CONSEQUENCE_LEVEL_LABELS = {
+  NO_TRAINS: 'Geen treinen', LESS_TRAINS: 'Minder treinen', DELAYS: 'Vertraging',
+};
+
+async function refreshRailAlerts() {
+  const res = await fetch('/api/rail-alerts');
+  const data = await res.json();
+  document.getElementById('rail-alerts-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+  const el = document.getElementById('rail-alerts');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen op het spoor</div>'; return; }
+  el.innerHTML = data.alerts.map(a => {
+    const severe = railAlertSeverity(a);
+    const badge = `<span class="pill ${severe ? 'bad' : 'warn'}">${a.type_label}</span>`;
+    const consequence = a.consequence_level
+      ? ` &middot; ${CONSEQUENCE_LEVEL_LABELS[a.consequence_level] || a.consequence_level}` : '';
+    return `
+    <div class="alert ${severe ? 'severe' : ''}">
+      <div class="hdr">${badge}${a.title}</div>
+      <div>${a.description || ''}</div>
+      <div class="routes">Stations: ${a.stations.join(', ') || '—'}${consequence}
+        &middot; Gemeld om ${fmtAlertTime(a.first_seen)}</div>
+    </div>`;
+  }).join('');
+}
+
+const MOST_URGENT_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
+
+const ROAD_SEVERITY_LABELS = {
+  highest: 'Zeer ernstig', high: 'Ernstig', medium: 'Matig', low: 'Licht', lowest: 'Gering',
+};
+
+function roadSituationIcon(urgent) {
+  const color = urgent ? '#d6006c' : cssVar('--warn');
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative; transform:translate(-11px, -11px);">
+             <div class="bus-badge" style="background:${color}; width:22px; height:22px; border-radius:50%;">⚠</div>
+           </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
+async function refreshRoadSituations() {
+  const res = await fetch('/api/road-situations');
+  const data = await res.json();
+  document.getElementById('road-situations-count').textContent = data.count > 0 ? ` (${data.count})` : '';
+
+  roadSituationLayer.clearLayers();
+  for (const s of data.situations) {
+    if (!s.lat || !s.lon) continue;
+    const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
+    const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
+    const popupText = `<b>${s.type_label}</b>${where ? `<br>${where}` : ''}${causeText ? `<br>Oorzaak: ${causeText}` : ''}${s.comment ? `<br>${s.comment}` : ''}`;
+    const icon = roadSituationIcon(MOST_URGENT_ROAD_TYPES.has(s.record_type));
+    L.marker([s.lat, s.lon], { icon }).bindPopup(popupText).addTo(roadSituationLayer);
+  }
+
+  const el = document.getElementById('road-situations');
+  if (data.count === 0) { el.innerHTML = '<div class="empty">Geen urgente wegsituaties</div>'; return; }
+  el.innerHTML = data.situations.map(s => {
+    const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
+    const heading = where || s.comment || s.type_label;
+    const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
+    const severityText = ROAD_SEVERITY_LABELS[s.severity] || '';
+    const detailParts = [];
+    if (where && s.comment) detailParts.push(s.comment);
+    if (causeText) detailParts.push(`Oorzaak: ${causeText}`);
+    if (severityText) detailParts.push(`Ernst: ${severityText}`);
+    const detail = detailParts.length ? `<div>${detailParts.join(' &middot; ')}</div>` : '';
+    const mapLink = (s.lat && s.lon)
+      ? ` &middot; <a href="#" class="map-link" data-lat="${s.lat}" data-lon="${s.lon}" data-label="${(where || s.type_label).replace(/"/g, '&quot;')}">Bekijk op kaart</a>`
+      : '';
+    const validity = fmtRoadValidity(s);
+    const urgent = MOST_URGENT_ROAD_TYPES.has(s.record_type);
+    return `
+    <div class="alert ${urgent ? 'severe' : ''}">
+      <div class="hdr"><span class="pill ${urgent ? 'bad' : 'warn'}">${s.type_label}</span>${heading}</div>
+      ${detail}
+      <div class="routes">Gemeld om ${fmtAlertTime(s.first_seen)}${validity ? ` &middot; ${validity}` : ''}${mapLink}</div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.map-link').forEach(a => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    openMapModal(a.dataset.lat, a.dataset.lon, a.dataset.label);
+  }));
+}
+
+const KNMI_COLOR_STYLES = {
+  YELLOW: 'background:#ffd500; color:#000;',
+  ORANGE: 'background:#ff8c00; color:#fff;',
+  RED: 'background:#e60000; color:#fff;',
+};
+const KNMI_BUTTON_STYLES = {
+  GREEN:  'background:#16a34a; border-color:#16a34a; color:#fff;',
+  YELLOW: 'background:#ffd500; border-color:#ffd500; color:#000;',
+  ORANGE: 'background:#ff8c00; border-color:#ff8c00; color:#fff;',
+  RED:    'background:#e60000; border-color:#e60000; color:#fff;',
+};
+const KNMI_CODE_LABELS = { GREEN: 'Code groen', YELLOW: 'Code geel', ORANGE: 'Code oranje', RED: 'Code rood' };
+function weatherIcon(cloudOkta) {
+  if (cloudOkta == null) return '🌡️';
+  if (cloudOkta <= 1) return '☀️';
+  if (cloudOkta <= 4) return '🌤️';
+  if (cloudOkta <= 6) return '⛅';
+  return '☁️';
+}
+
+function fmtWarningTime(iso) {
+  return new Date(iso).toLocaleString('nl-NL', {
+    weekday: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function openWeatherModal() {
+  document.getElementById('weatherModal').classList.add('open');
+}
+function closeWeatherModal() {
+  document.getElementById('weatherModal').classList.remove('open');
+}
+
+function weatherSummaryHtml(w) {
+  if (!w) return '<div class="empty">Actueel weer: nog geen waarneming binnen</div>';
+  const kmh = w.wind_speed_ms != null ? Math.round(w.wind_speed_ms * 3.6) : null;
+  const gustKmh = w.wind_gust_ms != null ? Math.round(w.wind_gust_ms * 3.6) : null;
+  const wind = kmh != null
+    ? `${w.wind_direction_compass || ''} ${w.wind_speed_bft ?? '?'} Bft (${kmh} km/u)${gustKmh ? `, windstoten ${gustKmh} km/u` : ''}`
+    : 'onbekend';
+  return `
+    <div style="font-size:28px; font-weight:700;">${w.temperature != null ? w.temperature + '&deg;C' : '–'}</div>
+    <div style="color:var(--muted); margin-bottom:10px;">
+      Wind: ${wind}<br>
+      Luchtvochtigheid: ${w.humidity != null ? w.humidity + '%' : '–'} &middot; Luchtdruk: ${w.pressure != null ? w.pressure + ' hPa' : '–'} &middot; Dauwpunt: ${w.dew_point != null ? w.dew_point + '&deg;C' : '–'}<br>
+      Waargenomen om ${fmtWarningTime(w.observed_at)} (${w.station})
+    </div>`;
+}
+
+const LKI_COLOR_STYLES = {
+  BLUE: 'background:#2b6fd1; color:#fff;',
+  YELLOW: 'background:#ffd500; color:#000;',
+  ORANGE: 'background:#ff8c00; color:#fff;',
+  RED: 'background:#e60000; color:#fff;',
+  PURPLE: 'background:#9333ea; color:#fff;',
+};
+const LKI_DOT_COLORS = { BLUE: '#2b6fd1', YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000', PURPLE: '#9333ea' };
+
+function airQualityHtml(aq) {
+  if (!aq || aq.lki == null) return '';
+  const style = LKI_COLOR_STYLES[aq.lki_color] || '';
+  const c = aq.concentrations || {};
+  const parts = ['NO2', 'O3', 'PM25', 'PM10']
+    .filter(k => c[k])
+    .map(k => `${c[k].label.replace('Fijnstof ', '')}: ${c[k].value} ${c[k].unit}`);
+  return `
+    <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+      <div style="font-weight:700; margin-bottom:6px;">Luchtkwaliteit</div>
+      <span class="pill" style="${style}">LKI ${aq.lki} &middot; ${aq.lki_label}</span>
+      <div style="color:var(--muted); margin-top:6px; font-size:12px;">
+        ${parts.join(' &middot; ')}<br>
+        Station ${aq.station} &middot; gemeten om ${fmtWarningTime(aq.measured_at)}
+      </div>
+    </div>`;
+}
+
+async function refreshWeatherWarnings() {
+  const [warnRes, weatherRes, airRes] = await Promise.all([
+    fetch('/api/weather-warnings'),
+    fetch('/api/weather'),
+    fetch('/api/air-quality'),
+  ]);
+  const data = await warnRes.json();
+  const weatherData = await weatherRes.json();
+  const airData = await airRes.json();
+  const w = weatherData.weather;
+
+  const btn = document.getElementById('weatherBtn');
+  const icon = document.getElementById('weatherIcon');
+  const label = document.getElementById('weatherLabel');
+  const color = data.count === 0 ? 'GREEN' : (data.warnings[0].color || 'GREEN');
+  icon.textContent = weatherIcon(w ? w.cloud_cover_okta : null);
+  const codeLabel = KNMI_CODE_LABELS[color] || KNMI_CODE_LABELS.GREEN;
+  label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
+  btn.style.cssText = KNMI_BUTTON_STYLES[color] || KNMI_BUTTON_STYLES.GREEN;
+
+  const aq = airData.air_quality;
+  const lkiDot = document.getElementById('lkiDot');
+  if (aq && aq.lki_color && LKI_DOT_COLORS[aq.lki_color]) {
+    lkiDot.style.display = '';
+    lkiDot.style.background = LKI_DOT_COLORS[aq.lki_color];
+    lkiDot.title = `Luchtkwaliteit: LKI ${aq.lki} · ${aq.lki_label}`;
+  } else {
+    lkiDot.style.display = 'none';
+  }
+
+  const body = document.getElementById('weatherModalBody');
+  const warningsHtml = data.count === 0
+    ? '<div class="empty">Geen actuele weerwaarschuwingen</div>'
+    : data.warnings.map(w => {
+        const style = KNMI_COLOR_STYLES[w.color] || '';
+        const badge = `<span class="pill" style="${style}">${w.color_label}</span>`;
+        const worst = w.worst_at !== w.active_from ? ` &middot; ergst rond ${fmtWarningTime(w.worst_at)}` : '';
+        return `
+        <div class="alert ${w.color === 'RED' ? 'severe' : ''}">
+          <div class="hdr">${badge}${w.phenomenon_label}${w.header ? `: ${w.header}` : ''}</div>
+          <div>${w.description || ''}</div>
+          <div class="routes">Vanaf ${fmtWarningTime(w.active_from)}${worst}</div>
+        </div>`;
+      }).join('');
+  body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}${airQualityHtml(airData.air_quality)}`;
+}
+
+let modalMap = null;
+let modalMapMarker = null;
+function openMapModal(lat, lon, label) {
+  const la = Number(lat), lo = Number(lon);
+  document.getElementById('mapModalTitle').textContent = label || 'Locatie';
+  document.getElementById('mapModalLink').href =
+    `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=15/${la}/${lo}`;
+  document.getElementById('mapModal').classList.add('open');
+  if (!modalMap) {
+    modalMap = L.map('mapFrame').setView([la, lo], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(modalMap);
+    modalMapMarker = L.marker([la, lo]).addTo(modalMap);
+  } else {
+    modalMap.setView([la, lo], 15);
+    modalMapMarker.setLatLng([la, lo]);
+  }
+  setTimeout(() => modalMap.invalidateSize(), 0);
+}
+function closeMapModal() {
+  document.getElementById('mapModal').classList.remove('open');
+}
+
+function cancellationPillClass(pct) {
+  if (pct > 5) return 'bad';
+  if (pct > 2) return 'warn';
+  return 'good';
+}
+
+function pillClass(pct) {
+  if (pct >= 90) return 'good';
+  if (pct >= 75) return 'warn';
+  return 'bad';
+}
+
+async function refreshStats() {
+  const res = await fetch('/api/stats');
+  const data = await res.json();
+
+  const ag = document.getElementById('agency-stats');
+  if (data.per_operator.length === 0) {
+    ag.innerHTML = '<div class="empty">Nog geen data verzameld</div>';
+  } else {
+    ag.innerHTML = '<table><tr><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th></tr>' +
+      data.per_operator.map(a => `<tr>
+        <td>${a.operator}</td>
+        <td><span class="pill ${pillClass(a.on_time_pct)}">${a.on_time_pct}%</span></td>
+        <td>${Math.round(a.avg_delay_seconds)}s</td>
+      </tr>`).join('') + '</table>';
+  }
+
+  const rt = document.getElementById('route-stats');
+  const favs = getFavorites();
+  const rows = data.per_route.filter(r => matchesFilter(r.operator, r.short_name));
+  if (rows.length === 0) {
+    rt.innerHTML = '<div class="empty">Nog geen data verzameld — even geduld tot de collector een paar metingen heeft gedaan.</div>';
+  } else {
+    rt.innerHTML = '<table><tr><th></th><th>Lijn</th><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th><th>Max vertr.</th><th>Metingen</th></tr>' +
+      rows.map(r => `<tr>
+        <td><span class="fav-star ${favs.has(r.route_id) ? 'active' : ''}" data-route-id="${r.route_id}">★</span></td>
+        <td><span class="line-badge" style="background:#${r.color || 'ccc'}; color:#${r.text_color || '000'};">${r.short_name}</span></td>
+        <td>${r.operator}</td>
+        <td><span class="pill ${pillClass(r.on_time_pct)}">${r.on_time_pct}%</span></td>
+        <td>${Math.round(r.avg_delay_seconds)}s</td>
+        <td>${Math.round(r.max_delay_seconds/60)} min</td>
+        <td>${r.sample_count}</td>
+      </tr>`).join('') + '</table>';
+    rt.querySelectorAll('.fav-star').forEach(el => el.addEventListener('click', () => toggleFavorite(el.dataset.routeId)));
+  }
+}
+
+let upToNow = true;
+
+async function refreshCancellations() {
+  const res = await fetch(`/api/cancellations?range=today${upToNow ? '&up_to_now=1' : ''}`);
+  const data = await res.json();
+  const kpis = document.getElementById('cancel-kpis');
+  kpis.innerHTML = `
+    <div class="kpi-box"><div class="num bad">${data.total_canceled}</div><div class="label">Ritten uitgevallen</div></div>
+    <div class="kpi-box"><div class="num">${data.total_ran}</div><div class="label">Ritten gereden</div></div>
+    <div class="kpi-box"><div class="num ${cancellationPillClass(data.cancellation_pct)}">${data.cancellation_pct}%</div><div class="label">Uitvalpercentage</div></div>
+  `;
+
+  const ac = document.getElementById('agency-cancel-stats');
+  if (data.per_operator.length === 0) {
+    ac.innerHTML = '<div class="empty">Geen uitval vandaag</div>';
+  } else {
+    ac.innerHTML = '<table><tr><th>Operator</th><th>Uitval</th><th>Ritten</th></tr>' +
+      data.per_operator.map(a => `<tr>
+        <td>${a.operator}</td>
+        <td><span class="pill ${cancellationPillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
+        <td>${a.canceled}/${a.canceled + a.ran}</td>
+      </tr>`).join('') + '</table>';
+  }
+}
+
+// --- Haltezoeker -----------------------------------------------------------
+let stopMarker = null;
+let selectedStopId = null;
+let stopSearchDebounce = null;
+
+document.getElementById('stop-search-input').addEventListener('input', (e) => {
+  clearTimeout(stopSearchDebounce);
+  const q = e.target.value.trim();
+  stopSearchDebounce = setTimeout(() => searchStops(q), 250);
+});
+
+async function searchStops(q) {
+  const resultsEl = document.getElementById('stop-results');
+  if (!q) { resultsEl.innerHTML = ''; return; }
+  const res = await fetch(`/api/stops?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  if (data.stops.length === 0) {
+    resultsEl.innerHTML = '<div class="empty">Geen haltes gevonden</div>';
+    return;
+  }
+  resultsEl.innerHTML = data.stops.map(s =>
+    `<div class="stop-result" data-stop-id="${s.stop_id}">${s.name}</div>`).join('');
+  resultsEl.querySelectorAll('.stop-result').forEach(el => el.addEventListener('click', () => {
+    selectStop(el.dataset.stopId, data.stops.find(s => s.stop_id === el.dataset.stopId));
+  }));
+}
+
+async function selectStop(stopId, stopHint) {
+  selectedStopId = stopId;
+  document.getElementById('stop-results').innerHTML = '';
+  if (stopHint) {
+    document.getElementById('stop-search-input').value = stopHint.name;
+    if (stopMarker) map.removeLayer(stopMarker);
+    stopMarker = L.marker([stopHint.lat, stopHint.lon]).addTo(map);
+    map.setView([stopHint.lat, stopHint.lon], 15);
+  }
+  await refreshStopDepartures();
+}
+
+async function refreshStopDepartures() {
+  if (!selectedStopId) return;
+  const res = await fetch(`/api/stops/${encodeURIComponent(selectedStopId)}/departures`);
+  const el = document.getElementById('stop-departures');
+  if (!res.ok) {
+    el.innerHTML = '<div class="empty">Halte niet gevonden</div>';
+    return;
+  }
+  const data = await res.json();
+  if (data.departures.length === 0) {
+    el.innerHTML = `<div class="stop-name">${data.stop.name}</div><div class="empty">Geen vertrekken binnen dit venster</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="stop-name">${data.stop.name}</div>` +
+    '<table><tr><th>Lijn</th><th>Richting</th><th>Vertrek</th><th>Status</th></tr>' +
+    data.departures.map(d => {
+      const status = d.delay_seconds === null
+        ? '<span class="pill">op tijd</span>'
+        : `<span class="pill ${delayPillClass(d.delay_seconds)}">${delayText(d.delay_seconds)}</span>`;
+      const time = d.estimated_time || d.scheduled_time;
+      return `<tr>
+        <td>${d.short_name}</td>
+        <td>${d.headsign || d.long_name || ''}</td>
+        <td>${time}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('') + '</table>';
+}
+
+function fastTick() {
+  if (document.hidden) return;
+  refreshVehicles().catch(console.error);
+}
+function slowTick() {
+  if (document.hidden) return;
+  refreshAlerts().catch(console.error);
+  refreshRailAlerts().catch(console.error);
+  refreshRoadSituations().catch(console.error);
+  refreshWeatherWarnings().catch(console.error);
+  refreshStats().catch(console.error);
+  refreshCancellations().catch(console.error);
+  refreshStopDepartures().catch(console.error);
+  loadHealth().catch(console.error);
+}
+document.getElementById('up-to-now-toggle').addEventListener('change', (e) => {
+  upToNow = e.target.checked;
+  refreshCancellations().catch(console.error);
+});
+
+applyLineFilterFromUrl();
+initMeta().then(() => { fastTick(); slowTick(); }).catch(console.error);
+setInterval(fastTick, 20000);
+setInterval(slowTick, 45000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { fastTick(); slowTick(); }
+});
+
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+}
+
+function openHealthModal() {
+  document.getElementById('healthModal').classList.add('open');
+  loadHealth().catch(console.error);
+}
+function closeHealthModal() {
+  document.getElementById('healthModal').classList.remove('open');
+}
+function fmtAgo(seconds) {
+  if (seconds === null || seconds === undefined) return 'nooit';
+  if (seconds < 60) return `${seconds}s geleden`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min geleden`;
+  return `${Math.floor(m / 60)} u ${m % 60} min geleden`;
+}
+function healthLabel(status) {
+  return { ok: 'OK', stale: 'Verouderd', no_data: 'Geen data', not_configured: 'Niet ingesteld' }[status] || status;
+}
+async function loadHealth() {
+  try {
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    document.getElementById('healthDot').className = `status-dot ${data.status}`;
+    const cancelNote = data.components.cancellations.status !== 'ok'
+      ? 'Komt sporadisch binnen — dit hoeft geen storing te zijn'
+      : null;
+    const railNote = data.components.rail_alerts.status === 'not_configured'
+      ? 'NS_API_KEY niet ingesteld op de server'
+      : 'ververst elke 2 min';
+    const roadNote = 'ververst elke 5 min';
+    const knmiWarningsNote = data.components.knmi_warnings.status === 'not_configured'
+      ? 'KNMI_API_KEY niet ingesteld op de server'
+      : 'ververst elke 30 min';
+    const knmiWeatherNote = data.components.knmi_weather.status === 'not_configured'
+      ? 'KNMI_API_KEY niet ingesteld op de server'
+      : 'ververst elke 15 min';
+    const airQualityNote = 'ververst elke 30 min';
+    const rows = [
+      ['Voertuigposities', data.components.vehicle_positions, null],
+      ['Vertragingen', data.components.trip_delays, null],
+      ['Uitval', data.components.cancellations, cancelNote],
+      ['Spoorstoringen (NS)', data.components.rail_alerts, railNote],
+      ['Wegsituaties', data.components.road_situations, roadNote],
+      ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiWarningsNote],
+      ['Actueel weer (KNMI)', data.components.knmi_weather, knmiWeatherNote],
+      ['Luchtkwaliteit (RIVM)', data.components.air_quality, airQualityNote],
+    ];
+    document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
+      <div class="health-row">
+        <div>
+          <div class="health-label">${label}</div>
+          <div class="health-sub">${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}</div>
+        </div>
+        <span class="health-badge ${c.status}">${healthLabel(c.status)}</span>
+      </div>`).join('');
+    document.getElementById('healthInterval').textContent = data.collector_interval_seconds;
+  } catch (e) {
+    document.getElementById('healthDot').className = 'status-dot no_data';
+    document.getElementById('healthBody').innerHTML = '<div class="empty">Kan status niet ophalen.</div>';
+  }
+}
+</script>
+</body>
+</html>

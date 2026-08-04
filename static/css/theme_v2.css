@@ -1,0 +1,183 @@
+/* PREVIEW-versie van theme.css -- "Modern SaaS-dashboard"-richting.
+   Alleen gekoppeld door templates/index_v2.html (nieuwe /v2-route), raakt
+   de bestaande theme.css/pagina's niet aan. Zelfde variabelenamen als het
+   origineel (zodat de rest van index_v2.html's <style>-blok en de bestaande
+   gedeelde klassen gewoon blijven werken), maar verfijnde waarden:
+   zachtere, meer paars-getinte accentkleur, subtielere randen (elevatie nu
+   vooral via box-shadow, zie --shadow-*), en iets ruimere, consistente
+   afrondingen. */
+
+:root {
+  --bg:        #f5f6fa;
+  --panel:     #ffffff;
+  --panel2:    #f3f4f8;
+  --border:    #e6e8f0;
+  --border2:   #d3d7e3;
+  --text:      #14182b;
+  --muted:     #6b7290;
+  --accent:    #4f46e5;
+  --accent2:   #4338ca;
+  --good:      #10b981;
+  --warn:      #f59e0b;
+  --bad:       #ef4444;
+  --good-bg:   rgba(16,185,129,.12);
+  --warn-bg:   rgba(245,158,11,.12);
+  --bad-bg:    rgba(239,68,68,.10);
+  --accent-bg: rgba(79,70,229,.10);
+  --critical:    #991b1b;
+  --critical-bg: rgba(153,27,27,.12);
+  --early:     #fb7185;
+  --early-bg:  rgba(251,113,133,.14);
+
+  /* Nieuw t.o.v. het origineel: elevatie via schaduw i.p.v. 1px-randen als
+     primair scheidingsmiddel (precedent: .login-card in login.html had dit
+     als enige plek al). */
+  --shadow-sm: 0 1px 2px rgba(20,24,43,.04), 0 1px 3px rgba(20,24,43,.06);
+  --shadow-md: 0 2px 6px rgba(20,24,43,.06), 0 8px 24px rgba(20,24,43,.08);
+  --radius: 12px;
+}
+
+html.dark {
+  --bg:        #0a0e1a;
+  --panel:     #121828;
+  --panel2:    #1a2136;
+  --border:    #242c47;
+  --border2:   #323c5e;
+  --text:      #eef1fa;
+  --muted:     #7c85a8;
+  --accent:    #6366f1;
+  --accent2:   #818cf8;
+  --good:      #34d399;
+  --warn:      #fbbf24;
+  --bad:       #f87171;
+  --good-bg:   rgba(52,211,153,.14);
+  --warn-bg:   rgba(251,191,36,.14);
+  --bad-bg:    rgba(248,113,113,.14);
+  --accent-bg: rgba(99,102,241,.16);
+  --critical:    #f87171;
+  --critical-bg: rgba(248,113,113,.18);
+  --early:     #fda4af;
+  --early-bg:  rgba(253,164,175,.16);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.24), 0 1px 3px rgba(0,0,0,.3);
+  --shadow-md: 0 2px 6px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.4);
+}
+
+body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
+
+.theme-toggle-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 32px; height: 32px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+.theme-toggle-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); box-shadow: var(--shadow-md); }
+
+.dvz-logo-badge {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  align-self: center;
+  flex-shrink: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #14182b;
+  text-decoration: none;
+  user-select: none;
+  box-shadow: var(--shadow-sm);
+  transition: filter .15s, box-shadow .15s;
+}
+.dvz-logo-badge:hover { filter: brightness(0.96); box-shadow: var(--shadow-md); }
+
+.line-badge {
+  display: inline-block; padding: 1px 9px; border-radius: 20px;
+  font-size: 12px; font-weight: 700;
+  border: 1px solid rgba(128, 128, 128, .3);
+}
+
+.map-legend {
+  background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius); padding: 10px 12px; font-size: 12px; line-height: 1.6;
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Systeemstatus (knop + modal), gedeeld door alle pagina's ── */
+.status-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 9px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .15s; align-self: center; flex-shrink: 0;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+.status-btn .btn-icon {
+  font-size: 14px; line-height: 1; height: 14px; overflow: hidden;
+  display: inline-flex; align-items: center; flex-shrink: 0;
+}
+.status-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); box-shadow: var(--shadow-md); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.status-dot.ok { background: var(--good); box-shadow: 0 0 5px var(--good); }
+.status-dot.stale { background: var(--warn); box-shadow: 0 0 5px var(--warn); }
+.status-dot.no_data { background: var(--bad); box-shadow: 0 0 5px var(--bad); }
+
+.footer-status-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none; padding: 0; margin: 0;
+  color: var(--muted); font-size: 11px; font-family: inherit;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.footer-status-btn:hover { color: var(--text); }
+
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(10,14,26,.5); backdrop-filter: blur(4px);
+  z-index: 1100; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  width: 100%; max-width: 420px; max-height: 80vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.modal-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; font-weight: 700; color: var(--text);
+}
+.modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.modal.wide { max-width: 760px; }
+.modal-body.map-body { padding: 0; }
+.modal-body.map-body #mapFrame { width: 100%; height: 58vh; }
+.modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
+
+.health-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.health-row:last-child { border-bottom: none; }
+.health-label { font-size: 13px; color: var(--text); font-weight: 600; }
+.health-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.health-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+.health-badge.ok { background: var(--good-bg); color: var(--good); }
+.health-badge.stale { background: var(--warn-bg); color: var(--warn); }
+.health-badge.no_data { background: var(--bad-bg); color: var(--bad); }
+.health-badge.not_configured { background: var(--panel2); color: var(--muted); }
+
+.site-footer {
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}

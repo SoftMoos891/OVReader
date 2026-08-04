@@ -226,6 +226,15 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/v2")
+def index_v2():
+    """Tijdelijke preview-route voor een nieuwe vormgeving ("Modern SaaS-
+    dashboard"): eigen template + eigen theme_v2.css, verder identieke
+    data/API's als de gewone "/". Alleen bedoeld om op te reageren -- niet
+    gelinkt vanuit de navigatie, en /index.html blijft ongewijzigd."""
+    return render_template("index_v2.html")
+
+
 @app.route("/api/meta")
 def api_meta():
     agencies = sorted({r["agency_name"] for r in _index.routes.values()})
