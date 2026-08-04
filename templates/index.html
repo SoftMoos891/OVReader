@@ -15,31 +15,39 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
-  header { padding: 8px 18px; border-bottom: 1px solid var(--border); display: flex;
-           flex-direction: column; gap: 6px; }
+  header {
+    padding: 12px 20px; display: flex; flex-direction: column; gap: 8px;
+    background: var(--panel); box-shadow: var(--shadow-sm); position: relative; z-index: 10;
+  }
   .header-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  header h1 { font-size: 17px; margin: 0; white-space: nowrap; }
+  header h1 { font-size: 18px; margin: 0; white-space: nowrap; letter-spacing: -.01em; }
   header .sub { color: var(--muted); font-size: 12.5px; }
-  #layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto; height: calc(100vh - 94px); }
-  #map { grid-row: 1 / 2; grid-column: 1 / 2; }
-  #side { grid-row: 1 / 3; grid-column: 2 / 3; border-left: 1px solid var(--border);
-          overflow-y: auto; background: var(--panel); }
-  #stats { grid-row: 2 / 3; grid-column: 1 / 2; overflow-y: auto; padding: 16px; }
-  .section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
-  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
-                 color: var(--muted); margin: 0 0 10px; }
-  .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 8px 10px;
-           margin-bottom: 8px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
-  .alert.severe { background: var(--bad-bg); border-left: 4px solid var(--bad); }
+  #layout {
+    display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto;
+    gap: 16px; padding: 16px; height: calc(100vh - 130px);
+  }
+  #map { grid-row: 1 / 2; grid-column: 1 / 2; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-md); }
+  #side {
+    grid-row: 1 / 3; grid-column: 2 / 3; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  #stats { grid-row: 2 / 3; grid-column: 1 / 2; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px; box-shadow: var(--shadow-sm); transition: box-shadow .15s;
+  }
+  .section:hover { box-shadow: var(--shadow-md); }
+  .section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+                 color: var(--muted); margin: 0 0 12px; font-weight: 700; }
+  .alert { background: var(--panel2); border-left: 3px solid var(--warn); padding: 10px 12px;
+           margin-bottom: 8px; border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
+  .alert.severe { background: var(--bad-bg); border-left: 3px solid var(--bad); }
   .alert .hdr { font-weight: 600; margin-bottom: 3px; }
   .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; background: var(--bad); color: #fff;
                        text-transform: uppercase; letter-spacing: .02em; }
   .alert .routes { color: var(--muted); font-size: 12px; }
-  #alerts { max-height: 220px; overflow-y: auto; }
+  #alerts { max-height: 420px; overflow-y: auto; }
   #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
-  /* Beide operator-tabellen delen dezelfde kolomverdeling (table-layout: auto
-     laat elke tabel anders sizen op basis van eigen inhoud, waardoor twee
-     losse tabellen onder elkaar nooit echt uitlijnen). */
   #agency-stats table, #agency-cancel-stats table { table-layout: fixed; }
   #agency-stats th:nth-child(1), #agency-stats td:nth-child(1),
   #agency-cancel-stats th:nth-child(1), #agency-cancel-stats td:nth-child(1) { width: 46%; }
@@ -49,16 +57,15 @@
   #agency-cancel-stats th:nth-child(3), #agency-cancel-stats td:nth-child(3) { width: 26%; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
   .pill.early { background: var(--early-bg); color: var(--early); }
-  #topbar-stats { display: flex; gap: 24px; margin: 8px 0 4px; }
   .kpi { }
-  .kpi .num { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; }
+  .kpi .num { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
   .kpi .label { color: var(--muted); font-size: 12px; }
   .leaflet-container { background: var(--panel2); }
   .bus-badge { display: flex; align-items: center; justify-content: center;
@@ -72,45 +79,79 @@
   #lastupdate { color: var(--muted); font-size: 12px; font-family: 'IBM Plex Mono', monospace; }
   .push-right { margin-left: auto; }
   .nav-btn { background: var(--accent); color: #fff; font-weight: 600; text-decoration: none;
-             padding: 6px 13px; border-radius: 6px; font-size: 12.5px; white-space: nowrap; transition: filter .15s; }
-  .nav-btn:hover { filter: brightness(1.08); }
+             padding: 7px 15px; border-radius: 9px; font-size: 12.5px; white-space: nowrap;
+             box-shadow: var(--shadow-sm); transition: filter .15s, box-shadow .15s; }
+  .nav-btn:hover { filter: brightness(1.08); box-shadow: var(--shadow-md); }
   .range-toggle { display: flex; gap: 6px; }
   .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
-               border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: all .15s; }
+               border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; transition: all .15s; }
   .range-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
   .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .kpi-box {
+    background: var(--panel2); border-radius: var(--radius); padding: 14px 18px;
+  }
   .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 700; }
-  .kpi-box .label { color: var(--muted); font-size: 12px; }
+  .kpi-box .label { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .kpi-box .num.good { color: var(--good); }
   .kpi-box .num.warn { color: var(--warn); }
   .kpi-box .num.bad { color: var(--bad); }
-  #filter-bar { display: flex; align-items: center; gap: 14px; padding: 8px 20px; border-bottom: 1px solid var(--border);
-                flex-wrap: nowrap; overflow-x: auto; font-size: 13px; }
+  #filter-bar {
+    display: flex; align-items: center; gap: 14px; margin: 16px 16px 0; padding: 12px 18px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); font-size: 13px;
+  }
+  /* Alleen dít stukje (checkboxes + lijnnummer-veld) scrollt horizontaal op
+     een smal scherm -- bewust NIET de hele #filter-bar, want dan zet de
+     browser (per CSS-spec: als overflow-x niet visible is, wordt overflow-y
+     dat ook, nooit visible) overflow-y ook op auto, en kapt dat het zwevende
+     zoekpaneel van #stop-search-box af zodra het buiten de balk uitsteekt.
+     Door de scroll-noodgreep hier te isoleren blijft #stop-search-box zelf
+     buiten een overflow-context, en kan #stop-results/#stop-departures
+     gewoon position:absolute zijn (blijft vanzelf bij het zoekveld,
+     scrollt gewoon mee met de pagina). */
+  #filter-scroll { display: flex; align-items: center; gap: 14px; overflow-x: auto; min-width: 0; }
   #filter-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
   #operator-filters { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
   #filter-bar input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-        border-radius: 6px; padding: 4px 10px; font-size: 13px; width: 140px; }
+        border-radius: 8px; padding: 5px 11px; font-size: 13px; width: 140px; }
   #notif-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
-               border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: all .15s; }
+               border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer; transition: all .15s; }
   #notif-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
   #notif-btn.on { background: var(--good); color: #fff; border-color: var(--good); font-weight: 600; }
   .fav-star { cursor: pointer; color: var(--muted); margin-right: 4px; user-select: none; }
   .fav-star.active { color: var(--warn); }
-  #stop-search-box { position: relative; }
-  #stop-search-input { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-        border-radius: 6px; padding: 6px 10px; font-size: 13px; }
-  #stop-results { margin-top: 6px; max-height: 160px; overflow-y: auto; }
-  .stop-result { padding: 5px 8px; font-size: 13px; border-radius: 4px; cursor: pointer; }
+  #stop-search-box { position: relative; flex-shrink: 0; }
+  #filter-bar #stop-search-input { width: 220px; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 7px 11px; font-size: 13px; }
+  /* Zoekresultaten/vertrektijden zweven als los paneel onder het zoekveld,
+     over de kaart heen -- position:absolute t.o.v. #stop-search-box (zie
+     hierboven waarom #filter-bar zelf geen overflow meer heeft die dit zou
+     afkappen), dus blijft vanzelf op zijn plek bij scrollen. Sluit via
+     stopSearchBox-click-outside-listener verderop in de JS. z-index ruim
+     boven Leaflet's eigen 1000 (zie ook .modal-overlay), anders schemert de
+     kaart erdoorheen. */
+  #stop-results, #stop-departures {
+    position: absolute; top: 100%; left: 0; margin-top: 6px; width: 320px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-md); z-index: 1100; padding: 8px; max-height: 320px; overflow-y: auto;
+  }
+  #stop-results:empty, #stop-departures:empty { display: none; padding: 0; border: none; box-shadow: none; }
+  .stop-result { padding: 6px 9px; font-size: 13px; border-radius: 6px; cursor: pointer; }
   .stop-result:hover { background: var(--panel2); }
-  #stop-departures { margin-top: 10px; overflow-x: auto; }
   #stop-departures table { width: 100%; }
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
+  /* Uitval/Punctualiteit per operator als twee losse kaarten naast elkaar
+     i.p.v. één kaart met interne scheidingslijn -- dat laatste bleek in de
+     praktijk (ook bij mezelf, in een kleine preview) net zo te "lezen" als
+     twee losse dingen door de brede gap, dus dan kunnen het net zo goed
+     gewoon twee nette .section-kaarten zijn met een normale tussenruimte. */
+  .operator-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
   @media (max-width: 800px) {
     #layout { display: block; height: auto; }
     #map { height: 45vh; }
-    #side { border-left: none; border-top: 1px solid var(--border); overflow-y: visible; }
     #stats { overflow-y: visible; }
+    .operator-row { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -168,22 +209,21 @@
 </div>
 
 <div id="filter-bar">
-  <span style="color:var(--muted);">Filter:</span>
-  <div id="operator-filters"></div>
-  <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
-  <button id="notif-btn">🔔 Meldingen aanzetten</button>
+  <div id="filter-scroll">
+    <span style="color:var(--muted);">Filter:</span>
+    <div id="operator-filters"></div>
+    <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
+  </div>
+  <div id="stop-search-box">
+    <input type="text" id="stop-search-input" placeholder="🔍 Zoek een halte op naam...">
+    <div id="stop-results"></div>
+    <div id="stop-departures"></div>
+  </div>
+  <button id="notif-btn" class="push-right">🔔 Meldingen aanzetten</button>
 </div>
 <div id="layout">
   <div id="map"></div>
   <div id="side">
-    <div class="section">
-      <h2>Halte zoeken</h2>
-      <div id="stop-search-box">
-        <input type="text" id="stop-search-input" placeholder="Zoek een halte op naam...">
-        <div id="stop-results"></div>
-      </div>
-      <div id="stop-departures"></div>
-    </div>
     <div class="section">
       <h2>Actuele storingen &amp; meldingen<span id="alerts-count"></span></h2>
       <div id="alerts"><div class="empty">Laden...</div></div>
@@ -198,18 +238,19 @@
       <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte, obstakel op de weg) binnen de provincie Utrecht, via NDW (o.a. Rijkswaterstaat, provincie en gemeenten)</div>
       <div id="road-situations"><div class="empty">Laden...</div></div>
     </div>
-    <div class="section">
-      <h2>Punctualiteit per operator</h2>
-      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
-      <div id="agency-stats"><div class="empty">Laden...</div></div>
-    </div>
   </div>
   <div id="stats">
-    <div class="section" style="border:none; padding:0; margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--border);">
-      <h2>Uitval per operator (vandaag)</h2>
-      <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+    <div class="operator-row">
+      <div class="section">
+        <h2>Uitval per operator (vandaag)</h2>
+        <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+      </div>
+      <div class="section">
+        <h2>Punctualiteit per operator</h2>
+        <div id="agency-stats"><div class="empty">Laden...</div></div>
+      </div>
     </div>
-    <div class="section" style="border:none; padding:0;">
+    <div class="section">
       <h2>Punctualiteit per lijn</h2>
       <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
       <div id="route-stats"><div class="empty">Laden...</div></div>
@@ -217,7 +258,7 @@
   </div>
 </div>
 
-<div id="cancellations" class="section">
+<div id="cancellations" class="section" style="margin:16px;">
   <div style="display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
     <h2 style="margin:0;">Uitgevallen ritten vandaag</h2>
     <a href="/uitval" class="range-btn" style="text-decoration:none;">Volledig uitval-dashboard &rarr;</a>
@@ -227,7 +268,7 @@
     <input type="checkbox" id="up-to-now-toggle" checked>
     Tot nu toe (i.p.v. hele dag) — telt alleen ritten mee waarvan de vertrektijd al is verstreken
   </label>
-  <div id="cancel-kpis" style="display:flex; gap:32px; margin:14px 0;"></div>
+  <div id="cancel-kpis" style="display:flex; gap:16px; margin:14px 0; flex-wrap:wrap;"></div>
 </div>
 
 <footer class="site-footer">
@@ -290,9 +331,6 @@ function matchesFilter(operator, shortName) {
   return true;
 }
 
-// Deeplink naar een specifieke lijn, bv. /?lijn=74 -- filtert meteen bij het
-// laden van de pagina, en houdt de URL bijgewerkt zodat de huidige weergave
-// ook weer te delen/bookmarken is.
 function applyLineFilterFromUrl() {
   const lijn = new URLSearchParams(location.search).get('lijn');
   if (!lijn) return;
@@ -323,7 +361,7 @@ function toggleFavorite(routeId) {
   refreshStats().catch(console.error);
 }
 
-let seenAlertIds = null; // null = eerste keer, nog niets meldingswaardig
+let seenAlertIds = null;
 const notifBtn = document.getElementById('notif-btn');
 function updateNotifBtn() {
   const granted = window.Notification && Notification.permission === 'granted';
@@ -342,7 +380,7 @@ function cssVar(name) {
 
 function delayColor(delay) {
   if (delay === null || delay === undefined) return cssVar('--muted');
-  if (delay < -120) return cssVar('--early');  // meer dan 2 min te vroeg
+  if (delay < -120) return cssVar('--early');
   if (delay <= 180) return cssVar('--good');
   if (delay <= 360) return cssVar('--warn');
   return cssVar('--bad');
@@ -350,7 +388,7 @@ function delayColor(delay) {
 
 function delayPillClass(delay) {
   if (delay === null || delay === undefined) return '';
-  if (delay < -120) return 'early';  // meer dan 2 min te vroeg
+  if (delay < -120) return 'early';
   if (delay <= 180) return 'good';
   if (delay <= 360) return 'warn';
   return 'bad';
@@ -384,9 +422,8 @@ function busIcon(shortName, color, operator) {
   });
 }
 
-const markerState = {}; // ident -> laatst gerenderde {route_short_name, color, operator}
+const markerState = {};
 
-// --- Voertuig volgen: kaart blijft automatisch mee-pannen met één bus ------
 let followedVehicleId = null;
 
 function updateFollowIndicator(label) {
@@ -402,7 +439,7 @@ function updateFollowIndicator(label) {
 function toggleFollowVehicle(ident, label) {
   followedVehicleId = (followedVehicleId === ident) ? null : ident;
   updateFollowIndicator(label);
-  refreshVehicles().catch(console.error);  // popup-knoptekst direct bijwerken
+  refreshVehicles().catch(console.error);
 }
 function stopFollowing() {
   followedVehicleId = null;
@@ -420,6 +457,46 @@ followControl.onAdd = function () {
 };
 followControl.addTo(map);
 
+// Knop om de kaart naar de eigen locatie te laten springen (browser
+// Geolocation API -- vereist HTTPS en toestemming van de gebruiker).
+let userLocationMarker = null;
+function goToCurrentLocation() {
+  if (!navigator.geolocation) {
+    alert('Locatiebepaling wordt niet ondersteund door deze browser.');
+    return;
+  }
+  const btn = document.getElementById('locateBtn');
+  btn.disabled = true;
+  btn.textContent = '📍 Bezig...';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      btn.disabled = false;
+      btn.textContent = '📍 Mijn locatie';
+      const { latitude, longitude } = pos.coords;
+      map.setView([latitude, longitude], 15);
+      if (userLocationMarker) map.removeLayer(userLocationMarker);
+      userLocationMarker = L.circleMarker([latitude, longitude], {
+        radius: 8, weight: 3, color: '#fff', fillColor: cssVar('--accent'), fillOpacity: 1,
+      }).addTo(map).bindPopup('Jouw locatie').openPopup();
+    },
+    (err) => {
+      btn.disabled = false;
+      btn.textContent = '📍 Mijn locatie';
+      alert('Kon je locatie niet bepalen: ' + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 10000 },
+  );
+}
+const locateControl = L.control({ position: 'topright' });
+locateControl.onAdd = function () {
+  const div = L.DomUtil.create('div', 'map-legend');
+  div.innerHTML = `<button id="locateBtn" class="range-btn" style="padding:5px 10px; width:100%;" title="Ga naar mijn huidige locatie">📍 Mijn locatie</button>`;
+  L.DomEvent.disableClickPropagation(div);
+  div.querySelector('#locateBtn').addEventListener('click', goToCurrentLocation);
+  return div;
+};
+locateControl.addTo(map);
+
 async function refreshVehicles() {
   const res = await fetch('/api/vehicles');
   const data = await res.json();
@@ -435,10 +512,6 @@ async function refreshVehicles() {
     const color = delayColor(v.delay_seconds);
     const followLabel = key === followedVehicleId ? '✕ Stop met volgen' : '📍 Volg dit voertuig';
     const destination = v.headsign ? ` richting ${v.headsign}` : '';
-    // current_status zegt waar stop_id op slaat: bij STOPPED_AT staat het
-    // voertuig er nu, anders (INCOMING_AT/IN_TRANSIT_TO) is het de eerst-
-    // volgende halte -- vandaar drie net iets andere formuleringen i.p.v.
-    // één generieke "huidige halte".
     const stopLine = v.current_stop_name
       ? (v.current_status === 'STOPPED_AT' ? `Staat bij halte: ${v.current_stop_name}`
         : v.current_status === 'INCOMING_AT' ? `Nadert halte: ${v.current_stop_name}`
@@ -452,19 +525,12 @@ async function refreshVehicles() {
                  `<button onclick="toggleFollowVehicle('${key}','${v.route_short_name}')" class="range-btn" style="margin-top:6px; width:100%;">${followLabel}</button>`;
     if (markers[key]) {
       markers[key].setLatLng([v.lat, v.lon]);
-      // Het icoon (een hele DOM-subboom: badge + operator-logo) alleen
-      // opnieuw opbouwen als lijn/kleur/operator echt veranderd zijn --
-      // dit was voorheen elke 15s voor élk voertuig, wat de kaart merkbaar
-      // trager maakte (ook tijdens slepen, door de constante DOM-churn).
       const prev = markerState[key];
       if (!prev || prev.route_short_name !== v.route_short_name || prev.color !== color || prev.operator !== v.operator) {
         markers[key].setIcon(busIcon(v.route_short_name, color, v.operator));
       }
       markers[key].setPopupContent(html);
       markers[key].routeId = v.route_id;
-      // setPopupContent zet de halte-info terug op de placeholder, ook als
-      // de popup nog openstaat -- meteen opnieuw laden zodat die niet leeg
-      // blijft staan totdat je 'm sluit en opnieuw opent.
       if (markers[key].isPopupOpen()) loadNearbyStops(v.trip_id, markers[key]);
     } else {
       const m = L.marker([v.lat, v.lon], { icon: busIcon(v.route_short_name, color, v.operator) }).bindPopup(html);
@@ -478,7 +544,7 @@ async function refreshVehicles() {
     if (!seen.has(id)) { vehicleLayer.removeLayer(markers[id]); delete markers[id]; delete markerState[id]; }
   }
 
-  if (followedVehicleId && !followedLatLng) stopFollowing();  // rit is verdwenen (bv. beëindigd)
+  if (followedVehicleId && !followedLatLng) stopFollowing();
   else if (followedLatLng) map.panTo(followedLatLng, { animate: true });
 
   const operatorSummary = Object.entries(operatorCounts)
@@ -489,9 +555,6 @@ async function refreshVehicles() {
     `${data.count} actieve voertuigen${operatorSummary ? ` (${operatorSummary})` : ''} · bijgewerkt ${new Date(data.as_of * 1000).toLocaleTimeString('nl-NL')}`;
 }
 
-// Alleen opgehaald bij een klik op een voertuig (popupopen), niet standaard
-// voor elk voertuig elke refresh -- dat zou de toch al frequente
-// /api/vehicles-cyclus onnodig zwaarder maken.
 async function loadNearbyStops(tripId, marker) {
   const popup = marker.getPopup();
   if (!popup) return;
@@ -508,17 +571,6 @@ async function loadNearbyStops(tripId, marker) {
     if (target) target.innerHTML = '<span class="empty">Haltes onbekend</span>';
   }
 }
-// Vereenvoudigd routetraject (zie app/build_static_index.py) getekend als
-// vaste, neutrale lijn -- bewust niet in de officiële lijnkleur: dat zou op
-// de toch al drukke kaart met vertragingskleuren en operator-logo's al snel
-// te veel worden. Net als loadNearbyStops() alleen opgehaald bij een klik,
-// niet standaard voor elk voertuig.
-// Kleur bewust NIET de app-accentkleur (die is blauw, zelfde tint als water/
-// wegen op de OSM-tiles en viel daardoor nauwelijks op) en ook geen van de
-// vertragingskleuren (groen/oranje/rood, dat zou verwarrend zijn met de
-// legenda). Een dikkere witte "halo" onder een felle magenta lijn geeft
-// contrast tegen elke ondergrond, ongeacht licht/donker thema van de app zelf
-// (de kaarttegels blijven altijd dezelfde OSM-stijl).
 async function loadRouteShape(routeId) {
   routeShapeLayer.clearLayers();
   if (!routeId) return;
@@ -530,7 +582,6 @@ async function loadRouteShape(routeId) {
       L.polyline(shape, { color: '#d6006c', weight: 4, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }).addTo(routeShapeLayer);
     }
   } catch (e) {
-    // stil negeren -- dit is een visuele extra, geen kernfunctie
   }
 }
 
@@ -546,46 +597,16 @@ map.on('popupopen', (e) => {
 });
 map.on('popupclose', (e) => {
   const el = e.popup.getElement()?.querySelector('.veh-stops');
-  if (!el) return;  // niet elke popup op deze kaart is een voertuig-popup (bv. haltezoeker-marker)
+  if (!el) return;
   routeShapeLayer.clearLayers();
 });
 
-// Sommige meldingen dragen een generiek effect (OTHER_EFFECT/UNKNOWN_EFFECT
-// -> "Melding" via effectLabel hieronder), terwijl de vrije tekst zelf wel
-// aangeeft dat het om iets ernstigers gaat. Volgorde is van belang:
-// "verstoring" bevat toevallig de substring "storing", dus die moet eerder
-// gecontroleerd worden dan "storing" om niet verkeerd gelabeld te worden.
-//
-// ADDITIONAL_SERVICE ("Extra dienst") kreeg hier ooit altijd de ernstig-badge,
-// omdat vervoerders dat effect soms voor urgente/onvoorziene meldingen
-// gebruiken i.p.v. daadwerkelijk extra dienst. In de praktijk (zie historie
-// in alerts-tabel) is verreweg de meeste ADDITIONAL_SERVICE-melding gewoon
-// een routine "halte vervalt i.v.m. Werkzaamheden/Optocht" -- geen incident.
-// De écht urgente gevallen (bv. "i.v.m. een ongeval") worden al gewoon
-// door de keywords hieronder gedekt, dus de blanket-regel gaf alleen
-// valse ernstig-meldingen zonder iets extra's te vangen.
-//
-// "stremming" is bewust geen keyword (meer): de description van KV15-
-// afkomstige meldingen bevat standaard "Oorzaak : Stremming Effect :
-// Omleiding Maatregelen : ..." bij ELKE aangekondigde halte-verplaatsing,
-// ook routinematige, dagen van tevoren geplande -- niet alleen bij echte
-// actuele incidenten. Zelfde lijst als SEVERE_ALERT_KEYWORDS in
-// collector.py, bewust in sync houden.
 const SEVERE_ALERT_KEYWORDS = ['verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
-// GTFS-RT Alert.cause is een betrouwbaarder signaal dan tekst-keywords als
-// de vervoerder het daadwerkelijk vult (vaak UNKNOWN_CAUSE, maar als het wel
-// gezet is telt het). Alleen de ondubbelzinnig urgente oorzaken; MAINTENANCE/
-// CONSTRUCTION/HOLIDAY/WEATHER/TECHNICAL_PROBLEM blijven bewust buiten deze
-// lijst -- dat zijn vaak routine meldingen, geen incidenten.
 const SEVERE_CAUSE_LABELS = {
   ACCIDENT: 'Ongeval', POLICE_ACTIVITY: 'Politie', MEDICAL_EMERGENCY: 'Medisch noodgeval',
   DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
 };
 function severeAlertLabel(a) {
-  // Nog te beginnen meldingen (valid_from in de toekomst) tellen niet als
-  // urgent, ook niet bij een woord als "stremming" -- dat is dan een
-  // aankondiging van gepland werk, geen actuele situatie. Zelfde regel als
-  // _is_severe_alert() in collector.py, bewust in sync houden.
   if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
@@ -610,11 +631,6 @@ function fmtAlertTime(ts) {
   });
 }
 
-// Officiële geldigheidsperiode uit het GTFS-RT alert zelf (active_period),
-// los van first_seen/last_seen die alleen zeggen wanneer WIJ de melding voor
-// het eerst/laatst zagen. valid_from kan in de toekomst liggen (nog te
-// beginnen werkzaamheden) -- toon dan "vanaf", anders "t/m" als er een
-// einddatum bekend is.
 function fmtValidity(a) {
   const nowSec = Date.now() / 1000;
   if (a.valid_from && a.valid_from > nowSec) return `Geldig vanaf ${fmtAlertTime(a.valid_from)}`;
@@ -622,12 +638,6 @@ function fmtValidity(a) {
   return '';
 }
 
-// Zelfde soort geldigheidsperiode als fmtValidity hierboven, maar dan voor
-// wegsituaties (NDW/DATEX II com:overallStartTime/overallEndTime -- ISO
-// 8601-tekst, geen Unix-timestamp zoals bij alerts, dus een eigen
-// tijdformatter i.p.v. fmtAlertTime hergebruiken). "Tot" is informatiever
-// (zegt wanneer het voorbij is) dus die krijgt voorrang als beide bekend
-// zijn.
 function fmtRoadTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -639,10 +649,6 @@ function fmtRoadValidity(s) {
   return '';
 }
 
-// Marker op de kaart voor haltes die door een actuele melding vervallen
-// (bv. de brandweer-sluiting) -- alleen mogelijk voor meldingen waarvan
-// de halte(s) bekend zijn (zie a.stops, gevuld door /api/alerts zodra de
-// melding geen route/trip in informed_entity heeft).
 function closedStopIcon() {
   return L.divIcon({
     className: '',
@@ -658,11 +664,6 @@ async function refreshAlerts() {
   const res = await fetch('/api/alerts');
   const data = await res.json();
 
-  // Unieke haltes verzamelen uit alle meldingen die NU (en niet pas in de
-  // toekomst) een halte laten vervallen -- valid_from kan in de toekomst
-  // liggen (nog te beginnen werkzaamheden, zoals bij de urgent-badge-fix),
-  // en valid_until kan al voorbij zijn terwijl de melding nog even als
-  // active=1 in de feed blijft staan.
   closedStopsLayer.clearLayers();
   const nowSec = Date.now() / 1000;
   const closedStops = new Map();
@@ -700,16 +701,10 @@ async function refreshAlerts() {
 
   const el = document.getElementById('alerts');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen actuele storingen</div>'; return; }
-  // Ernstige meldingen bovenaan: sort() is stabiel, dus binnen elke groep
-  // (ernstig/niet) blijft de first_seen-DESC-volgorde van de server intact.
   const withSeverity = data.alerts.map(a => ({ a, label: severeAlertLabel(a) }));
   withSeverity.sort((x, y) => (y.label ? 1 : 0) - (x.label ? 1 : 0));
   el.innerHTML = withSeverity.map(({ a, label }) => {
     const badge = label ? `<span class="pill bad">⚠ ${label}</span>` : '';
-    // Een melding die alleen een halte noemt (geen route/trip in
-    // informed_entity, bv. "halte vervalt i.v.m. brandweer") heeft geen
-    // lijnen -- toon dan in elk geval de haltenaam, anders is nergens te
-    // zien waar de melding over gaat.
     const lines = a.routes.length
       ? `Lijnen: ${a.routes.map(r => r.short_name).join(', ')}`
       : (a.stops && a.stops.length ? `Halte: ${a.stops.map(s => s.name).join(', ')}` : 'Lijnen: —');
@@ -723,18 +718,10 @@ async function refreshAlerts() {
   }).join('');
 }
 
-// NS-storingen op het spoor: aparte databron (zie /api/rail-alerts en
-// app/ns_rail_alerts.py), al vooraf op de server gefilterd tot storingen die
-// een station in de provincie Utrecht raken. impact.value loopt bij NS van
-// 1 (licht) t/m 3 (trein rijdt niet) -- vanaf 3, of het type CALAMITY, tonen
-// we 'm net als de ernstige bus/tram-meldingen met de rode badge.
 function railAlertSeverity(a) {
   return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
 }
 
-// consequence_level: gestructureerd gevolg-veld uit de NS-respons, naast het
-// al gebruikte impact-getal. Alleen de bekende waarden uit onderzoek vertaald;
-// onbekende waarden gewoon ongewijzigd tonen i.p.v. verbergen.
 const CONSEQUENCE_LEVEL_LABELS = {
   NO_TRAINS: 'Geen treinen', LESS_TRAINS: 'Minder treinen', DELAYS: 'Vertraging',
 };
@@ -760,17 +747,8 @@ async function refreshRailAlerts() {
   }).join('');
 }
 
-// Wegsituaties (NDW open data -- RWS-snelwegen, provinciale en lokale
-// wegen, zie /api/road-situations en app/road_situations.py). De server levert hier
-// alle typen uit SEVERE_ROAD_TYPES (incl. GeneralObstruction, een "gewoon"
-// obstakel op de weg), maar niet allemaal even urgent -- MOST_URGENT_ROAD_TYPES
-// (zelfde typen als RSS_ROAD_TYPES in road_situations.py) krijgt de rode
-// "ernstig"-badge, de rest (bv. GeneralObstruction) de mildere oranje stijl,
-// net als elders in de app het verschil tussen ernstig/routine.
 const MOST_URGENT_ROAD_TYPES = new Set(['Accident', 'AbnormalTraffic']);
 
-// DATEX II overallSeverity -- 'unknown'/'none' zeggen niets (verreweg de
-// meeste situaties vallen daaronder) dus die tonen we bewust niet.
 const ROAD_SEVERITY_LABELS = {
   highest: 'Zeer ernstig', high: 'Ernstig', medium: 'Matig', low: 'Licht', lowest: 'Gering',
 };
@@ -805,15 +783,8 @@ async function refreshRoadSituations() {
   const el = document.getElementById('road-situations');
   if (data.count === 0) { el.innerHTML = '<div class="empty">Geen urgente wegsituaties</div>'; return; }
   el.innerHTML = data.situations.map(s => {
-    // Wegnummer + plaatsaanduiding komen uit de VILD-tabel (zie
-    // app/build_vild_index.py); de feed zelf noemt alleen een AlertC-code.
-    // Niet elke situatie heeft een bruikbare code -- val dan terug op de
-    // vrije tekst, en anders op het type.
     const where = [s.road_number, s.road_location].filter(Boolean).join(' ');
     const heading = where || s.comment || s.type_label;
-    // cause (sit:causeDescription, bv. "Demonstratie"/"Wegwerkzaamheden") is
-    // vaak specifieker dan het type-label en regelmatig gevuld terwijl
-    // comment leeg is -- alleen tonen als het iets toevoegt.
     const causeText = (s.cause && s.cause !== s.type_label && s.cause !== s.comment) ? s.cause : '';
     const severityText = ROAD_SEVERITY_LABELS[s.severity] || '';
     const detailParts = [];
@@ -839,18 +810,11 @@ async function refreshRoadSituations() {
   }));
 }
 
-// Weerwaarschuwingen (KNMI, provincie Utrecht, zie /api/weather-warnings en
-// app/knmi_warnings.py). Officiele KNMI-kleurcodes (geel/oranje/rood) --
-// bewust geen hergebruik van de app-eigen good/warn/bad-pillen, want dat is
-// een andere (vertragings-)schaal; hier gewoon de eigen KNMI-huisstijlkleur.
 const KNMI_COLOR_STYLES = {
   YELLOW: 'background:#ffd500; color:#000;',
   ORANGE: 'background:#ff8c00; color:#fff;',
   RED: 'background:#e60000; color:#fff;',
 };
-// Kleur van de hele Weer-knop (niet alleen een stipje) -- altijd een volle,
-// verzadigde kleur als achtergrond (ook zonder waarschuwing gewoon fel
-// groen), zodat groen/geel/oranje/rood allemaal even duidelijk opvallen.
 const KNMI_BUTTON_STYLES = {
   GREEN:  'background:#16a34a; border-color:#16a34a; color:#fff;',
   YELLOW: 'background:#ffd500; border-color:#ffd500; color:#000;',
@@ -858,9 +822,6 @@ const KNMI_BUTTON_STYLES = {
   RED:    'background:#e60000; border-color:#e60000; color:#fff;',
 };
 const KNMI_CODE_LABELS = { GREEN: 'Code groen', YELLOW: 'Code geel', ORANGE: 'Code oranje', RED: 'Code rood' };
-// Icoon in de Weer-knop is afgeleid van de bewolkingsgraad (enige
-// weertype-indicator die de 10-minuten KNMI-waarneming bevat -- geen
-// neerslagveld beschikbaar, dus geen apart regen-icoon mogelijk).
 function weatherIcon(cloudOkta) {
   if (cloudOkta == null) return '🌡️';
   if (cloudOkta <= 1) return '☀️';
@@ -875,10 +836,6 @@ function fmtWarningTime(iso) {
   });
 }
 
-// Weerknop in de kop: kleurendot volgt de ernstigste actieve waarschuwing
-// (of groen/neutraal als er geen zijn). Klik opent een modal met details --
-// zelfde patroon als de Status-knop -- met ruimte voor het actuele weer
-// zodra die databron er is (nu alleen de waarschuwingen).
 function openWeatherModal() {
   document.getElementById('weatherModal').classList.add('open');
 }
@@ -886,9 +843,6 @@ function closeWeatherModal() {
   document.getElementById('weatherModal').classList.remove('open');
 }
 
-// Actueel weer (De Bilt) + waarschuwingen worden allebei getoond in dezelfde
-// knop/modal -- één gecombineerde refresh i.p.v. twee losse, zodat de
-// koptekst-knop (temperatuur + kleurendot) altijd in één keer klopt.
 function weatherSummaryHtml(w) {
   if (!w) return '<div class="empty">Actueel weer: nog geen waarneming binnen</div>';
   const kmh = w.wind_speed_ms != null ? Math.round(w.wind_speed_ms * 3.6) : null;
@@ -905,9 +859,6 @@ function weatherSummaryHtml(w) {
     </div>`;
 }
 
-// RIVM Luchtmeetnet-kleuren voor de LKI (Luchtkwaliteitsindex, schaal 1-11):
-// blauw/geel/oranje/rood/paars -- bewust een eigen, vijfdelige schaal, niet
-// hergebruikt van de vierdelige KNMI-waarschuwingskleuren.
 const LKI_COLOR_STYLES = {
   BLUE: 'background:#2b6fd1; color:#fff;',
   YELLOW: 'background:#ffd500; color:#000;',
@@ -915,11 +866,6 @@ const LKI_COLOR_STYLES = {
   RED: 'background:#e60000; color:#fff;',
   PURPLE: 'background:#9333ea; color:#fff;',
 };
-// Kale hex-kleuren (i.p.v. volledige pill-stijl) voor het kleine stipje op
-// de Weer-knop zelf, zodat de luchtkwaliteit ook zichtbaar is zonder de
-// modal te openen -- los van de knopkleur zelf, die de weerwaarschuwing
-// blijft volgen (twee verschillende schalen door elkaar op dezelfde
-// achtergrond zou verwarrend zijn).
 const LKI_DOT_COLORS = { BLUE: '#2b6fd1', YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000', PURPLE: '#9333ea' };
 
 function airQualityHtml(aq) {
@@ -987,11 +933,6 @@ async function refreshWeatherWarnings() {
   body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}${airQualityHtml(airData.air_quality)}`;
 }
 
-// Kaart-pop-up: eigen Leaflet-kaartje (niet de ingesloten OpenStreetMap-
-// iframe van vroeger -- die liet uitzoomen onbetrouwbaar werken). Eén
-// kaartinstantie die bij elke opening hergebruikt wordt i.p.v. steeds
-// opnieuw aangemaakt (Leaflet staat niet toe een container twee keer te
-// initialiseren).
 let modalMap = null;
 let modalMapMarker = null;
 function openMapModal(lat, lon, label) {
@@ -1010,8 +951,6 @@ function openMapModal(lat, lon, label) {
     modalMap.setView([la, lo], 15);
     modalMapMarker.setLatLng([la, lo]);
   }
-  // De modal stond tot net op display:none, dus Leaflet kende de container
-  // nog geen juiste afmeting toe -- na het zichtbaar worden opnieuw meten.
   setTimeout(() => modalMap.invalidateSize(), 0);
 }
 function closeMapModal() {
@@ -1102,6 +1041,18 @@ document.getElementById('stop-search-input').addEventListener('input', (e) => {
   stopSearchDebounce = setTimeout(() => searchStops(q), 250);
 });
 
+// Klik ergens buiten de zoekbox (kaart, zijbalk, knoppen) sluit het
+// zwevende paneel -- zonder dit bleef het onbeperkt open staan, met geen
+// enkele manier om het weg te klikken.
+document.addEventListener('click', (e) => {
+  const box = document.getElementById('stop-search-box');
+  if (box.contains(e.target)) return;
+  document.getElementById('stop-results').innerHTML = '';
+  document.getElementById('stop-departures').innerHTML = '';
+  selectedStopId = null;
+  if (stopMarker) { map.removeLayer(stopMarker); stopMarker = null; }
+});
+
 async function searchStops(q) {
   const resultsEl = document.getElementById('stop-results');
   if (!q) { resultsEl.innerHTML = ''; return; }
@@ -1159,12 +1110,8 @@ async function refreshStopDepartures() {
     }).join('') + '</table>';
 }
 
-// De collector haalt de GTFS-RT feed maar elke 30s op (zie
-// FETCH_INTERVAL_SECONDS in app/collector.py) -- vaker dan dat pollen levert
-// dus geen enkele extra actualiteit op, alleen extra belasting. 20s geeft
-// nog ruim voldoende "live"-gevoel. De rest verandert nog trager.
 function fastTick() {
-  if (document.hidden) return;  // niemand kijkt naar een achtergrondtab
+  if (document.hidden) return;
   refreshVehicles().catch(console.error);
 }
 function slowTick() {
@@ -1187,8 +1134,6 @@ applyLineFilterFromUrl();
 initMeta().then(() => { fastTick(); slowTick(); }).catch(console.error);
 setInterval(fastTick, 20000);
 setInterval(slowTick, 45000);
-// Direct verversen zodra het tabblad weer zichtbaar wordt, i.p.v. te wachten
-// tot de volgende geplande tick (die intussen was overgeslagen).
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { fastTick(); slowTick(); }
 });

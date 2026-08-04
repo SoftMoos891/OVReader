@@ -1,78 +1,88 @@
-/* Gedeeld thema voor alle OVReader-pagina's, in de stijl van DVZ Reader:
-   licht als standaard, donker via de .dark-klasse op <html> (toggle +
-   localStorage-key 'ovreader_dark', zie de inline init-snippet in elke
-   pagina). Bestaande variabelenamen (--bg/--panel/--border/--text/--muted/
-   --accent/--good/--warn/--bad) blijven ongewijzigd zodat de paginaspecifieke
-   CSS in index.html/trends.html/cancellations.html niet hoefde te worden
-   herschreven -- alleen de kleurwaarden zijn vervangen. */
+/* Gedeeld thema voor alle OVReader-pagina's -- "Modern SaaS-dashboard"-
+   stijl: licht als standaard, donker via de .dark-klasse op <html>
+   (toggle + localStorage-key 'ovreader_dark', zie de inline init-snippet
+   in elke pagina). Bestaande variabelenamen (--bg/--panel/--border/--text/
+   --muted/--accent/--good/--warn/--bad) blijven ongewijzigd zodat de
+   paginaspecifieke CSS in index.html/trends.html/cancellations.html niet
+   hoefde te worden herschreven -- alleen de kleurwaarden zijn vervangen,
+   plus twee nieuwe variabelen (--shadow-sm/--shadow-md/--radius) voor
+   elevatie via zachte schaduw i.p.v. alleen harde 1px-randen. */
 
 :root {
-  --bg:        #e8edf5;
+  --bg:        #f5f6fa;
   --panel:     #ffffff;
-  --panel2:    #f0f4fa;
-  --border:    #c8d3e8;
-  --border2:   #a0b0cc;
-  --text:      #0a0f1e;
-  --muted:     #6b7fa0;
-  --accent:    #1a56db;
-  --accent2:   #1347c4;
-  --good:      #16a34a;
-  --warn:      #d97706;
-  --bad:       #dc2626;
-  --good-bg:   rgba(22,163,74,.12);
-  --warn-bg:   rgba(217,119,6,.12);
-  --bad-bg:    rgba(220,38,38,.12);
-  --accent-bg: rgba(26,86,219,.10);
-  --critical:    #7f1d1d;
-  --critical-bg: rgba(127,29,29,.14);
+  --panel2:    #f3f4f8;
+  --border:    #e6e8f0;
+  --border2:   #d3d7e3;
+  --text:      #14182b;
+  --muted:     #6b7290;
+  --accent:    #4f46e5;
+  --accent2:   #4338ca;
+  --good:      #10b981;
+  --warn:      #f59e0b;
+  --bad:       #ef4444;
+  --good-bg:   rgba(16,185,129,.12);
+  --warn-bg:   rgba(245,158,11,.12);
+  --bad-bg:    rgba(239,68,68,.10);
+  --accent-bg: rgba(79,70,229,.10);
+  --critical:    #991b1b;
+  --critical-bg: rgba(153,27,27,.12);
   /* Bus >2 min te vroeg: eigen, lichtere roodtint dan --bad (grote
      vertraging), zodat die twee heel verschillende situaties niet dezelfde
      alarmerende kleur op de kaart krijgen. */
-  --early:     #f87171;
-  --early-bg:  rgba(248,113,113,.14);
+  --early:     #fb7185;
+  --early-bg:  rgba(251,113,133,.14);
+
+  --shadow-sm: 0 1px 2px rgba(20,24,43,.04), 0 1px 3px rgba(20,24,43,.06);
+  --shadow-md: 0 2px 6px rgba(20,24,43,.06), 0 8px 24px rgba(20,24,43,.08);
+  --radius: 12px;
 }
 
 html.dark {
-  --bg:        #080c15;
-  --panel:     #0f1623;
-  --panel2:    #172030;
-  --border:    #1e2e48;
-  --border2:   #2a3e5c;
-  --text:      #edf2ff;
-  --muted:     #566a88;
-  --accent:    #4096f7;
-  --accent2:   #2b7de9;
-  --good:      #4ade80;
-  --warn:      #fb923c;
+  --bg:        #0a0e1a;
+  --panel:     #121828;
+  --panel2:    #1a2136;
+  --border:    #242c47;
+  --border2:   #323c5e;
+  --text:      #eef1fa;
+  --muted:     #7c85a8;
+  --accent:    #6366f1;
+  --accent2:   #818cf8;
+  --good:      #34d399;
+  --warn:      #fbbf24;
   --bad:       #f87171;
-  --good-bg:   rgba(74,222,128,.12);
-  --warn-bg:   rgba(251,146,60,.12);
-  --bad-bg:    rgba(248,113,113,.12);
-  --accent-bg: rgba(64,150,247,.12);
-  --critical:    #dc2626;
-  --critical-bg: rgba(220,38,38,.18);
-  --early:     #fca5a5;
-  --early-bg:  rgba(252,165,165,.16);
+  --good-bg:   rgba(52,211,153,.14);
+  --warn-bg:   rgba(251,191,36,.14);
+  --bad-bg:    rgba(248,113,113,.14);
+  --accent-bg: rgba(99,102,241,.16);
+  --critical:    #f87171;
+  --critical-bg: rgba(248,113,113,.18);
+  --early:     #fda4af;
+  --early-bg:  rgba(253,164,175,.16);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.24), 0 1px 3px rgba(0,0,0,.3);
+  --shadow-md: 0 2px 6px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.4);
 }
 
 body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 
 .theme-toggle-btn {
-  background: var(--panel2);
+  background: var(--panel);
   border: 1px solid var(--border);
   color: var(--muted);
-  width: 30px; height: 30px;
-  border-radius: 8px;
+  width: 32px; height: 32px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 14px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  transition: background .15s, border-color .15s, color .15s;
+  box-shadow: var(--shadow-sm);
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
 }
-.theme-toggle-btn:hover { background: var(--panel); border-color: var(--border2); color: var(--text); }
+.theme-toggle-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); box-shadow: var(--shadow-md); }
 
 .dvz-logo-badge {
-  width: 32px; height: 32px;
+  width: 34px; height: 34px;
   border-radius: 50%;
   background: #ffffff;
   border: 1px solid var(--border);
@@ -83,36 +93,38 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: #0f172a;
+  color: #14182b;
   text-decoration: none;
   user-select: none;
-  transition: filter .15s;
+  box-shadow: var(--shadow-sm);
+  transition: filter .15s, box-shadow .15s;
 }
-.dvz-logo-badge:hover { filter: brightness(0.94); }
+.dvz-logo-badge:hover { filter: brightness(0.96); box-shadow: var(--shadow-md); }
 
 /* Officiële lijnkleur (GTFS route_color) als badge om het lijnnummer in
    tabellen -- los van de vertragingskleur op de kaart, die functioneel
    blijft. Achtergrond/tekstkleur komen als inline style mee (per lijn uit
    de GTFS-feed), dit levert alleen de vorm. */
 .line-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  display: inline-block; padding: 1px 9px; border-radius: 20px;
   font-size: 12px; font-weight: 700;
-  border: 1px solid rgba(128, 128, 128, .35);
+  border: 1px solid rgba(128, 128, 128, .3);
 }
 
 .map-legend {
   background: var(--panel); border: 1px solid var(--border); color: var(--text);
-  border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6;
-  box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  border-radius: var(--radius); padding: 10px 12px; font-size: 12px; line-height: 1.6;
+  box-shadow: var(--shadow-md);
 }
 
 /* ── Systeemstatus (knop + modal), gedeeld door alle pagina's ── */
 .status-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
-  border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 9px; padding: 6px 12px; font-size: 12px; font-weight: 600;
   cursor: pointer; transition: all .15s; align-self: center; flex-shrink: 0;
   text-decoration: none;
+  box-shadow: var(--shadow-sm);
 }
 /* Icoontje (weertype-emoji) vóór de knoptekst -- vaste, kleine hoogte met
    overflow:hidden, want emoji-lettertypen (vooral het thermometer-icoon)
@@ -123,7 +135,7 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   font-size: 14px; line-height: 1; height: 14px; overflow: hidden;
   display: inline-flex; align-items: center; flex-shrink: 0;
 }
-.status-btn:hover { background: var(--panel); border-color: var(--border2); color: var(--text); }
+.status-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); box-shadow: var(--shadow-md); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
 .status-dot.ok { background: var(--good); box-shadow: 0 0 5px var(--good); }
 .status-dot.stale { background: var(--warn); box-shadow: 0 0 5px var(--warn); }
@@ -142,7 +154,7 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 
 .modal-overlay {
   display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+  background: rgba(10,14,26,.5); backdrop-filter: blur(4px);
   /* Leaflet's eigen besturingselementen (zoomknoppen, attributie, legenda)
      zitten standaard op z-index 1000 (.leaflet-top/.leaflet-bottom) -- ruim
      daarboven, anders schemert de kaart (attributietekst, legenda) door de
@@ -151,30 +163,31 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 }
 .modal-overlay.open { display: flex; }
 .modal {
-  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
   width: 100%; max-width: 420px; max-height: 80vh;
   display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: var(--shadow-md);
 }
 .modal-header {
-  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   font-size: 14px; font-weight: 700; color: var(--text);
 }
 .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
 .modal-close:hover { color: var(--text); }
-.modal-body { padding: 18px; overflow-y: auto; flex: 1; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
 /* Kaart-pop-up bij een wegsituatie: breder dan de statusmodal, en de kaart
    zelf zonder padding zodat die de volle breedte vult. */
 .modal.wide { max-width: 760px; }
 .modal-body.map-body { padding: 0; }
 .modal-body.map-body #mapFrame { width: 100%; height: 58vh; }
-.modal-footer { padding: 10px 18px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
+.modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
 
-.health-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.health-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); }
 .health-row:last-child { border-bottom: none; }
 .health-label { font-size: 13px; color: var(--text); font-weight: 600; }
 .health-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.health-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.health-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
 .health-badge.ok { background: var(--good-bg); color: var(--good); }
 .health-badge.stale { background: var(--warn-bg); color: var(--warn); }
 .health-badge.no_data { background: var(--bad-bg); color: var(--bad); }
