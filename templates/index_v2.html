@@ -51,7 +51,7 @@
   .alert .hdr .pill { margin-right: 6px; vertical-align: 1px; background: var(--bad); color: #fff;
                        text-transform: uppercase; letter-spacing: .02em; }
   .alert .routes { color: var(--muted); font-size: 12px; }
-  #alerts { max-height: 220px; overflow-y: auto; }
+  #alerts { max-height: 420px; overflow-y: auto; }
   #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
   #agency-stats table, #agency-cancel-stats table { table-layout: fixed; }
   #agency-stats th:nth-child(1), #agency-stats td:nth-child(1),
@@ -115,23 +115,34 @@
   #notif-btn.on { background: var(--good); color: #fff; border-color: var(--good); font-weight: 600; }
   .fav-star { cursor: pointer; color: var(--muted); margin-right: 4px; user-select: none; }
   .fav-star.active { color: var(--warn); }
-  #stop-search-box { position: relative; }
-  #stop-search-input { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  #stop-search-box { position: relative; flex-shrink: 0; }
+  #filter-bar #stop-search-input { width: 220px; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
         border-radius: 8px; padding: 7px 11px; font-size: 13px; }
-  #stop-results { margin-top: 6px; max-height: 160px; overflow-y: auto; }
+  /* Zoekresultaten/vertrektijden zweven als los paneel onder het zoekveld,
+     over de kaart heen, i.p.v. de zijbalk te vullen -- nu het zoekveld zelf
+     in de filterbalk staat i.p.v. in een eigen sectie in de zijbalk.
+     z-index ruim boven Leaflet's eigen 1000 (zie ook .modal-overlay), anders
+     schemert de kaart erdoorheen. */
+  #stop-results, #stop-departures {
+    position: absolute; top: 100%; left: 0; margin-top: 6px; width: 320px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-md); z-index: 1100; padding: 8px; max-height: 320px; overflow-y: auto;
+  }
+  #stop-results:empty, #stop-departures:empty { display: none; padding: 0; border: none; box-shadow: none; }
   .stop-result { padding: 6px 9px; font-size: 13px; border-radius: 6px; cursor: pointer; }
   .stop-result:hover { background: var(--panel2); }
-  #stop-departures { margin-top: 10px; overflow-x: auto; }
   #stop-departures table { width: 100%; }
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
   .operator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   .operator-grid h2 { margin-top: 0; }
+  .operator-grid > div:first-child { border-right: 1px solid var(--border); padding-right: 24px; }
 
   @media (max-width: 800px) {
     #layout { display: block; height: auto; }
     #map { height: 45vh; }
     #stats { overflow-y: visible; }
     .operator-grid { grid-template-columns: 1fr; gap: 16px; }
+    .operator-grid > div:first-child { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: 16px; }
   }
 </style>
 </head>
@@ -193,19 +204,16 @@
   <span style="color:var(--muted);">Filter:</span>
   <div id="operator-filters"></div>
   <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
-  <button id="notif-btn">🔔 Meldingen aanzetten</button>
+  <div id="stop-search-box">
+    <input type="text" id="stop-search-input" placeholder="🔍 Zoek een halte op naam...">
+    <div id="stop-results"></div>
+    <div id="stop-departures"></div>
+  </div>
+  <button id="notif-btn" class="push-right">🔔 Meldingen aanzetten</button>
 </div>
 <div id="layout">
   <div id="map"></div>
   <div id="side">
-    <div class="section">
-      <h2>Halte zoeken</h2>
-      <div id="stop-search-box">
-        <input type="text" id="stop-search-input" placeholder="Zoek een halte op naam...">
-        <div id="stop-results"></div>
-      </div>
-      <div id="stop-departures"></div>
-    </div>
     <div class="section">
       <h2>Actuele storingen &amp; meldingen<span id="alerts-count"></span></h2>
       <div id="alerts"><div class="empty">Laden...</div></div>
@@ -439,6 +447,46 @@ followControl.onAdd = function () {
   return div;
 };
 followControl.addTo(map);
+
+// Knop om de kaart naar de eigen locatie te laten springen (browser
+// Geolocation API -- vereist HTTPS en toestemming van de gebruiker).
+let userLocationMarker = null;
+function goToCurrentLocation() {
+  if (!navigator.geolocation) {
+    alert('Locatiebepaling wordt niet ondersteund door deze browser.');
+    return;
+  }
+  const btn = document.getElementById('locateBtn');
+  btn.disabled = true;
+  btn.textContent = '📍 Bezig...';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      btn.disabled = false;
+      btn.textContent = '📍 Mijn locatie';
+      const { latitude, longitude } = pos.coords;
+      map.setView([latitude, longitude], 15);
+      if (userLocationMarker) map.removeLayer(userLocationMarker);
+      userLocationMarker = L.circleMarker([latitude, longitude], {
+        radius: 8, weight: 3, color: '#fff', fillColor: cssVar('--accent'), fillOpacity: 1,
+      }).addTo(map).bindPopup('Jouw locatie').openPopup();
+    },
+    (err) => {
+      btn.disabled = false;
+      btn.textContent = '📍 Mijn locatie';
+      alert('Kon je locatie niet bepalen: ' + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 10000 },
+  );
+}
+const locateControl = L.control({ position: 'topright' });
+locateControl.onAdd = function () {
+  const div = L.DomUtil.create('div', 'map-legend');
+  div.innerHTML = `<button id="locateBtn" class="range-btn" style="padding:5px 10px; width:100%;" title="Ga naar mijn huidige locatie">📍 Mijn locatie</button>`;
+  L.DomEvent.disableClickPropagation(div);
+  div.querySelector('#locateBtn').addEventListener('click', goToCurrentLocation);
+  return div;
+};
+locateControl.addTo(map);
 
 async function refreshVehicles() {
   const res = await fetch('/api/vehicles');
