@@ -84,7 +84,7 @@
     <a href="/" class="nav-btn" title="Volledige versie (let op: inlog vereist) — veel meer informatie dan deze lite-versie">🔒 Volledige versie &rarr;</a>
     <a href="https://dvznet.nl/dvzreader.html" class="nav-btn" target="_blank" rel="noopener noreferrer" title="DVZ Reader (RSS-tool op dvznet.nl)">📡 DVZ Reader &rarr;</a>
     <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span><span class="status-dot lki-dot" id="lkiDot" style="display:none;" title="Luchtkwaliteit"></span>
+      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span><span class="lki-badge" id="lkiDot" style="display:none;" title="Luchtkwaliteit">Lucht</span>
     </button>
     <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
   </div>
@@ -460,7 +460,6 @@ const LKI_COLOR_STYLES = {
 // modal te openen -- los van de knopkleur zelf, die de weerwaarschuwing
 // blijft volgen (twee verschillende schalen door elkaar op dezelfde
 // achtergrond zou verwarrend zijn).
-const LKI_DOT_COLORS = { BLUE: '#2b6fd1', YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000', PURPLE: '#9333ea' };
 
 function airQualityHtml(aq) {
   if (!aq || aq.lki == null) return '';
@@ -502,9 +501,8 @@ async function refreshWeatherWarnings() {
 
   const aq = airData.air_quality;
   const lkiDot = document.getElementById('lkiDot');
-  if (aq && aq.lki_color && LKI_DOT_COLORS[aq.lki_color]) {
-    lkiDot.style.display = '';
-    lkiDot.style.background = LKI_DOT_COLORS[aq.lki_color];
+  if (aq && aq.lki_color && LKI_COLOR_STYLES[aq.lki_color]) {
+    lkiDot.style.cssText = `display:inline-flex; ${LKI_COLOR_STYLES[aq.lki_color]}`;
     lkiDot.title = `Luchtkwaliteit: LKI ${aq.lki} · ${aq.lki_label}`;
   } else {
     lkiDot.style.display = 'none';
