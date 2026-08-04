@@ -3,6 +3,7 @@ van de door build_static_index.py gegenereerde statische bestanden
 (utrecht_stop_times.json, utrecht_calendar.json, utrecht_trip_meta.json),
 verrijkt met live vertraging uit de realtime-databank (app/db.py)."""
 import json
+import re
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -13,6 +14,23 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 WEEKDAY_FIELDS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 LIVE_DELAY_FRESHNESS_SECONDS = 20 * 60  # hoe oud een laatst-bekende vertraging nog mag zijn
+
+# Herkent een perron-/kant-aanduiding aan het eind van een haltenaam, bv.
+# "(C1)", "(A)", "(D12)" -- 1-2 letters plus optioneel een kort getal. Bewust
+# NIET woorden als "(Oost)"/"(laag)"/"(Tak)" (die zijn 3+ letters en horen
+# dus niet bij dit patroon) -- dat zijn losse, betekenisvol verschillende
+# locaties, geen perrons van dezelfde overstaphalte. Geverifieerd tegen de
+# volledige utrecht_stops.json: 62 namen matchen (allemaal echte
+# perroncodes van 9 verschillende stations/busstations), de 8 die niet
+# matchen zijn stuk voor stuk echte woorden (Oost/West/noord/zuid/hoog/
+# laag/Tak/Zuidzijde).
+_PLATFORM_SUFFIX_RE = re.compile(r"\s*\([A-Za-z]{1,2}\d{0,3}\)$")
+
+
+def _stop_group_name(name):
+    """Basisnaam van een halte zonder perron-/kant-suffix, voor het
+    groeperen van haltes die feitelijk dezelfde overstaplocatie zijn."""
+    return _PLATFORM_SUFFIX_RE.sub("", name)
 
 
 class Timetable:
@@ -68,8 +86,30 @@ class Timetable:
                 contains.append((stop_id, s))
         starts.sort(key=lambda x: x[1].get("name", ""))
         contains.sort(key=lambda x: x[1].get("name", ""))
-        results = (starts + contains)[:limit]
-        return [{"stop_id": sid, "name": s.get("name", ""), "lat": s.get("lat"), "lon": s.get("lon")}
+        ordered = starts + contains
+
+        # Meerdere stop_id's zijn vaak feitelijk dezelfde overstaphalte --
+        # losse perrons met exact dezelfde naam (bv. "Utrecht, CS
+        # Jaarbeurszijde" voor C1 t/m C10) of met de perronletter/-kant in de
+        # naam zelf (bv. "Utrecht, CS Jaarbeurszijde (C1)", "(C2)", ...) --
+        # zie _stop_group_name(). Zonder dedup leverde dat een zoekresultaat
+        # vol ogenschijnlijk identieke haltes op. Per groep blijft alleen het
+        # perron met de meeste geplande vertrekken over (grootste kans op
+        # een bruikbaar vertrekkenoverzicht) -- de rest van de perrons
+        # blijft gewoon bestaan, ze worden alleen niet los in de zoeklijst
+        # getoond, en het vertrekkenoverzicht toont daarna gewoon de precieze
+        # naam (incl. perronletter) van het gekozen perron. Een dict onthoudt
+        # insertievolgorde, dus starts-with-eerst blijft ook na het
+        # vervangen door een drukker perron behouden.
+        by_group = {}
+        for stop_id, s in ordered:
+            name = s.get("name", "")
+            group = _stop_group_name(name)
+            current = by_group.get(group)
+            if current is None or len(self.stop_times.get(stop_id, [])) > len(self.stop_times.get(current[0], [])):
+                by_group[group] = (stop_id, s)
+        results = list(by_group.values())[:limit]
+        return [{"stop_id": sid, "name": _stop_group_name(s.get("name", "")), "lat": s.get("lat"), "lon": s.get("lon")}
                 for sid, s in results]
 
     def active_service_ids(self, target_date: date):
