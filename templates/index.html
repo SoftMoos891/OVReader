@@ -1109,8 +1109,18 @@ async function refreshStopDepartures() {
     el.innerHTML = `<div class="stop-name">${data.stop.name}</div><div class="empty">Geen vertrekken binnen dit venster</div>`;
     return;
   }
+  // Deze halte kan meerdere perrons samenvoegen (zie next_departures() in
+  // app/timetable.py) -- d.platform is dan gevuld met de precieze naam van
+  // het perron waar dat specifieke vertrek vandaan gaat. Alleen een aparte
+  // kolom tonen als dat voor deze halte ook echt relevant is (single-
+  // perron haltes hebben altijd d.platform === null).
+  const showPlatform = data.departures.some(d => d.platform);
+  const platformCode = (name) => {
+    const m = name && name.match(/\(([A-Za-z]{1,2}\d{0,3})\)$/);
+    return m ? m[1] : name;
+  };
   el.innerHTML = `<div class="stop-name">${data.stop.name}</div>` +
-    '<table><tr><th>Lijn</th><th>Richting</th><th>Vertrek</th><th>Status</th></tr>' +
+    `<table><tr><th>Lijn</th><th>Richting</th>${showPlatform ? '<th>Perron</th>' : ''}<th>Vertrek</th><th>Status</th></tr>` +
     data.departures.map(d => {
       const status = d.delay_seconds === null
         ? '<span class="pill">op tijd</span>'
@@ -1119,6 +1129,7 @@ async function refreshStopDepartures() {
       return `<tr>
         <td>${d.short_name}</td>
         <td>${d.headsign || d.long_name || ''}</td>
+        ${showPlatform ? `<td>${d.platform ? platformCode(d.platform) : '—'}</td>` : ''}
         <td>${time}</td>
         <td>${status}</td>
       </tr>`;

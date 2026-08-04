@@ -52,6 +52,9 @@ class Timetable:
         # -- laad 'm onafhankelijk zodat de haltezoeker op naam altijd werkt,
         # ook als de nieuwere dienstregelingbestanden hieronder nog ontbreken.
         self.stops = json.loads(stops_path.read_text(encoding="utf-8")) if stops_path.exists() else {}
+        # Los van stop_times.json opbouwen (hangt alleen van self.stops af),
+        # anders bestaat dit attribuut niet als stop_times.json nog ontbreekt.
+        self._build_stop_groups()
 
         if not stop_times_path.exists():
             # Bestaande installaties hebben deze bestanden pas na een herbouw
@@ -69,6 +72,18 @@ class Timetable:
         self.trip_meta = json.loads(trip_meta_path.read_text(encoding="utf-8"))
         self.calendar = json.loads(calendar_path.read_text(encoding="utf-8"))
         self.loaded_at = time.time()
+
+    def _build_stop_groups(self):
+        """group_name (zie _stop_group_name) -> lijst van alle stop_id's die
+        tot die overstaphalte horen. Gebruikt door next_departures() om de
+        vertrekken van alle perrons samen te tellen -- search_stops() toont
+        maar één representatief perron per groep, maar de vertrekken moeten
+        wel van alle perrons samen komen, anders mis je lijnen die toevallig
+        niet van het drukste/gekozen perron vertrekken."""
+        self.stop_group_members = {}
+        for stop_id, s in self.stops.items():
+            group = _stop_group_name(s.get("name", ""))
+            self.stop_group_members.setdefault(group, []).append(stop_id)
 
     def search_stops(self, query, limit=25):
         """Zoekt haltes op (deel van de) naam, case-insensitive. Haltes waarvan
@@ -157,10 +172,15 @@ class Timetable:
             for r in rows
         }
 
-    def next_departures(self, stop_id, now_ts, window_minutes=90, limit=20):
-        entries = self.stop_times.get(stop_id, [])
-        if not entries:
-            return []
+    def next_departures(self, stop_id, now_ts, window_minutes=90, limit=30):
+        """Eerstvolgende vertrekken voor stop_id, geaggregeerd over alle
+        perrons van dezelfde overstaphalte (zie _build_stop_groups()) --
+        niet alleen het ene perron dat search_stops() als representant
+        koos. Zonder dit mistte je lijnen die toevallig niet vanaf dat ene
+        gekozen perron vertrekken, terwijl je op de gegroepeerde naam had
+        gezocht en dus de hele overstaphalte verwachtte."""
+        group = _stop_group_name(self.stops.get(stop_id, {}).get("name", ""))
+        member_ids = self.stop_group_members.get(group) or [stop_id]
 
         now_dt = datetime.fromtimestamp(now_ts)
         today = now_dt.date()
@@ -171,28 +191,62 @@ class Timetable:
             if not active:
                 continue
             midnight = datetime.combine(d, datetime.min.time())
-            for trip_id, _stop_sequence, time_str in entries:
-                meta = self.trip_meta.get(trip_id)
-                if not meta or meta.get("service_id") not in active:
-                    continue
-                seconds = _parse_gtfs_time(time_str)
-                if seconds is None:
-                    continue
-                scheduled_dt = midnight + timedelta(seconds=seconds)
-                candidates.append((scheduled_dt, trip_id, meta))
+            for member_id in member_ids:
+                for trip_id, _stop_sequence, time_str in self.stop_times.get(member_id, []):
+                    meta = self.trip_meta.get(trip_id)
+                    if not meta or meta.get("service_id") not in active:
+                        continue
+                    seconds = _parse_gtfs_time(time_str)
+                    if seconds is None:
+                        continue
+                    scheduled_dt = midnight + timedelta(seconds=seconds)
+                    candidates.append((scheduled_dt, trip_id, meta, member_id))
 
         window_start = now_dt - timedelta(minutes=1)  # kleine marge voor net-vertrokken bussen
         window_end = now_dt + timedelta(minutes=window_minutes)
         upcoming = [c for c in candidates if window_start <= c[0] <= window_end]
         upcoming.sort(key=lambda c: c[0])
-        upcoming = upcoming[:limit]
 
-        trip_ids = [c[1] for c in upcoming]
-        delay_by_trip = self._live_delay_by_trip(trip_ids, stop_id, now_ts)
+        # Bij een grote overstaphalte (veel perrons samen, bv. Utrecht CS
+        # Jaarbeurszijde: 270+ vertrekken binnen 90 min) zou puur
+        # chronologisch afkappen op limit de latere lijnen helemaal
+        # wegcijferen, ook al vertrekken ze wel degelijk binnen het venster
+        # -- exact het "ik mis nu lijnen"-probleem. Eerst de vroegste rit
+        # per lijn (line-diversiteit), dan de rest chronologisch aanvullen
+        # tot de limiet, en pas daarna weer op tijd sorteren voor weergave.
+        seen_routes = set()
+        priority, rest = [], []
+        for c in upcoming:
+            route_id = c[2].get("route_id")
+            if route_id not in seen_routes:
+                seen_routes.add(route_id)
+                priority.append(c)
+            else:
+                rest.append(c)
+        upcoming = (priority + rest)[:limit]
+        upcoming.sort(key=lambda c: c[0])
 
+        # Live vertraging is per (trip_id, stop_id) -- een trip stopt maar bij
+        # één specifiek perron, dus _live_delay_by_trip() blijft ongewijzigd
+        # (kent alleen een enkel stop_id), maar wordt nu per perron dat
+        # daadwerkelijk in upcoming voorkomt apart aangeroepen i.p.v. één
+        # keer voor het hele stop_id.
+        trip_ids_by_member = {}
+        for _dt, trip_id, _meta, member_id in upcoming:
+            trip_ids_by_member.setdefault(member_id, []).append(trip_id)
+        delay_by_trip_member = {}
+        for member_id, trip_ids in trip_ids_by_member.items():
+            for trip_id, delay in self._live_delay_by_trip(trip_ids, member_id, now_ts).items():
+                delay_by_trip_member[(trip_id, member_id)] = delay
+
+        # Sommige haltes hebben 2 stop_id's met exact dezelfde naam (bv. één
+        # paal per rijrichting) -- dan voegt een "perron"-kolom niets toe.
+        # Alleen tonen als de perrons ook echt van elkaar te onderscheiden
+        # zijn (verschillende namen, zoals de "(C1)".."(D5)"-suffixen).
+        multi_platform = len({self.stops.get(m, {}).get("name") for m in member_ids}) > 1
         results = []
-        for scheduled_dt, trip_id, meta in upcoming:
-            delay = delay_by_trip.get(trip_id)
+        for scheduled_dt, trip_id, meta, member_id in upcoming:
+            delay = delay_by_trip_member.get((trip_id, member_id))
             estimated_dt = scheduled_dt + timedelta(seconds=delay) if delay is not None else None
             results.append({
                 "trip_id": trip_id,
@@ -202,6 +256,10 @@ class Timetable:
                 "estimated_time": estimated_dt.strftime("%H:%M") if estimated_dt else None,
                 "delay_seconds": delay,
                 "is_live": delay is not None,
+                # Alleen ingevuld als de halte meerdere perrons heeft (anders
+                # overbodige info) -- laat zien vanaf welk exact perron een
+                # vertrek gaat, nu er meerdere door elkaar heen getoond worden.
+                "platform": self.stops.get(member_id, {}).get("name") if multi_platform else None,
             })
         return results
 
