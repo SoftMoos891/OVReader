@@ -136,10 +136,15 @@
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     box-shadow: var(--shadow-md); z-index: 1100; padding: 8px; max-height: 320px; overflow-y: auto;
   }
+  /* Vertrekkenoverzicht heeft met de Perron-kolom erbij 5 kolommen -- past
+     niet netjes in dezelfde 320px als het simpele zoekresultatenlijstje.
+     overflow-x als vangnet voor echt smalle schermen. */
+  #stop-departures { width: 480px; max-width: calc(100vw - 32px); overflow-x: auto; }
   #stop-results:empty, #stop-departures:empty { display: none; padding: 0; border: none; box-shadow: none; }
   .stop-result { padding: 6px 9px; font-size: 13px; border-radius: 6px; cursor: pointer; }
   .stop-result:hover { background: var(--panel2); }
-  #stop-departures table { width: 100%; }
+  #stop-departures table { width: 100%; font-size: 12px; }
+  #stop-departures th, #stop-departures td { padding: 5px 6px; white-space: nowrap; }
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
   /* Uitval/Punctualiteit per operator als twee losse kaarten naast elkaar
      i.p.v. één kaart met interne scheidingslijn -- dat laatste bleek in de
