@@ -103,8 +103,18 @@
   #filter-bar {
     display: flex; align-items: center; gap: 14px; margin: 16px 16px 0; padding: 12px 18px;
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-    box-shadow: var(--shadow-sm); flex-wrap: nowrap; overflow-x: auto; font-size: 13px;
+    box-shadow: var(--shadow-sm); font-size: 13px;
   }
+  /* Alleen dít stukje (checkboxes + lijnnummer-veld) scrollt horizontaal op
+     een smal scherm -- bewust NIET de hele #filter-bar, want dan zet de
+     browser (per CSS-spec: als overflow-x niet visible is, wordt overflow-y
+     dat ook, nooit visible) overflow-y ook op auto, en kapt dat het zwevende
+     zoekpaneel van #stop-search-box af zodra het buiten de balk uitsteekt.
+     Door de scroll-noodgreep hier te isoleren blijft #stop-search-box zelf
+     buiten een overflow-context, en kan #stop-results/#stop-departures
+     gewoon position:absolute zijn (blijft vanzelf bij het zoekveld,
+     scrollt gewoon mee met de pagina). */
+  #filter-scroll { display: flex; align-items: center; gap: 14px; overflow-x: auto; min-width: 0; }
   #filter-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
   #operator-filters { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
   #filter-bar input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
@@ -119,18 +129,14 @@
   #filter-bar #stop-search-input { width: 220px; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
         border-radius: 8px; padding: 7px 11px; font-size: 13px; }
   /* Zoekresultaten/vertrektijden zweven als los paneel onder het zoekveld,
-     over de kaart heen, i.p.v. de zijbalk te vullen -- nu het zoekveld zelf
-     in de filterbalk staat i.p.v. in een eigen sectie in de zijbalk.
-     position:fixed (i.p.v. absolute) is bewust: #filter-bar heeft
-     overflow-x:auto voor de horizontale scroll-noodgreep op smalle
-     schermen, en de CSS-spec zet overflow-y dan stiekem ook op auto (niet
-     visible) -- daardoor kapte #filter-bar dit paneel af zodra het buiten
-     de balk zelf uitstak. position:fixed ontsnapt aan die overflow-clip
-     van voorouders; top/left worden in JS gezet (zie positionStopDropdown()).
-     z-index ruim boven Leaflet's eigen 1000 (zie ook .modal-overlay), anders
-     schemert de kaart erdoorheen. */
+     over de kaart heen -- position:absolute t.o.v. #stop-search-box (zie
+     hierboven waarom #filter-bar zelf geen overflow meer heeft die dit zou
+     afkappen), dus blijft vanzelf op zijn plek bij scrollen. Sluit via
+     stopSearchBox-click-outside-listener verderop in de JS. z-index ruim
+     boven Leaflet's eigen 1000 (zie ook .modal-overlay), anders schemert de
+     kaart erdoorheen. */
   #stop-results, #stop-departures {
-    position: fixed; width: 320px;
+    position: absolute; top: 100%; left: 0; margin-top: 6px; width: 320px;
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     box-shadow: var(--shadow-md); z-index: 1100; padding: 8px; max-height: 320px; overflow-y: auto;
   }
@@ -209,9 +215,11 @@
 </div>
 
 <div id="filter-bar">
-  <span style="color:var(--muted);">Filter:</span>
-  <div id="operator-filters"></div>
-  <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
+  <div id="filter-scroll">
+    <span style="color:var(--muted);">Filter:</span>
+    <div id="operator-filters"></div>
+    <input type="text" id="line-filter" placeholder="Lijnnummer bevat...">
+  </div>
   <div id="stop-search-box">
     <input type="text" id="stop-search-input" placeholder="🔍 Zoek een halte op naam...">
     <div id="stop-results"></div>
@@ -1040,24 +1048,21 @@ document.getElementById('stop-search-input').addEventListener('input', (e) => {
   stopSearchDebounce = setTimeout(() => searchStops(q), 250);
 });
 
-// position:fixed plaatst t.o.v. het viewport, niet t.o.v. #stop-search-box
-// -- dus zelf de linker/onderkant van het zoekvak opzoeken en die coördinaten
-// meegeven. Wordt opnieuw berekend bij elke keer dat het paneel gaat tonen
-// (geen resize/scroll-listener nodig: het paneel is toch maar heel even
-// open, en de gebruiker scrollt/resized niet middenin een zoekopdracht).
-function positionStopDropdown() {
-  const rect = document.getElementById('stop-search-box').getBoundingClientRect();
-  for (const id of ['stop-results', 'stop-departures']) {
-    const el = document.getElementById(id);
-    el.style.left = `${rect.left}px`;
-    el.style.top = `${rect.bottom + 6}px`;
-  }
-}
+// Klik ergens buiten de zoekbox (kaart, zijbalk, knoppen) sluit het
+// zwevende paneel -- zonder dit bleef het onbeperkt open staan, met geen
+// enkele manier om het weg te klikken.
+document.addEventListener('click', (e) => {
+  const box = document.getElementById('stop-search-box');
+  if (box.contains(e.target)) return;
+  document.getElementById('stop-results').innerHTML = '';
+  document.getElementById('stop-departures').innerHTML = '';
+  selectedStopId = null;
+  if (stopMarker) { map.removeLayer(stopMarker); stopMarker = null; }
+});
 
 async function searchStops(q) {
   const resultsEl = document.getElementById('stop-results');
   if (!q) { resultsEl.innerHTML = ''; return; }
-  positionStopDropdown();
   const res = await fetch(`/api/stops?q=${encodeURIComponent(q)}`);
   const data = await res.json();
   if (data.stops.length === 0) {
@@ -1085,7 +1090,6 @@ async function selectStop(stopId, stopHint) {
 
 async function refreshStopDepartures() {
   if (!selectedStopId) return;
-  positionStopDropdown();
   const res = await fetch(`/api/stops/${encodeURIComponent(selectedStopId)}/departures`);
   const el = document.getElementById('stop-departures');
   if (!res.ok) {
