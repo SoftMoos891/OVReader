@@ -124,11 +124,14 @@
   #stop-departures { margin-top: 10px; overflow-x: auto; }
   #stop-departures table { width: 100%; }
   #stop-departures .stop-name { font-weight: 600; margin-bottom: 6px; }
+  .operator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .operator-grid h2 { margin-top: 0; }
 
   @media (max-width: 800px) {
     #layout { display: block; height: auto; }
     #map { height: 45vh; }
     #stats { overflow-y: visible; }
+    .operator-grid { grid-template-columns: 1fr; gap: 16px; }
   }
 </style>
 </head>
@@ -217,16 +220,18 @@
       <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alleen urgente situaties (ongeval, abnormale verkeersdrukte, obstakel op de weg) binnen de provincie Utrecht, via NDW (o.a. Rijkswaterstaat, provincie en gemeenten)</div>
       <div id="road-situations"><div class="empty">Laden...</div></div>
     </div>
-    <div class="section">
-      <h2>Punctualiteit per operator</h2>
-      <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
-      <div id="agency-stats"><div class="empty">Laden...</div></div>
-    </div>
   </div>
   <div id="stats">
-    <div class="section">
-      <h2>Uitval per operator (vandaag)</h2>
-      <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+    <div class="section operator-grid">
+      <div>
+        <h2>Uitval per operator (vandaag)</h2>
+        <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
+      </div>
+      <div>
+        <h2>Punctualiteit per operator</h2>
+        <div style="color:var(--muted); font-size:12px; margin:-8px 0 10px;">Alle historie sinds start collector, niet alleen vandaag</div>
+        <div id="agency-stats"><div class="empty">Laden...</div></div>
+      </div>
     </div>
     <div class="section">
       <h2>Punctualiteit per lijn</h2>
