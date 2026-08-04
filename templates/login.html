@@ -21,9 +21,9 @@
   }
   .theme-toggle-btn { position: fixed; top: 16px; right: 16px; }
   .login-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 32px 30px; width: 100%; max-width: 340px;
-    box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    box-shadow: var(--shadow-md);
   }
   .login-card .dvz-logo-badge { width: 44px; height: 44px; font-size: 13px; margin: 0 auto 14px; }
   .login-card h1 { font-size: 17px; margin: 0 0 4px; text-align: center; }
@@ -32,19 +32,21 @@
   .field label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
   .field input {
     width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 9px 11px; font-size: 14px; font-family: inherit;
+    border-radius: 8px; padding: 9px 11px; font-size: 14px; font-family: inherit;
+    transition: border-color .15s;
   }
   .field input:focus { outline: none; border-color: var(--accent); }
   .error {
-    background: var(--bad-bg); color: var(--bad); border-radius: 6px;
+    background: var(--bad-bg); color: var(--bad); border-radius: 8px;
     padding: 8px 11px; font-size: 13px; margin-bottom: 14px;
   }
   button[type=submit] {
     width: 100%; background: var(--accent); color: #fff; border: none;
-    border-radius: 6px; padding: 10px; font-size: 14px; font-weight: 600;
-    font-family: inherit; cursor: pointer; transition: background .15s;
+    border-radius: 9px; padding: 10px; font-size: 14px; font-weight: 600;
+    font-family: inherit; cursor: pointer; box-shadow: var(--shadow-sm);
+    transition: background .15s, box-shadow .15s;
   }
-  button[type=submit]:hover { background: var(--accent2); }
+  button[type=submit]:hover { background: var(--accent2); box-shadow: var(--shadow-md); }
 </style>
 </head>
 <body>

@@ -13,37 +13,41 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
-  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
-           align-items: center; gap: 14px; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0; }
+  header { padding: 12px 20px; display: flex;
+           align-items: center; gap: 14px; flex-wrap: wrap;
+           background: var(--panel); box-shadow: var(--shadow-sm); position: relative; z-index: 10; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
   header .sub { color: var(--muted); font-size: 13px; }
   header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
   main { padding: 20px; max-width: 1400px; margin: 0 auto; }
   .range-toggle { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
   .range-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
-               border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all .15s; }
+               border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all .15s; }
   .range-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
   .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
-  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 18px; margin-bottom: 20px; box-shadow: var(--shadow-sm); transition: box-shadow .15s; }
+  .panel:hover { box-shadow: var(--shadow-md); }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; font-weight: 700; }
   .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .panel-header h2 { margin: 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; cursor: pointer; user-select: none; white-space: nowrap; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em;
+       cursor: pointer; user-select: none; white-space: nowrap; }
   th:hover { color: var(--text); }
   th.sorted::after { content: ' \25BE'; }
   tr:hover td { background: var(--panel2); }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
   input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-        border-radius: 6px; padding: 5px 10px; font-size: 13px; }
+        border-radius: 8px; padding: 5px 10px; font-size: 13px; }
   .table-scroll { max-height: 420px; overflow-y: auto; }
   .records-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
-  .record-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+  .record-card { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius);
                  padding: 14px 16px; position: relative; overflow: hidden; }
   .record-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bad); }
   .record-card.good::before { background: var(--good); }
