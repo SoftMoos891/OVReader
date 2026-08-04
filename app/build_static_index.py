@@ -57,9 +57,15 @@ def log(msg):
 
 
 def download_gtfs_zip():
-    if GTFS_ZIP_PATH.exists():
-        log(f"Gebruik gecachte GTFS-zip ({GTFS_ZIP_PATH.stat().st_size / 1e6:.0f} MB)")
-        return
+    """Downloadt altijd een verse kopie -- de vorige versie sloeg dit over
+    zodra data/gtfs-nl.zip al bestond, wat een terugkerend "elke rit toont
+    'Onbekend'"-probleem veroorzaakte: een her-run van dit script schreef
+    dan wel verse output-JSON's weg (nieuwe bestandsdatum), maar baseerde
+    die op een oeroude gecachte zip waarvan de trip_id's allang niet meer
+    overeenkwamen met de live GTFS-RT-feed. Dat maakte de docstring hierboven
+    ("herhaal dit script periodiek") feitelijk een no-op na de allereerste
+    keer. Bandbreedte (~230 MB) is hier ondergeschikt aan correcte data --
+    dit script draait toch al maar incidenteel, niet in een strakke loop."""
     log("Download landelijke statische GTFS-feed (~230 MB)...")
     with requests.get(GTFS_ZIP_URL, stream=True, timeout=120) as r:
         r.raise_for_status()
