@@ -378,25 +378,69 @@ def rollup_completed_days():
         print(f"[collector] dag-rollup klaar (tot {day_end})")
 
 
+_CLEANUP_BATCH_SIZE = 50_000
+
+
+def _delete_batched(table, column, cutoff, batch_size=_CLEANUP_BATCH_SIZE):
+    """Verwijdert rijen met column < cutoff in stappen van batch_size, elk in
+    een eigen transactie/commit -- zelfde patroon als rollup_completed_days().
+
+    trip_delays/vehicle_positions groeien met RETENTION_DAYS=7 dagen aan
+    metingen per 30s (tientallen miljoenen rijen) en dragen samen meerdere
+    GB's aan indexen. Eén ongebatchte DELETE over de hele achterstand hield
+    op 7 aug de schrijflock minutenlang vast, waardoor collect_once() (elke
+    30s) stukliep op "database is locked" -- de collector-service stond
+    daardoor 38 minuten stil voor uitvalcijfers bijwerkten. Door na elke
+    batch te committen duurt een schrijflock-venster hooguit zo lang als een
+    batch kost, en kan een onderbroken opschoning altijd verder gaan waar
+    hij gebleven was.
+
+    Gebruikt id IN (SELECT id ... LIMIT ?) in plaats van DELETE ... LIMIT,
+    want die laatste vereist een SQLite-build met SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+    die hier niet aanwezig is. table/column komen alleen uit code, nooit uit
+    gebruikersinvoer."""
+    while True:
+        conn = db.get_conn()
+        try:
+            cur = conn.execute(
+                f"DELETE FROM {table} WHERE id IN (SELECT id FROM {table} WHERE {column} < ? LIMIT ?)",
+                (cutoff, batch_size),
+            )
+            deleted = cur.rowcount
+            conn.commit()
+        finally:
+            conn.close()
+        if deleted < batch_size:
+            return
+
+
 def cleanup_old_data():
     """Verwijdert ruwe metingen ouder dan RETENTION_DAYS. De dagstatistieken
     zijn hier al opgeteld door rollup_completed_days(), dus er hoeft hier
     geen aggregatie meer te gebeuren -- alleen een veilige delete, nooit
     voorbij de rollup_watermark (om te voorkomen dat nog niet opgetelde
-    ruwe data verdwijnt)."""
+    ruwe data verdwijnt).
+
+    trip_delays/vehicle_positions worden gebatcht verwijderd (zie
+    _delete_batched); de kleinere geschiedenistabellen (per service_date,
+    dus laag volume) blijven in één transactie."""
     cutoff = _now() - RETENTION_DAYS * 86400
     conn = db.get_conn()
     try:
         row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
         watermark = row["rolled_through_epoch"] if row else 0
         safe_cutoff = min(cutoff, watermark)
+    finally:
+        conn.close()
 
-        conn.execute("DELETE FROM trip_delays WHERE fetched_at < ?", (safe_cutoff,))
-        conn.execute("DELETE FROM vehicle_positions WHERE fetched_at < ?", (cutoff,))
+    _delete_batched("trip_delays", "fetched_at", safe_cutoff)
+    _delete_batched("vehicle_positions", "fetched_at", cutoff)
 
-        history_cutoff_date = time.strftime(
-            "%Y-%m-%d", time.localtime(_now() - CANCELLATION_HISTORY_RETENTION_DAYS * 86400)
-        )
+    history_cutoff_date = time.strftime(
+        "%Y-%m-%d", time.localtime(_now() - CANCELLATION_HISTORY_RETENTION_DAYS * 86400)
+    )
+    conn = db.get_conn()
+    try:
         conn.execute("DELETE FROM trip_cancellations WHERE service_date < ?", (history_cutoff_date,))
         conn.execute("DELETE FROM trips_ran_daily WHERE service_date < ?", (history_cutoff_date,))
         conn.execute("DELETE FROM skipped_stops WHERE service_date < ?", (history_cutoff_date,))
