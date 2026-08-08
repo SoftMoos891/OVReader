@@ -318,6 +318,7 @@ legend.onAdd = function () {
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--muted);margin-right:6px;"></span>Onbekend</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;margin-right:6px;"></span>Probleem bij halte</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgent probleem bij halte</div>
   `;
   return div;
 };
@@ -675,11 +676,12 @@ function fmtRoadValidity(s) {
   return '';
 }
 
-function closedStopIcon() {
+function closedStopIcon(severe) {
+  const color = severe ? '#d6006c' : '#475569';
   return L.divIcon({
     className: '',
     html: `<div style="position:relative; transform:translate(-11px, -11px);">
-             <div class="bus-badge" style="background:#475569; width:22px; height:22px; border-radius:50%;">❗</div>
+             <div class="bus-badge" style="background:${color}; width:22px; height:22px; border-radius:50%;">❗</div>
            </div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
@@ -696,16 +698,19 @@ async function refreshAlerts() {
   for (const a of data.alerts) {
     if (a.valid_from && a.valid_from > nowSec) continue;
     if (a.valid_until && a.valid_until < nowSec) continue;
+    const severe = !!severeAlertLabel(a);
     for (const s of (a.stops || [])) {
       if (s.lat == null || s.lon == null) continue;
-      if (!closedStops.has(s.stop_id)) closedStops.set(s.stop_id, { ...s, reasons: [] });
-      closedStops.get(s.stop_id).reasons.push(a.header || a.description || effectLabel(a.effect));
+      if (!closedStops.has(s.stop_id)) closedStops.set(s.stop_id, { ...s, reasons: [], severe: false });
+      const entry = closedStops.get(s.stop_id);
+      entry.reasons.push(a.header || a.description || effectLabel(a.effect));
+      if (severe) entry.severe = true;
     }
   }
   for (const s of closedStops.values()) {
     const reasons = s.reasons.map(r => `<div>${r}</div>`).join('');
-    L.marker([s.lat, s.lon], { icon: closedStopIcon() })
-      .bindPopup(`<b>Probleem: ${s.name}</b>${reasons}`)
+    L.marker([s.lat, s.lon], { icon: closedStopIcon(s.severe) })
+      .bindPopup(`<b>${s.severe ? 'Urgent probleem' : 'Probleem'}: ${s.name}</b>${reasons}`)
       .addTo(closedStopsLayer);
   }
 
