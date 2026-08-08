@@ -317,7 +317,7 @@ legend.onAdd = function () {
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--early);margin-right:6px;"></span>Te vroeg (&gt;2 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--muted);margin-right:6px;"></span>Onbekend</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
-    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;margin-right:6px;"></span>Halte vervalt</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;margin-right:6px;"></span>Probleem bij halte</div>
   `;
   return div;
 };
@@ -679,7 +679,7 @@ function closedStopIcon() {
   return L.divIcon({
     className: '',
     html: `<div style="position:relative; transform:translate(-11px, -11px);">
-             <div class="bus-badge" style="background:#475569; width:22px; height:22px; border-radius:50%;">🚫</div>
+             <div class="bus-badge" style="background:#475569; width:22px; height:22px; border-radius:50%;">❗</div>
            </div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
@@ -705,7 +705,7 @@ async function refreshAlerts() {
   for (const s of closedStops.values()) {
     const reasons = s.reasons.map(r => `<div>${r}</div>`).join('');
     L.marker([s.lat, s.lon], { icon: closedStopIcon() })
-      .bindPopup(`<b>Halte vervalt: ${s.name}</b>${reasons}`)
+      .bindPopup(`<b>Probleem: ${s.name}</b>${reasons}`)
       .addTo(closedStopsLayer);
   }
 
