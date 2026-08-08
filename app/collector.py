@@ -773,7 +773,9 @@ def fetch_knmi_warnings_job():
     (zie knmi_warnings.py) en vervangt de knmi_warnings-tabel volledig --
     dit is een huidige-status-snapshot (max 7 fenomenen), geen groeiende
     log zoals rail_alerts/road_situations, dus geen active/inactive-
-    boekhouding nodig: gewoon DELETE + INSERT.
+    boekhouding nodig: gewoon DELETE + INSERT. Code geel/oranje/rood komt
+    daarnaast ook in de RSS-feed terecht (rss_feed_items, kind='knmi_warning'),
+    zie de logica hieronder vóór de DELETE.
 
     Het bronbestand is ~2-3 MB en verandert maar een paar keer per dag, dus
     elke 30 minuten is ruim actueel genoeg en scheelt onnodige downloads.
@@ -787,6 +789,36 @@ def fetch_knmi_warnings_job():
     conn = db.get_conn()
     try:
         warnings = fetch_utrecht_warnings(api_key)
+
+        # Permanente RSS-melding bij code geel/oranje/rood, zelfde log-i.p.v.-
+        # live-status-redenering als bij de andere bronnen hierboven -- ook al
+        # is knmi_warnings zelf een snapshot-tabel (DELETE+INSERT hieronder,
+        # geen first_seen/active-boekhouding). De kleur zit in de guid
+        # (knmi-warning-<fenomeen>-<kleur>) zodat een verergering (geel ->
+        # oranje) als nieuwe melding verschijnt, maar een ongewijzigde
+        # waarschuwing niet elke 30 min opnieuw wordt gemeld (INSERT OR
+        # IGNORE). Zodra een fenomeen niet meer met die exacte kleur
+        # voorkomt (voorbij, of verergerd/verzwakt naar een andere kleur)
+        # wordt de bijbehorende melding als 'voorbij' gemarkeerd.
+        active_guids = set()
+        for w in warnings:
+            guid = f"knmi-warning-{w['phenomenon_id']}-{w['color']}"
+            active_guids.add(guid)
+            title = f"Weerwaarschuwing: code {w['color_label'].lower()} ({w['phenomenon_label']})"
+            description = f"{w['description'] or w['header'] or w['phenomenon_label']} Klik hier voor meer data.".strip()
+            conn.execute(
+                """INSERT OR IGNORE INTO rss_feed_items
+                   (guid, kind, title, description, pub_date, created_at)
+                   VALUES (:guid, 'knmi_warning', :title, :description, :now, :now)""",
+                {"guid": guid, "title": title, "description": description, "now": fetched_at},
+            )
+        open_rows = conn.execute(
+            "SELECT guid FROM rss_feed_items WHERE kind='knmi_warning' AND resolved_at IS NULL"
+        ).fetchall()
+        for r in open_rows:
+            if r["guid"] not in active_guids:
+                _mark_rss_item_resolved(conn, r["guid"], fetched_at)
+
         conn.execute("DELETE FROM knmi_warnings")
         for w in warnings:
             conn.execute(

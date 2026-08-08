@@ -36,6 +36,7 @@
   .pill.rail_alert { background: var(--warn-bg); color: var(--warn); }
   .pill.bus_alert { background: var(--bad-bg); color: var(--bad); }
   .pill.road_situation { background: var(--bad-bg); color: var(--bad); }
+  .pill.knmi_warning { background: var(--warn-bg); color: var(--warn); }
   .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
   .kpi-box { background: var(--panel2); border-radius: var(--radius);
              padding: 14px 20px; min-width: 130px; }
@@ -58,7 +59,7 @@
 <header>
   <a href="https://ovreader.dvznet.nl/lite" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
   <h1>Storingsgeschiedenis</h1>
-  <span class="sub">Log van uitval-signaleringen, NS-storingen en ernstige U-OV-meldingen — dezelfde inhoud als de RSS-feed</span>
+  <span class="sub">Log van uitval-signaleringen, NS-storingen, ernstige U-OV-meldingen, wegsituaties en weerwaarschuwingen — dezelfde inhoud als de RSS-feed</span>
   <a href="/lite" class="nav-btn push-right">&larr; Actueel</a>
   <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 </header>
@@ -75,6 +76,7 @@
       <button class="filter-btn" data-kind="rail_alert">NS-storing</button>
       <button class="filter-btn" data-kind="bus_alert">U-OV-melding</button>
       <button class="filter-btn" data-kind="road_situation">Wegsituatie</button>
+      <button class="filter-btn" data-kind="knmi_warning">Weerwaarschuwing</button>
     </div>
     <div id="history"><div class="empty">Laden...</div></div>
   </div>
@@ -92,6 +94,7 @@ function toggleDarkMode() {
 
 const KIND_LABELS = {
   cancellation: 'Uitval', rail_alert: 'NS-storing', bus_alert: 'U-OV-melding', road_situation: 'Wegsituatie',
+  knmi_warning: 'Weerwaarschuwing',
 };
 
 function fmtDateTime(ts) {

@@ -120,13 +120,14 @@ def lite_geschiedenis():
 
 # Mensleesbare labels voor rss_feed_items.kind (zie collector.py:
 # check_cancellation_alerts_job()/fetch_rail_alerts_job()/fetch_road_situations_job()/
-# de alerts-sync in collect_once() -- dit zijn de vier 'kind'-waarden die
-# worden weggeschreven).
+# fetch_knmi_warnings_job()/de alerts-sync in collect_once() -- dit zijn de
+# vijf 'kind'-waarden die worden weggeschreven).
 _HISTORY_KIND_LABELS = {
     "cancellation": "Uitval",
     "rail_alert": "NS-storing",
     "bus_alert": "U-OV-melding",
     "road_situation": "Wegsituatie",
+    "knmi_warning": "Weerwaarschuwing",
 }
 HISTORY_ITEM_LIMIT = 200
 
@@ -138,8 +139,9 @@ def lite_api_geschiedenis():
     Iets ruimer gelimiteerd dan de feed zelf (die is bewust compact
     gehouden) -- dit is een geschiedenispagina, geen actuele feed.
 
-    Optioneel ?kind=cancellation/rail_alert/bus_alert/road_situation om tot
-    één soort te beperken (voor het filter op de pagina zelf).
+    Optioneel ?kind=cancellation/rail_alert/bus_alert/road_situation/
+    knmi_warning om tot één soort te beperken (voor het filter op de pagina
+    zelf).
 
     'today_by_kind' telt, ongeacht het filter, hoeveel items er sinds
     middernacht (lokale tijd) zijn bijgekomen per soort -- voor de
@@ -547,17 +549,20 @@ RSS_FEED_ITEM_LIMIT = 100
 
 @app.route("/lite/rss.xml")
 def lite_rss_uitval():
-    """RSS-feed met de geschiedenis van drie soorten meldingen, allemaal
+    """RSS-feed met de geschiedenis van vijf soorten meldingen, allemaal
     linkend naar de lite-pagina: uitval boven CANCELLATION_ALERT_THRESHOLD_PCT
-    per vervoerder, nieuwe NS-spoorstoringen (provincie Utrecht), en ernstige
+    per vervoerder, nieuwe NS-spoorstoringen (provincie Utrecht), ernstige
     U-OV-meldingen (bus/tram -- zelfde ernst-detectie als de rode badge op
-    het dashboard, zie _is_severe_alert() in collector.py). Alle drie worden
-    vastgelegd door de collector zodra ze zich voordoen (zie
-    check_cancellation_alerts_job()/fetch_rail_alerts_job()/de alerts-sync in
-    collect_once(), allemaal in collector.py) en blijven daarna in de feed
-    staan -- dit is bewust een LOG van gebeurtenissen, geen weerspiegeling
-    van de actuele live-status. Een melding verdwijnt dus niet vanzelf zodra
-    de situatie weer normaal is."""
+    het dashboard, zie _is_severe_alert() in collector.py), urgente
+    wegsituaties, en KNMI-weerwaarschuwingen code geel/oranje/rood voor
+    provincie Utrecht. Alle vijf worden vastgelegd door de collector zodra
+    ze zich voordoen (zie check_cancellation_alerts_job()/
+    fetch_rail_alerts_job()/fetch_road_situations_job()/
+    fetch_knmi_warnings_job()/de alerts-sync in collect_once(), allemaal in
+    collector.py) en blijven daarna in de feed staan -- dit is bewust een
+    LOG van gebeurtenissen, geen weerspiegeling van de actuele live-status.
+    Een melding verdwijnt dus niet vanzelf zodra de situatie weer normaal
+    is."""
     conn = db.get_conn()
     try:
         rows = conn.execute(
@@ -587,7 +592,7 @@ def lite_rss_uitval():
   <channel>
     <title>OV Utrecht - Storingen en uitval-signalering</title>
     <link>{xml_escape(LITE_BASE_URL)}</link>
-    <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, bij nieuwe NS-storingen op het spoor in de provincie Utrecht, en bij ernstige U-OV-meldingen (bus/tram).</description>
+    <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, bij nieuwe NS-storingen op het spoor in de provincie Utrecht, bij ernstige U-OV-meldingen (bus/tram), bij urgente wegsituaties, en bij KNMI-weerwaarschuwingen (code geel/oranje/rood) voor de provincie Utrecht.</description>
     <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}
   </channel>
 </rss>"""
