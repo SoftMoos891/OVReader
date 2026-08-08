@@ -231,7 +231,10 @@ def collect_once():
                 # melding zelf weer inactief wordt.
                 if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at):
                     title = f"Melding U-OV: {a['header'] or (a['description'] or '')[:80] or 'zie details'}"
-                    description = f"{a['description'] or a['header'] or ''} Klik hier voor meer data.".strip()
+                    description = f"{a['description'] or a['header'] or ''}".strip()
+                    if a["stop_ids"]:
+                        description += f" Aantal betrokken haltes: {len(a['stop_ids'])}."
+                    description += " Klik hier voor meer data."
                     conn.execute(
                         """INSERT OR IGNORE INTO rss_feed_items
                            (guid, kind, title, description, pub_date, created_at)
