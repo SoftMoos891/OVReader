@@ -68,6 +68,19 @@ RSS_ROAD_TYPES = {"Accident", "AbnormalTraffic"}
 # nooit urgent en nooit een RSS-melding, ongeacht het record_type.
 NEGLIGIBLE_SEVERITY = "lowest"
 
+# Demonstraties komen in de NDW-feed vrijwel altijd binnen met een op zich
+# onschuldig record_type (in de praktijk RoadOrCarriagewayOrLaneManagement,
+# "Wegwerkzaamheden") terwijl een demonstratie wel degelijk tot afsluitingen/
+# omleidingen kan leiden -- op verzoek daarom altijd urgent, los van
+# record_type, via het cause-veld (zie ovreader_road_situations_cause_gap
+# memory: dit veld werd al geparsed/getoond, maar telde nog niet mee in de
+# urgentie-logica).
+DEMONSTRATION_CAUSE = "demonstratie"
+
+
+def is_demonstration(cause):
+    return bool(cause) and DEMONSTRATION_CAUSE in cause.lower()
+
 
 def _load_utrecht_rings():
     geojson = json.loads((DATA_DIR / "provincies.geojson").read_text(encoding="utf-8"))

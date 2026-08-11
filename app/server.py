@@ -19,7 +19,7 @@ from flask import (
 from . import db, records
 from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
-from .road_situations import NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
+from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
 from .timetable import Timetable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -542,19 +542,24 @@ def api_road_situations():
     /api/alerts (zie app/road_situations.py). Publieke, sleutelloze bron (NDW), dus altijd
     actief -- niet afhankelijk van een env var zoals NS_API_KEY.
 
-    Alleen de urgente typen (zie SEVERE_ROAD_TYPES in road_situations.py),
-    en nooit ernst "gering" (NEGLIGIBLE_SEVERITY) -- op verzoek. De collector
-    bewaart wel alle situaties -- de rest is vrijwel altijd langlopende
-    wegwerkzaamheden/omleidingen die de lijst zouden overspoelen zonder iets
-    te zeggen over de actuele situatie."""
+    Alleen de urgente typen (zie SEVERE_ROAD_TYPES in road_situations.py) en
+    nooit ernst "gering" (NEGLIGIBLE_SEVERITY) -- op verzoek. Demonstraties
+    (cause-veld, zie DEMONSTRATION_CAUSE) tellen altijd als urgent, ook bij
+    ernst "gering" -- NDW tagt demonstraties in de praktijk zelf met severity
+    "lowest" terwijl ze wel degelijk tot afsluitingen kunnen leiden, dus de
+    gering-uitsluiting zou de demonstratie-uitzondering anders zinloos maken.
+    De collector bewaart wel alle situaties -- de rest is vrijwel altijd
+    langlopende wegwerkzaamheden/omleidingen die de lijst zouden overspoelen
+    zonder iets te zeggen over de actuele situatie."""
     types = tuple(sorted(SEVERE_ROAD_TYPES))
     conn = db.get_conn()
     try:
         rows = conn.execute(
             "SELECT * FROM road_situations WHERE active=1 "
-            f"AND record_type IN ({','.join('?' * len(types))}) "
-            "AND (severity IS NULL OR severity != ?) ORDER BY first_seen DESC",
-            types + (NEGLIGIBLE_SEVERITY,),
+            f"AND ((record_type IN ({','.join('?' * len(types))}) "
+            "AND (severity IS NULL OR severity != ?)) OR cause LIKE '%' || ? || '%') "
+            "ORDER BY first_seen DESC",
+            types + (NEGLIGIBLE_SEVERITY, DEMONSTRATION_CAUSE),
         ).fetchall()
     finally:
         conn.close()

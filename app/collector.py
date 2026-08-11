@@ -17,7 +17,12 @@ from .knmi_warnings import fetch_utrecht_warnings
 from .knmi_weather import fetch_de_bilt_weather
 from .luchtkwaliteit import fetch_air_quality
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
-from .road_situations import NEGLIGIBLE_SEVERITY, RSS_ROAD_TYPES, fetch_utrecht_road_situations
+from .road_situations import (
+    NEGLIGIBLE_SEVERITY,
+    RSS_ROAD_TYPES,
+    fetch_utrecht_road_situations,
+    is_demonstration,
+)
 
 FETCH_INTERVAL_SECONDS = 30
 # Hoe lang trip_delays/vehicle_positions als RUWE (per-halte/per-fetch) rijen
@@ -694,7 +699,13 @@ def fetch_road_situations_job():
             # Permanente RSS-melding, alleen voor de echt urgente typen (een
             # wegwerkzaamheid met maandenlange geldigheid is geen incident),
             # en niet bij ernst "gering" (NEGLIGIBLE_SEVERITY) -- op verzoek.
-            if s["record_type"] in RSS_ROAD_TYPES and s["severity"] != NEGLIGIBLE_SEVERITY:
+            # Een demonstratie (cause-veld) telt altijd als urgent, ook bij
+            # ernst "gering" -- NDW tagt demonstraties zelf vaak met severity
+            # "lowest", dus zonder deze uitzondering zou de RSS-melding er
+            # nooit voor komen.
+            if (s["record_type"] in RSS_ROAD_TYPES and s["severity"] != NEGLIGIBLE_SEVERITY) or is_demonstration(
+                s["cause"]
+            ):
                 # Wegnummer + plaatsaanduiding vooraan: zonder die context zegt
                 # "Ongeval" in een feedlezer weinig.
                 where = " ".join(p for p in (s["road_number"], s["road_location"]) if p)

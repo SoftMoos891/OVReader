@@ -27,7 +27,7 @@ from flask import Flask, Response, jsonify, render_template, request
 from . import db
 from .collector import FETCH_INTERVAL_SECONDS
 from .concession_mapping import TRANSDEV_TRAM
-from .road_situations import NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
+from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -308,16 +308,19 @@ def lite_api_rail_alerts():
 def lite_api_road_situations():
     """Zelfde vorm als het volledige /api/road-situations in app/server.py --
     actuele wegsituaties (NDW open data -- RWS-snelwegen, provinciale en
-    lokale wegen) binnen de provincie Utrecht, beperkt tot de urgente
-    typen (zie aldaar) en nooit ernst "gering" (NEGLIGIBLE_SEVERITY)."""
+    lokale wegen) binnen de provincie Utrecht, beperkt tot de urgente typen
+    (zie aldaar) en nooit ernst "gering" (NEGLIGIBLE_SEVERITY). Demonstraties
+    (cause-veld, zie DEMONSTRATION_CAUSE) tellen altijd als urgent, ook bij
+    ernst "gering" -- zie toelichting in server.py."""
     types = tuple(sorted(SEVERE_ROAD_TYPES))
     conn = db.get_conn()
     try:
         rows = conn.execute(
             "SELECT * FROM road_situations WHERE active=1 "
-            f"AND record_type IN ({','.join('?' * len(types))}) "
-            "AND (severity IS NULL OR severity != ?) ORDER BY first_seen DESC",
-            types + (NEGLIGIBLE_SEVERITY,),
+            f"AND ((record_type IN ({','.join('?' * len(types))}) "
+            "AND (severity IS NULL OR severity != ?)) OR cause LIKE '%' || ? || '%') "
+            "ORDER BY first_seen DESC",
+            types + (NEGLIGIBLE_SEVERITY, DEMONSTRATION_CAUSE),
         ).fetchall()
     finally:
         conn.close()
