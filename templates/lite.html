@@ -567,7 +567,13 @@ async function refreshWeatherWarnings() {
     : data.warnings.map(w => {
         const style = KNMI_COLOR_STYLES[w.color] || '';
         const badge = `<span class="pill" style="${style}">${w.color_label}</span>`;
-        const notYetBadge = w.is_current ? '' : ` <span class="pill" style="background:transparent; border:1.5px dashed ${KNMI_BORDER_COLORS[w.color] || '#999'};">nog niet actief</span>`;
+        // .alert .hdr .pill dwingt elders een rode achtergrond + witte tekst af
+        // (voor de urgente wegsituatie-pillen) -- zonder expliciete
+        // background/color hierop zou "nog niet actief" onleesbaar wit-op-wit
+        // (of wit-op-transparant) worden. var(--panel) i.p.v. var(--panel2)
+        // (de kleur van de omringende .alert-kaart) geeft ook nog wat contrast
+        // met de kaart zelf.
+        const notYetBadge = w.is_current ? '' : ` <span class="pill" style="background:var(--panel); color:var(--text); border:1.5px dashed ${KNMI_BORDER_COLORS[w.color] || '#999'};">nog niet actief</span>`;
         const worst = w.worst_at !== w.active_from ? ` &middot; ergst rond ${fmtWarningTime(w.worst_at)}` : '';
         const vanafLabel = w.is_current ? 'Sinds' : 'Vanaf';
         return `
