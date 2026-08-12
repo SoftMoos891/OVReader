@@ -358,6 +358,10 @@ def lite_api_weather_warnings():
         ).fetchall()
     finally:
         conn.close()
+    # Zelfde reden als in app/server.py: is_current per request herberekenen
+    # i.p.v. bij de fetch opslaan, anders loopt een waarschuwing die pas om
+    # bv. 09:00 morgen ingaat tot 30 minuten achter op de klok.
+    now = datetime.now(timezone.utc)
     warnings = [
         {
             "phenomenon_id": r["phenomenon_id"],
@@ -365,6 +369,7 @@ def lite_api_weather_warnings():
             "color": r["color"],
             "color_label": r["color_label"],
             "active_from": r["active_from"],
+            "is_current": datetime.fromisoformat(r["active_from"]) <= now,
             "worst_at": r["worst_at"],
             "header": r["header"],
             "description": r["description"],

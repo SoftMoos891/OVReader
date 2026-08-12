@@ -189,7 +189,7 @@
     <a href="/uitval" class="nav-btn">🚫 Uitvalcijfers &rarr;</a>
     <a href="/lite" class="nav-btn">📱 Lite-versie &rarr;</a>
     <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
-      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span><span class="lki-badge" id="lkiDot" style="display:none;" title="Luchtkwaliteit">Lucht</span>
+      <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span><span class="lki-badge" id="knmiUpcomingDot" style="display:none;">⏳</span><span class="lki-badge" id="lkiDot" style="display:none;" title="Luchtkwaliteit">Lucht</span>
     </button>
     <a class="status-btn" href="/logout" title="Uitloggen">Uitloggen</a>
     <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
@@ -847,6 +847,10 @@ const KNMI_COLOR_STYLES = {
   ORANGE: 'background:#ff8c00; color:#fff;',
   RED: 'background:#e60000; color:#fff;',
 };
+// Stipje voor een waarschuwing die nog niet actief is (bv. code geel vanaf
+// morgen 09:00) -- gestippelde rand i.p.v. volle vlakkleur, zodat "komt
+// eraan" nooit met "is nu actief" te verwarren is.
+const KNMI_BORDER_COLORS = { YELLOW: '#ffd500', ORANGE: '#ff8c00', RED: '#e60000' };
 const KNMI_BUTTON_STYLES = {
   GREEN:  'background:#16a34a; border-color:#16a34a; color:#fff;',
   YELLOW: 'background:#ffd500; border-color:#ffd500; color:#000;',
@@ -862,10 +866,20 @@ function weatherIcon(cloudOkta) {
   return '☁️';
 }
 
+// "vandaag/morgen/wo 09:00" i.p.v. alleen een weekdag-afkorting, zodat een
+// tijdstip in de (nabije) toekomst niet aanvoelt als "nu" -- vooral van
+// belang bij weerwaarschuwingen die soms al ruim van tevoren gepubliceerd
+// worden (zie active_from in app/knmi_warnings.py).
 function fmtWarningTime(iso) {
-  return new Date(iso).toLocaleString('nl-NL', {
-    weekday: 'short', hour: '2-digit', minute: '2-digit',
-  });
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const diffDays = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+  const time = d.toLocaleString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  if (diffDays === 0) return `vandaag ${time}`;
+  if (diffDays === 1) return `morgen ${time}`;
+  const weekday = d.toLocaleString('nl-NL', { weekday: 'short' });
+  return `${weekday} ${time}`;
 }
 
 function openWeatherModal() {
@@ -931,11 +945,27 @@ async function refreshWeatherWarnings() {
   const btn = document.getElementById('weatherBtn');
   const icon = document.getElementById('weatherIcon');
   const label = document.getElementById('weatherLabel');
-  const color = data.count === 0 ? 'GREEN' : (data.warnings[0].color || 'GREEN');
+  // De knopkleur/label mag alleen de nu al geldende waarschuwingen volgen --
+  // data.warnings bevat ook waarschuwingen die pas later ingaan (bv. code
+  // geel vanaf morgen 09:00, zie is_current in app/server.py), en die mogen
+  // niet lijken alsof ze al actief zijn.
+  const currentWarnings = data.warnings.filter(x => x.is_current);
+  const upcomingWarnings = data.warnings.filter(x => !x.is_current);
+  const color = currentWarnings.length === 0 ? 'GREEN' : (currentWarnings[0].color || 'GREEN');
   icon.textContent = weatherIcon(w ? w.cloud_cover_okta : null);
   const codeLabel = KNMI_CODE_LABELS[color] || KNMI_CODE_LABELS.GREEN;
   label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
   btn.style.cssText = KNMI_BUTTON_STYLES[color] || KNMI_BUTTON_STYLES.GREEN;
+
+  const upcomingDot = document.getElementById('knmiUpcomingDot');
+  if (upcomingWarnings.length > 0) {
+    const next = upcomingWarnings[0];
+    const borderColor = KNMI_BORDER_COLORS[next.color] || '#999';
+    upcomingDot.style.cssText = `display:inline-flex; background:transparent; border:1.5px dashed ${borderColor}; color:var(--text);`;
+    upcomingDot.title = `${next.color_label} vanaf ${fmtWarningTime(next.active_from)} (${next.phenomenon_label}) -- nog niet actief`;
+  } else {
+    upcomingDot.style.display = 'none';
+  }
 
   const aq = airData.air_quality;
   const lkiDot = document.getElementById('lkiDot');
@@ -952,12 +982,14 @@ async function refreshWeatherWarnings() {
     : data.warnings.map(w => {
         const style = KNMI_COLOR_STYLES[w.color] || '';
         const badge = `<span class="pill" style="${style}">${w.color_label}</span>`;
+        const notYetBadge = w.is_current ? '' : ` <span class="pill" style="background:transparent; border:1.5px dashed ${KNMI_BORDER_COLORS[w.color] || '#999'};">nog niet actief</span>`;
         const worst = w.worst_at !== w.active_from ? ` &middot; ergst rond ${fmtWarningTime(w.worst_at)}` : '';
+        const vanafLabel = w.is_current ? 'Sinds' : 'Vanaf';
         return `
         <div class="alert ${w.color === 'RED' ? 'severe' : ''}">
-          <div class="hdr">${badge}${w.phenomenon_label}${w.header ? `: ${w.header}` : ''}</div>
+          <div class="hdr">${badge}${notYetBadge}${w.phenomenon_label}${w.header ? `: ${w.header}` : ''}</div>
           <div>${w.description || ''}</div>
-          <div class="routes">Vanaf ${fmtWarningTime(w.active_from)}${worst}</div>
+          <div class="routes">${vanafLabel} ${fmtWarningTime(w.active_from)}${worst}</div>
         </div>`;
       }).join('');
   body.innerHTML = `${weatherSummaryHtml(w)}${warningsHtml}${airQualityHtml(airData.air_quality)}`;

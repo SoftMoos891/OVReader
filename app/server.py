@@ -7,7 +7,7 @@ import json
 import os
 import time
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from datetime import time as dtime
 from pathlib import Path
 
@@ -598,6 +598,12 @@ def api_weather_warnings():
         ).fetchall()
     finally:
         conn.close()
+    # is_current wordt hier bij elke request opnieuw bepaald (i.p.v. eenmalig
+    # bij de collector-fetch opgeslagen) zodat een waarschuwing die pas om
+    # bv. 09:00 morgen ingaat niet als "code geel" wordt getoond zolang het
+    # nog niet zover is -- anders zou dat tot 30 minuten (de fetch-cyclus)
+    # achterlopen op de klok.
+    now = datetime.now(timezone.utc)
     warnings = [
         {
             "phenomenon_id": r["phenomenon_id"],
@@ -605,6 +611,7 @@ def api_weather_warnings():
             "color": r["color"],
             "color_label": r["color_label"],
             "active_from": r["active_from"],
+            "is_current": datetime.fromisoformat(r["active_from"]) <= now,
             "worst_at": r["worst_at"],
             "header": r["header"],
             "description": r["description"],

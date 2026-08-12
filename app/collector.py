@@ -13,7 +13,7 @@ from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
     parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
 )
-from .knmi_warnings import fetch_utrecht_warnings
+from .knmi_warnings import fetch_utrecht_warnings, format_active_from
 from .knmi_weather import fetch_de_bilt_weather
 from .luchtkwaliteit import fetch_air_quality
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
@@ -815,8 +815,20 @@ def fetch_knmi_warnings_job():
         for w in warnings:
             guid = f"knmi-warning-{w['phenomenon_id']}-{w['color']}"
             active_guids.add(guid)
-            title = f"Weerwaarschuwing: code {w['color_label'].lower()} ({w['phenomenon_label']})"
-            description = f"{w['description'] or w['header'] or w['phenomenon_label']} Klik hier voor meer data.".strip()
+            # is_current is False zolang alle timeslices met deze kleur nog
+            # in de toekomst liggen (bv. code geel vanaf morgen 09:00) --
+            # zonder deze vermelding suggereert de melding dat de
+            # waarschuwing al geldt, terwijl de KNMI-brontekst zelf vaak
+            # geen tijdsaanduiding bevat (bv. "Het Nationaal Hitteplan is
+            # actief.", ongeacht of dat al zo is).
+            if w["is_current"]:
+                timing = ""
+            else:
+                timing = f" vanaf {format_active_from(w['active_from'])}"
+            title = f"Weerwaarschuwing: code {w['color_label'].lower()}{timing} ({w['phenomenon_label']})"
+            body = w['description'] or w['header'] or w['phenomenon_label']
+            prefix = "" if w["is_current"] else f"Geldt vanaf {format_active_from(w['active_from'])}. "
+            description = f"{prefix}{body} Klik hier voor meer data.".strip()
             conn.execute(
                 """INSERT OR IGNORE INTO rss_feed_items
                    (guid, kind, title, description, pub_date, created_at)

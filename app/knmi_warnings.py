@@ -8,20 +8,26 @@ blijft gewoon werken.
 Elk bestand is een "cube": 48 uurlijkse timeslices x 7 fenomenen (wind,
 windstoten, gladheid, onweer, mist, hitte, regen) x alle Nederlandse
 provincies/gebieden, met per combinatie een kleurcode (GREEN/YELLOW/ORANGE/
-RED). We filteren op locatie "UT" (provincie Utrecht) en op nog niet
-gepasseerde timeslices, en nemen per fenomeen de ernstigste kleur die nog
-ergens in de resterende ~48 uur voorkomt -- geen exacte geldigheidsvensters
-per kleurwissel, dat zou de parser onnodig ingewikkeld maken t.o.v. wat de
-site nodig heeft (dit fenomeen wordt ergens in de komende 48 uur geel/
-oranje/rood).
+RED). We filteren op locatie "UT" (provincie Utrecht) en op uren die nog niet
+volledig voorbij zijn (het lopende uur telt dus nog mee), en nemen per
+fenomeen de ernstigste kleur die nog ergens in de resterende ~48 uur
+voorkomt -- geen exacte geldigheidsvensters per kleurwissel, dat zou de
+parser onnodig ingewikkeld maken t.o.v. wat de site nodig heeft (dit
+fenomeen wordt ergens in de komende 48 uur geel/oranje/rood). Wel wordt per
+fenomeen bijgehouden of de eerste (overgebleven) timeslice al is aangebroken
+("is_current") -- nodig om een waarschuwing die pas over bv. 20 uur ingaat
+niet te tonen alsof die al geldt.
 
 Het bronbestand is vrij groot (~2-3 MB) en verandert maar een paar keer per
 dag -- vandaar een rustig ophaalinterval (zie collector.py), in
 tegenstelling tot de veel kleinere/frequentere NS- en NDW-feeds."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
+from zoneinfo import ZoneInfo
 
 import requests
+
+_AMSTERDAM = ZoneInfo("Europe/Amsterdam")
 
 DATASET = "waarschuwingen_nederland_48h"
 VERSION = "1.0"
@@ -88,8 +94,16 @@ def parse_utrecht_warnings(root):
             ts_time = datetime.fromisoformat(ts_id_el.text)
         except ValueError:
             continue
-        if ts_time < now:
-            continue  # al gepasseerde uren negeren
+        # Elke timeslice dekt het uur vanaf ts_time -- alleen uren die
+        # volledig voorbij zijn negeren. Het lopende uur (ts_time <= now <
+        # ts_time+1u) juist WEL meenemen, anders valt een waarschuwing die
+        # al eerder is ingegaan hier tussen wal en schip: het lopende-uur-
+        # blokje zou als "gepasseerd" worden weggefilterd terwijl de
+        # waarschuwing wel degelijk nu nog geldt, en het eerstvolgende
+        # overgebleven blokje (over een uur) zou active_from/is_current dan
+        # ten onrechte in de toekomst laten lijken.
+        if ts_time + timedelta(hours=1) <= now:
+            continue  # al volledig gepasseerd uur
         for phenomenon in timeslice.findall("phenomenon"):
             phen_id = phenomenon.findtext("phenomenon_id")
             for location in phenomenon.findall("location"):
@@ -112,12 +126,37 @@ def parse_utrecht_warnings(root):
             "color": worst[1],
             "color_label": _COLOR_LABELS.get(worst[1], worst[1]),
             "active_from": entries[0][0].isoformat(),
+            # entries[0][0] is de vroegste overgebleven timeslice (inclusief
+            # het lopende uur, zie filter hierboven) -- <= now betekent dus
+            # dat het fenomeen nu al actief is, > now dat het pas later
+            # ingaat (bv. code geel vanaf morgen 09:00). is_current maakt
+            # dat onderscheid expliciet voor de UI/RSS, die anders "code
+            # geel" zou tonen alsof het al geldt.
+            "is_current": entries[0][0] <= now,
             "worst_at": worst[0].isoformat(),
             "header": worst[2],
             "description": worst[3],
         })
     results.sort(key=lambda r: -_COLOR_SEVERITY.get(r["color"], 0))
     return results
+
+
+def format_active_from(active_from_iso, now=None):
+    """Mens-leesbare, dagrelatieve tijdsaanduiding voor active_from (bv.
+    "vandaag 14:00 uur", "morgen 09:00 uur", "wo 09:00 uur") -- gebruikt in
+    de RSS-titel/-tekst zodat een nog niet actieve waarschuwing niet leest
+    alsof die al geldt."""
+    now = now or datetime.now(timezone.utc)
+    dt = datetime.fromisoformat(active_from_iso).astimezone(_AMSTERDAM)
+    now_local = now.astimezone(_AMSTERDAM)
+    delta_days = (dt.date() - now_local.date()).days
+    time_str = dt.strftime("%H:%M")
+    if delta_days == 0:
+        return f"vandaag {time_str} uur"
+    if delta_days == 1:
+        return f"morgen {time_str} uur"
+    weekdays = ["ma", "di", "wo", "do", "vr", "za", "zo"]
+    return f"{weekdays[dt.weekday()]} {time_str} uur"
 
 
 def fetch_utrecht_warnings(api_key):
