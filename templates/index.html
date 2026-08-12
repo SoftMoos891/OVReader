@@ -882,6 +882,12 @@ function fmtWarningTime(iso) {
   return `${weekday} ${time}`;
 }
 
+// Compacte variant voor op de Weer-knop zelf ("morgen 09.00u" i.p.v.
+// "morgen 09:00") -- moet in de knoptekst passen naast temperatuur/kleur.
+function fmtWarningTimeShort(iso) {
+  return `${fmtWarningTime(iso).replace(':', '.')}u`;
+}
+
 function openWeatherModal() {
   document.getElementById('weatherModal').classList.add('open');
 }
@@ -954,7 +960,16 @@ async function refreshWeatherWarnings() {
   const color = currentWarnings.length === 0 ? 'GREEN' : (currentWarnings[0].color || 'GREEN');
   icon.textContent = weatherIcon(w ? w.cloud_cover_okta : null);
   const codeLabel = KNMI_CODE_LABELS[color] || KNMI_CODE_LABELS.GREEN;
-  label.textContent = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
+  let labelText = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
+  // Expliciet "Code geel vanaf morgen 09.00u" in de knoptekst zelf i.p.v.
+  // alleen een hover-tooltip op het stipje -- anders is een aankomende
+  // waarschuwing niet te zien zonder te klikken/hoveren.
+  if (upcomingWarnings.length > 0) {
+    const next = upcomingWarnings[0];
+    const nextCodeLabel = KNMI_CODE_LABELS[next.color] || next.color_label;
+    labelText += ` · ${nextCodeLabel} vanaf ${fmtWarningTimeShort(next.active_from)}`;
+  }
+  label.textContent = labelText;
   btn.style.cssText = KNMI_BUTTON_STYLES[color] || KNMI_BUTTON_STYLES.GREEN;
 
   const upcomingDot = document.getElementById('knmiUpcomingDot');
