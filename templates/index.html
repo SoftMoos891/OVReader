@@ -882,10 +882,14 @@ function fmtWarningTime(iso) {
   return `${weekday} ${time}`;
 }
 
-// Compacte variant voor op de Weer-knop zelf ("morgen 09.00u" i.p.v.
-// "morgen 09:00") -- moet in de knoptekst passen naast temperatuur/kleur.
+// Compacte variant voor op de Weer-knop zelf ("wo 09.00u") -- altijd een
+// korte weekdag-afkorting (i.p.v. "vandaag"/"morgen", dat is te lang) zodat
+// het in de knoptekst past.
 function fmtWarningTimeShort(iso) {
-  return `${fmtWarningTime(iso).replace(':', '.')}u`;
+  const d = new Date(iso);
+  const weekday = d.toLocaleString('nl-NL', { weekday: 'short' });
+  const time = d.toLocaleString('nl-NL', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
+  return `${weekday} ${time}u`;
 }
 
 function openWeatherModal() {
@@ -960,14 +964,19 @@ async function refreshWeatherWarnings() {
   const color = currentWarnings.length === 0 ? 'GREEN' : (currentWarnings[0].color || 'GREEN');
   icon.textContent = weatherIcon(w ? w.cloud_cover_okta : null);
   const codeLabel = KNMI_CODE_LABELS[color] || KNMI_CODE_LABELS.GREEN;
-  let labelText = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
-  // Expliciet "Code geel vanaf morgen 09.00u" in de knoptekst zelf i.p.v.
+  // Expliciet "Code geel actief vanaf wo 09.00u" in de knoptekst zelf i.p.v.
   // alleen een hover-tooltip op het stipje -- anders is een aankomende
-  // waarschuwing niet te zien zonder te klikken/hoveren.
+  // waarschuwing niet te zien zonder te klikken/hoveren. Temperatuur (en bij
+  // geen actieve waarschuwing ook "Code groen") laten we dan weg, anders
+  // wordt de knoptekst te lang.
+  let labelText;
   if (upcomingWarnings.length > 0) {
     const next = upcomingWarnings[0];
     const nextCodeLabel = KNMI_CODE_LABELS[next.color] || next.color_label;
-    labelText += ` · ${nextCodeLabel} vanaf ${fmtWarningTimeShort(next.active_from)}`;
+    const upcomingText = `${nextCodeLabel} actief vanaf ${fmtWarningTimeShort(next.active_from)}`;
+    labelText = currentWarnings.length > 0 ? `${codeLabel} · ${upcomingText}` : upcomingText;
+  } else {
+    labelText = w && w.temperature != null ? `${Math.round(w.temperature)}°C · ${codeLabel}` : codeLabel;
   }
   label.textContent = labelText;
   btn.style.cssText = KNMI_BUTTON_STYLES[color] || KNMI_BUTTON_STYLES.GREEN;
