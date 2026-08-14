@@ -26,6 +26,7 @@ class UtrechtIndex:
         self.routes = {}       # route_id -> {agency_id, agency_name, short_name, long_name}
         self.trip_to_route = {}  # trip_id -> route_id
         self.stops = {}        # stop_id -> {name, lat, lon}
+        self.trip_meta = {}    # trip_id -> {route_id, service_id, headsign}
         self.loaded_at = 0
         self.reload()
 
@@ -33,6 +34,7 @@ class UtrechtIndex:
         routes_path = DATA_DIR / "utrecht_routes.json"
         trips_path = DATA_DIR / "utrecht_trips.json"
         stops_path = DATA_DIR / "utrecht_stops.json"
+        trip_meta_path = DATA_DIR / "utrecht_trip_meta.json"
         if not routes_path.exists():
             raise RuntimeError(
                 "utrecht_routes.json ontbreekt. Draai eerst app/build_static_index.py"
@@ -40,6 +42,9 @@ class UtrechtIndex:
         self.routes = json.loads(routes_path.read_text(encoding="utf-8"))
         self.trip_to_route = json.loads(trips_path.read_text(encoding="utf-8"))
         self.stops = json.loads(stops_path.read_text(encoding="utf-8"))
+        self.trip_meta = (
+            json.loads(trip_meta_path.read_text(encoding="utf-8")) if trip_meta_path.exists() else {}
+        )
         self.loaded_at = time.time()
 
     def route_id_for(self, entity_trip, entity_route_id):
@@ -109,6 +114,11 @@ def fetch_vehicle_positions(index: UtrechtIndex):
             "lon": vp.position.longitude,
             "speed": vp.position.speed if vp.position.HasField("speed") else None,
             "bearing": vp.position.bearing if vp.position.HasField("bearing") else None,
+            # Opgeslagen op het moment zelf (i.p.v. achteraf via trip_id
+            # opgezocht) zodat /api/vehicles/history de bestemming nog klopt
+            # nadat de statische index inmiddels is herbouwd en dit trip_id
+            # er niet meer in voorkomt.
+            "headsign": index.trip_meta.get(trip_id, {}).get("headsign") or None,
         })
     return results
 

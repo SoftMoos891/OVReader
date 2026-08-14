@@ -125,9 +125,9 @@ def collect_once():
             conn.executemany(
                 """INSERT INTO vehicle_positions
                    (fetched_at, vehicle_id, trip_id, route_id, lat, lon, speed, bearing,
-                    direction_id, current_status, stop_id)
+                    direction_id, current_status, stop_id, headsign)
                    VALUES (:fetched_at, :vehicle_id, :trip_id, :route_id, :lat, :lon, :speed, :bearing,
-                           :direction_id, :current_status, :stop_id)""",
+                           :direction_id, :current_status, :stop_id, :headsign)""",
                 [{**p, "fetched_at": fetched_at} for p in positions],
             )
         except Exception:

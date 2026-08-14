@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
 </script>
@@ -47,6 +49,8 @@
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
   .pill.muted { background: var(--panel2); color: var(--muted); }
   .note { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  #lastPosMap { height: 280px; border-radius: var(--radius); overflow: hidden; margin-top: 10px; }
+  .leaflet-container { background: var(--panel2); }
 </style>
 </head>
 <body>
@@ -87,6 +91,13 @@
       <span class="vnum" id="resultVnum"></span>
       <span class="vtype" id="resultVtype"></span>
     </div>
+    <h2 style="margin-top:14px;">📍 Laatst bekende locatie</h2>
+    <div id="lastPosNote" class="empty"></div>
+    <div id="lastPosMap" style="display:none;"></div>
+  </div>
+
+  <div class="panel" id="ridesPanel" style="display:none;">
+    <h2>🚏 Ritten</h2>
     <div id="resultBody"><div class="empty">Laden...</div></div>
   </div>
 </main>
@@ -95,6 +106,8 @@
   Copyright (c) 2026 DVZNET - Alle rechten voorbehouden &bull; Brondata door OVapi/NDOV Loket &bull; Locatieinformatie via GTFS
 </footer>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');
@@ -172,20 +185,67 @@ function delayPill(seconds) {
   return `<span class="pill bad">${Math.round(seconds / 60)} min te laat</span>`;
 }
 
+let lastPosMap = null;
+let lastPosMarker = null;
+
+function fmtAgoShort(seconds) {
+  if (seconds < 60) return `${seconds}s geleden`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min geleden`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} u ${m % 60} min geleden`;
+  const d = Math.floor(h / 24);
+  return `${d} dag${d === 1 ? '' : 'en'} geleden`;
+}
+
+function renderLastPosition(pos) {
+  const note = document.getElementById('lastPosNote');
+  const mapEl = document.getElementById('lastPosMap');
+  if (!pos) {
+    mapEl.style.display = 'none';
+    note.style.display = '';
+    note.textContent = 'Geen locatiegegevens bekend voor dit voertuig in de afgelopen 7 dagen.';
+    return;
+  }
+  note.style.display = 'none';
+  mapEl.style.display = '';
+  const caption = [
+    pos.short_name ? `Lijn ${pos.short_name}${pos.headsign ? ' richting ' + pos.headsign : ''}` : null,
+    pos.stop_name ? `Bij halte ${pos.stop_name}` : null,
+    fmtAgoShort(pos.seconds_ago),
+  ].filter(Boolean).join(' — ');
+  if (!lastPosMap) {
+    lastPosMap = L.map('lastPosMap').setView([pos.lat, pos.lon], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(lastPosMap);
+    lastPosMarker = L.marker([pos.lat, pos.lon]).addTo(lastPosMap);
+  } else {
+    lastPosMap.invalidateSize();
+    lastPosMap.setView([pos.lat, pos.lon], 14);
+    lastPosMarker.setLatLng([pos.lat, pos.lon]);
+  }
+  lastPosMarker.bindPopup(caption).openPopup();
+}
+
 async function searchVehicle() {
   const vehicleId = document.getElementById('vehicleInput').value.trim();
   if (!vehicleId) return;
   const btn = document.getElementById('searchBtn');
   btn.disabled = true;
-  const panel = document.getElementById('resultPanel');
-  panel.style.display = '';
+  document.getElementById('resultPanel').style.display = '';
+  document.getElementById('ridesPanel').style.display = '';
   document.getElementById('resultVnum').textContent = `Voertuig ${vehicleId}`;
   document.getElementById('resultVtype').textContent = '';
+  document.getElementById('lastPosNote').style.display = '';
+  document.getElementById('lastPosNote').textContent = 'Laden...';
+  document.getElementById('lastPosMap').style.display = 'none';
   document.getElementById('resultBody').innerHTML = '<div class="empty">Laden...</div>';
   try {
     const res = await fetch(`/api/vehicles/history?vehicle_id=${encodeURIComponent(vehicleId)}`);
     const data = await res.json();
     document.getElementById('resultVtype').textContent = data.vehicle_type || '';
+    renderLastPosition(data.last_position);
     if (data.count === 0) {
       document.getElementById('resultBody').innerHTML =
         `<div class="empty">Geen ritten gevonden voor voertuig ${vehicleId} in de afgelopen ${data.raw_retention_days} dagen.</div>`;
@@ -208,6 +268,7 @@ async function searchVehicle() {
       </table>`;
   } catch (e) {
     document.getElementById('resultBody').innerHTML = '<div class="empty">Kan geschiedenis niet ophalen.</div>';
+    document.getElementById('lastPosNote').textContent = 'Kan locatie niet ophalen.';
   } finally {
     btn.disabled = false;
   }

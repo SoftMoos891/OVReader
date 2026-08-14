@@ -499,7 +499,8 @@ def api_vehicle_history():
             SELECT trip_id, route_id,
                    strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
                    MIN(fetched_at) AS first_seen,
-                   MAX(fetched_at) AS last_seen
+                   MAX(fetched_at) AS last_seen,
+                   MAX(headsign) AS headsign
             FROM vehicle_positions
             WHERE vehicle_id = ?
             GROUP BY trip_id, day
@@ -529,21 +530,52 @@ def api_vehicle_history():
                 (r["trip_id"], r["day"]): r["arrival_delay"] if r["arrival_delay"] is not None else r["departure_delay"]
                 for r in delay_rows
             }
+
+        # Laatst bekende locatie (los van de rit-groepering hierboven: puur de
+        # meest recente rij met coördinaten, ongeacht welke rit dat was).
+        last_pos_row = conn.execute(
+            """
+            SELECT lat, lon, fetched_at, route_id, trip_id, stop_id, current_status, headsign
+            FROM vehicle_positions
+            WHERE vehicle_id = ? AND lat IS NOT NULL AND lon IS NOT NULL
+            ORDER BY fetched_at DESC
+            LIMIT 1
+            """,
+            (vehicle_id,),
+        ).fetchone()
     finally:
         conn.close()
 
     items = []
     for r in rows:
-        trip_meta = _timetable.trip_meta.get(r["trip_id"], {})
+        # headsign is pas sinds de kolomtoevoeging op het moment zelf
+        # opgeslagen (zie app/db.py-migratie) -- voor rijen van vóór die
+        # migratie valt dit terug op trip_meta, met dezelfde beperking als
+        # eerder (klopt niet meer na een herbouw van de statische index).
+        headsign = r["headsign"] or _timetable.trip_meta.get(r["trip_id"], {}).get("headsign") or None
         items.append({
             "trip_id": r["trip_id"],
             "day": r["day"],
             **route_meta(r["route_id"]),
-            "headsign": trip_meta.get("headsign") or None,
+            "headsign": headsign,
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
             "last_delay_seconds": delay_by_trip_day.get((r["trip_id"], r["day"])),
         })
+
+    last_position = None
+    if last_pos_row is not None:
+        stop = _timetable.stops.get(last_pos_row["stop_id"]) if last_pos_row["stop_id"] else None
+        last_position = {
+            "lat": last_pos_row["lat"],
+            "lon": last_pos_row["lon"],
+            "fetched_at": last_pos_row["fetched_at"],
+            "seconds_ago": int(time.time()) - last_pos_row["fetched_at"],
+            **route_meta(last_pos_row["route_id"]),
+            "headsign": last_pos_row["headsign"] or _timetable.trip_meta.get(last_pos_row["trip_id"], {}).get("headsign") or None,
+            "current_status": last_pos_row["current_status"],
+            "stop_name": stop["name"] if stop else None,
+        }
 
     return jsonify({
         "vehicle_id": vehicle_id,
@@ -551,6 +583,7 @@ def api_vehicle_history():
         "raw_retention_days": RETENTION_DAYS,
         "count": len(items),
         "items": items,
+        "last_position": last_position,
     })
 
 

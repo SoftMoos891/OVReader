@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS vehicle_positions (
     current_status TEXT,
     -- Halte waar current_status betrekking op heeft (zie gtfs_rt.py) --
     -- voor "Huidige halte: X" in de voertuig-popup.
-    stop_id TEXT
+    stop_id TEXT,
+    -- Bestemming, opgeslagen op het moment van de rit zelf i.p.v. achteraf
+    -- via trip_id in trip_meta opgezocht -- zie migratie hieronder.
+    headsign TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_vp_fetched_at ON vehicle_positions(fetched_at);
 CREATE INDEX IF NOT EXISTS idx_vp_route ON vehicle_positions(route_id);
@@ -358,6 +361,12 @@ def _migrate(conn):
         conn.execute("ALTER TABLE vehicle_positions ADD COLUMN current_status TEXT")
     if "stop_id" not in vp_cols:
         conn.execute("ALTER TABLE vehicle_positions ADD COLUMN stop_id TEXT")
+    if "headsign" not in vp_cols:
+        # Opgeslagen op het moment van de rit zelf (net als route_id hierboven),
+        # i.p.v. achteraf opgezocht in trip_meta -- anders klopt de richting
+        # niet meer zodra de statische index na de rit is herbouwd en het
+        # trip_id inmiddels niet meer voorkomt (zie /api/vehicles/history).
+        conn.execute("ALTER TABLE vehicle_positions ADD COLUMN headsign TEXT")
 
     alert_cols = {r["name"] for r in conn.execute("PRAGMA table_info(alerts)")}
     if "valid_from" not in alert_cols:
