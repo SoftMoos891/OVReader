@@ -295,19 +295,22 @@ async function refreshAlerts() {
 // NS-storingen op het spoor: aparte databron (zie /lite/api/rail-alerts en
 // app/ns_rail_alerts.py), al vooraf op de server gefilterd tot storingen die
 // een station in de provincie Utrecht raken. impact.value loopt bij NS van
-// 1 (licht) t/m 3 (trein rijdt niet) -- vanaf 3, of het type CALAMITY, tonen
-// we 'm net als de ernstige bus/tram-meldingen met de rode badge.
+// 1 (licht) t/m 3 (trein rijdt niet).
 //
 // MAINTENANCE (geplande werkzaamheden) telt hier bewust NOOIT als ernstig,
-// ook niet bij impact 3: vervangend busvervoer bij groot gepland werk scoort
-// bij NS net zo'n hoog impact-getal als een echte "trein rijdt niet"-
+// ook niet bij hoge impact: vervangend busvervoer bij groot gepland werk
+// scoort bij NS net zo'n hoog impact-getal als een echte "trein rijdt niet"-
 // verstoring, puur op basis van hoeveel dienst wegvalt -- niet op basis van
-// gepland/ongepland. Zonder deze uitzondering kreeg een aangekondigde
-// werkzaamheid dezelfde rode badge als een acute verstoring (bv. inzet van
-// politie), terwijl die laatste door een lager impact-getal juist geel bleef.
+// gepland/ongepland.
+//
+// Drempel voor DISRUPTION/CALAMITY staat op impact>=2 (niet >=3): een echte
+// verstoring met "minder treinen"/"veel minder treinen" (impact 2) is nog
+// steeds een acuut incident, ook al rijden er niet nul treinen -- op verzoek
+// verlaagd nadat >=3 twee actieve verstoringen (politie-inzet, defect spoor)
+// ten onrechte niet als urgent liet zien.
 function railAlertSeverity(a) {
   if (a.disruption_type === 'MAINTENANCE') return false;
-  return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
+  return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 2);
 }
 
 // consequence_level: gestructureerd gevolg-veld uit de NS-respons, naast het
