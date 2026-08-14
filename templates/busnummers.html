@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+<title>Busnummers — busvervoer Utrecht</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
+  header { padding: 12px 20px; display: flex;
+           align-items: center; gap: 14px; flex-wrap: wrap;
+           background: var(--panel); box-shadow: var(--shadow-sm); position: relative; z-index: 10; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
+  main { padding: 20px; max-width: 1000px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 18px; margin-bottom: 20px; box-shadow: var(--shadow-sm); transition: box-shadow .15s; }
+  .panel:hover { box-shadow: var(--shadow-md); }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; font-weight: 700; }
+  .search-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type=text] { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 7px 12px; font-size: 14px; min-width: 200px; }
+  .search-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px;
+                padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; transition: filter .15s; }
+  .search-btn:hover { filter: brightness(1.08); }
+  .search-btn:disabled { opacity: .5; cursor: default; }
+  .result-header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 14px; }
+  .result-header .vnum { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 700; }
+  .result-header .vtype { color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+  tr:hover td { background: var(--panel2); }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
+  .line-badge { display: inline-block; padding: 1px 9px; border-radius: 20px; font-size: 12px; font-weight: 700; border: 1px solid rgba(128,128,128,.3); }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.muted { background: var(--panel2); color: var(--muted); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
+  <h1>🚌 Busnummers</h1>
+  <span class="sub">Ritgeschiedenis per voertuignummer — busvervoer provincie Utrecht (Keolis &amp; Transdev)</span>
+  <a class="back" href="/">&larr; Terug naar live overzicht</a>
+  <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
+  <a class="status-btn" href="/logout" title="Uitloggen">Uitloggen</a>
+  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+</header>
+
+<div class="modal-overlay" id="healthModal" onclick="if(event.target===this)closeHealthModal()">
+  <div class="modal">
+    <div class="modal-header">
+      Systeemstatus
+      <button class="modal-close" onclick="closeHealthModal()">✕</button>
+    </div>
+    <div class="modal-body" id="healthBody"><div class="empty">Laden...</div></div>
+    <div class="modal-footer">Collector haalt elke <span id="healthInterval">30</span>s nieuwe data op</div>
+  </div>
+</div>
+
+<main>
+  <div class="panel">
+    <h2>🔍 Zoek een voertuig</h2>
+    <div class="search-row">
+      <input type="text" id="vehicleInput" list="vehicleList" placeholder="Voertuignummer, bv. 9856" autocomplete="off">
+      <datalist id="vehicleList"></datalist>
+      <button class="search-btn" id="searchBtn" onclick="searchVehicle()">Zoeken</button>
+    </div>
+    <div class="note">Alleen ritten van de afgelopen 7 dagen zijn nog te herleiden naar een voertuignummer — daarna wordt ruwe data opgerold tot dagstatistieken zonder voertuigkoppeling.</div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none;">
+    <div class="result-header">
+      <span class="vnum" id="resultVnum"></span>
+      <span class="vtype" id="resultVtype"></span>
+    </div>
+    <div id="resultBody"><div class="empty">Laden...</div></div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  Copyright (c) 2026 DVZNET - Alle rechten voorbehouden &bull; Brondata door OVapi/NDOV Loket &bull; Locatieinformatie via GTFS
+</footer>
+
+<script>
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+  location.reload();
+}
+
+function openHealthModal() {
+  document.getElementById('healthModal').classList.add('open');
+  loadHealth().catch(console.error);
+}
+function closeHealthModal() {
+  document.getElementById('healthModal').classList.remove('open');
+}
+function fmtAgo(seconds) {
+  if (seconds === null || seconds === undefined) return 'nooit';
+  if (seconds < 60) return `${seconds}s geleden`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min geleden`;
+  return `${Math.floor(m / 60)} u ${m % 60} min geleden`;
+}
+function healthLabel(status) {
+  return { ok: 'OK', stale: 'Verouderd', no_data: 'Geen data' }[status] || status;
+}
+async function loadHealth() {
+  try {
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    document.getElementById('healthDot').className = `status-dot ${data.status}`;
+    const cancelNote = data.components.cancellations.status !== 'ok'
+      ? 'Komt sporadisch binnen — dit hoeft geen storing te zijn'
+      : null;
+    const rows = [
+      ['Voertuigposities', data.components.vehicle_positions, null],
+      ['Vertragingen', data.components.trip_delays, null],
+      ['Uitval', data.components.cancellations, cancelNote],
+    ];
+    document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
+      <div class="health-row">
+        <div>
+          <div class="health-label">${label}</div>
+          <div class="health-sub">${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}</div>
+        </div>
+        <span class="health-badge ${c.status}">${healthLabel(c.status)}</span>
+      </div>`).join('');
+    document.getElementById('healthInterval').textContent = data.collector_interval_seconds;
+  } catch (e) {
+    document.getElementById('healthDot').className = 'status-dot no_data';
+    document.getElementById('healthBody').innerHTML = '<div class="empty">Kan status niet ophalen.</div>';
+  }
+}
+
+async function loadVehicleList() {
+  try {
+    const res = await fetch('/api/vehicle-types');
+    const data = await res.json();
+    const ids = Object.keys(data.vehicle_types).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    document.getElementById('vehicleList').innerHTML =
+      ids.map(id => `<option value="${id}">${data.vehicle_types[id]}</option>`).join('');
+  } catch (e) {
+    // Autocomplete is een extraatje; zonder lijst kan er nog steeds vrij getypt worden.
+  }
+}
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDate(day) {
+  return new Date(day + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+function delayPill(seconds) {
+  if (seconds === null || seconds === undefined) return '<span class="pill muted">Onbekend</span>';
+  if (seconds < -120) return `<span class="pill warn">${Math.round(-seconds / 60)} min te vroeg</span>`;
+  if (seconds <= 180) return '<span class="pill good">Op tijd</span>';
+  return `<span class="pill bad">${Math.round(seconds / 60)} min te laat</span>`;
+}
+
+async function searchVehicle() {
+  const vehicleId = document.getElementById('vehicleInput').value.trim();
+  if (!vehicleId) return;
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  const panel = document.getElementById('resultPanel');
+  panel.style.display = '';
+  document.getElementById('resultVnum').textContent = `Voertuig ${vehicleId}`;
+  document.getElementById('resultVtype').textContent = '';
+  document.getElementById('resultBody').innerHTML = '<div class="empty">Laden...</div>';
+  try {
+    const res = await fetch(`/api/vehicles/history?vehicle_id=${encodeURIComponent(vehicleId)}`);
+    const data = await res.json();
+    document.getElementById('resultVtype').textContent = data.vehicle_type || '';
+    if (data.count === 0) {
+      document.getElementById('resultBody').innerHTML =
+        `<div class="empty">Geen ritten gevonden voor voertuig ${vehicleId} in de afgelopen ${data.raw_retention_days} dagen.</div>`;
+      return;
+    }
+    document.getElementById('resultBody').innerHTML = `
+      <table>
+        <thead><tr><th>Datum</th><th>Lijn</th><th>Richting</th><th>Vertrek</th><th>Eind</th><th>Status</th></tr></thead>
+        <tbody>
+          ${data.items.map(it => `
+            <tr>
+              <td>${fmtDate(it.day)}</td>
+              <td><span class="line-badge" style="background:#${it.color || 'ccc'}; color:#${it.text_color || '000'};">${it.short_name}</span></td>
+              <td>${it.headsign || '—'}</td>
+              <td>${fmtTime(it.first_seen)}</td>
+              <td>${fmtTime(it.last_seen)}</td>
+              <td>${delayPill(it.last_delay_seconds)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    document.getElementById('resultBody').innerHTML = '<div class="empty">Kan geschiedenis niet ophalen.</div>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('vehicleInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') searchVehicle();
+});
+
+loadHealth().catch(console.error);
+loadVehicleList();
+
+const params = new URLSearchParams(location.search);
+const initialVehicle = params.get('vehicle_id');
+if (initialVehicle) {
+  document.getElementById('vehicleInput').value = initialVehicle;
+  searchVehicle();
+}
+</script>
+</body>
+</html>

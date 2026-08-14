@@ -468,6 +468,92 @@ def api_vehicles():
     return jsonify({"vehicles": vehicles, "count": len(vehicles), "as_of": int(time.time())})
 
 
+@app.route("/api/vehicle-types")
+def api_vehicle_types():
+    """Volledige voertuignummer -> bustype-lijst (zie app/build_bus_types_index.py),
+    voor de autocomplete op /busnummers. Klein genoeg (546 stuks) om in één
+    keer te dumpen i.p.v. een zoek-endpoint te bouwen."""
+    return jsonify({"vehicle_types": _bus_types})
+
+
+@app.route("/api/vehicles/history")
+def api_vehicle_history():
+    """Geschiedenis van ritten voor één voertuignummer (voor /busnummers),
+    puur uit vehicle_positions -- de enige tabel waar vehicle_id in staat.
+    Werkt alleen binnen het raw-retentievenster (RETENTION_DAYS): zodra
+    cleanup_old_data() ruwe rijen oprolt tot dagstatistieken is de
+    voertuig-koppeling weg (route_stats_daily bevat geen vehicle_id).
+
+    Groepeert per (trip_id, dag) i.p.v. puur trip_id: dezelfde geplande rit
+    (trip_id) herhaalt elke dienstdag, dus zonder de dag-groepering zouden
+    meerdere dagen met dezelfde rit tot één rij met een dagenlange
+    tijdspanne samensmelten."""
+    vehicle_id = (request.args.get("vehicle_id") or "").strip()
+    if not vehicle_id:
+        return jsonify({"error": "vehicle_id is verplicht"}), 400
+
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT trip_id, route_id,
+                   strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+                   MIN(fetched_at) AS first_seen,
+                   MAX(fetched_at) AS last_seen
+            FROM vehicle_positions
+            WHERE vehicle_id = ?
+            GROUP BY trip_id, day
+            ORDER BY last_seen DESC
+            LIMIT 300
+            """,
+            (vehicle_id,),
+        ).fetchall()
+
+        trip_ids = sorted({r["trip_id"] for r in rows if r["trip_id"]})
+        delay_by_trip_day = {}
+        if trip_ids:
+            placeholders = ",".join("?" * len(trip_ids))
+            delay_rows = conn.execute(
+                f"""
+                SELECT trip_id,
+                       strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+                       arrival_delay, departure_delay
+                FROM trip_delays
+                WHERE trip_id IN ({placeholders})
+                GROUP BY trip_id, day
+                HAVING fetched_at = MAX(fetched_at)
+                """,
+                trip_ids,
+            ).fetchall()
+            delay_by_trip_day = {
+                (r["trip_id"], r["day"]): r["arrival_delay"] if r["arrival_delay"] is not None else r["departure_delay"]
+                for r in delay_rows
+            }
+    finally:
+        conn.close()
+
+    items = []
+    for r in rows:
+        trip_meta = _timetable.trip_meta.get(r["trip_id"], {})
+        items.append({
+            "trip_id": r["trip_id"],
+            "day": r["day"],
+            **route_meta(r["route_id"]),
+            "headsign": trip_meta.get("headsign") or None,
+            "first_seen": r["first_seen"],
+            "last_seen": r["last_seen"],
+            "last_delay_seconds": delay_by_trip_day.get((r["trip_id"], r["day"])),
+        })
+
+    return jsonify({
+        "vehicle_id": vehicle_id,
+        "vehicle_type": _bus_types.get(vehicle_id),
+        "raw_retention_days": RETENTION_DAYS,
+        "count": len(items),
+        "items": items,
+    })
+
+
 @app.route("/api/alerts")
 def api_alerts():
     conn = db.get_conn()
@@ -810,6 +896,11 @@ def uitval_page():
 @app.route("/trends")
 def trends_page():
     return render_template("trends.html")
+
+
+@app.route("/busnummers")
+def busnummers_page():
+    return render_template("busnummers.html")
 
 
 def _date_bounds_for_range(range_key):

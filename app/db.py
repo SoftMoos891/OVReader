@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS vehicle_positions (
 );
 CREATE INDEX IF NOT EXISTS idx_vp_fetched_at ON vehicle_positions(fetched_at);
 CREATE INDEX IF NOT EXISTS idx_vp_route ON vehicle_positions(route_id);
+-- Voor de voertuiggeschiedenis (/api/vehicles/history, "welke ritten heeft
+-- voertuig X gedaan"): zonder deze index scant WHERE vehicle_id = ? de hele
+-- tabel (zelfde klasse probleem als idx_td_trip_id hieronder bij
+-- trip_delays -- op productieschaal duurde zo'n scan >20s).
+CREATE INDEX IF NOT EXISTS idx_vp_vehicle_id ON vehicle_positions(vehicle_id, fetched_at);
 
 CREATE TABLE IF NOT EXISTS trip_delays (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
