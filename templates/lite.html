@@ -297,7 +297,16 @@ async function refreshAlerts() {
 // een station in de provincie Utrecht raken. impact.value loopt bij NS van
 // 1 (licht) t/m 3 (trein rijdt niet) -- vanaf 3, of het type CALAMITY, tonen
 // we 'm net als de ernstige bus/tram-meldingen met de rode badge.
+//
+// MAINTENANCE (geplande werkzaamheden) telt hier bewust NOOIT als ernstig,
+// ook niet bij impact 3: vervangend busvervoer bij groot gepland werk scoort
+// bij NS net zo'n hoog impact-getal als een echte "trein rijdt niet"-
+// verstoring, puur op basis van hoeveel dienst wegvalt -- niet op basis van
+// gepland/ongepland. Zonder deze uitzondering kreeg een aangekondigde
+// werkzaamheid dezelfde rode badge als een acute verstoring (bv. inzet van
+// politie), terwijl die laatste door een lager impact-getal juist geel bleef.
 function railAlertSeverity(a) {
+  if (a.disruption_type === 'MAINTENANCE') return false;
   return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
 }
 

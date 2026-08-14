@@ -751,7 +751,15 @@ async function refreshAlerts() {
   }).join('');
 }
 
+// MAINTENANCE (geplande werkzaamheden) telt bewust NOOIT als ernstig, ook
+// niet bij impact 3: vervangend busvervoer bij groot gepland werk scoort bij
+// NS net zo'n hoog impact-getal als een echte "trein rijdt niet"-verstoring,
+// puur op basis van hoeveel dienst wegvalt -- niet op basis van gepland/
+// ongepland. Zonder deze uitzondering kreeg een aangekondigde werkzaamheid
+// dezelfde rode badge als een acute verstoring (bv. inzet van politie),
+// terwijl die laatste door een lager impact-getal juist geel bleef.
 function railAlertSeverity(a) {
+  if (a.disruption_type === 'MAINTENANCE') return false;
   return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 3);
 }
 
