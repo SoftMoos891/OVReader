@@ -1,0 +1,22 @@
+[Unit]
+Description=Utrecht bus monitor - periodieke herbouw van de statische GTFS-index
+
+[Service]
+Type=oneshot
+User=utrechtbus
+WorkingDirectory=/opt/utrecht-bus-monitor
+# utrechtbus is een systeem-account zonder eigen homedir (useradd -r); zonder
+# expliciete HOME probeert Python/requests dingen weg te schrijven naar het
+# niet-bestaande/niet-schrijfbare /home/utrechtbus.
+Environment=HOME=/opt/utrecht-bus-monitor
+ExecStart=/opt/utrecht-bus-monitor/venv/bin/python -m app.build_static_index
+# De collector/webserver/lite-service laden hun trip_meta/index maar één
+# keer bij het opstarten (zie app/gtfs_rt.py UtrechtIndex, app/timetable.py
+# Timetable) -- een verse data/utrecht_*.json op schijf heeft dus geen
+# effect totdat deze drie herstart worden. De '+' laat dit commando met
+# volle (root-)rechten draaien, ongeacht de User= hierboven -- nodig omdat
+# utrechtbus zelf geen systemctl-rechten heeft. Draait alleen als ExecStart
+# is geslaagd (systemd slaat ExecStartPost over bij een mislukte oneshot-
+# ExecStart), dus een mislukte download/build laat de services gewoon op de
+# laatst bekende goede data doordraaien.
+ExecStartPost=+/usr/bin/systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite

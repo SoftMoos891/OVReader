@@ -50,8 +50,9 @@ sudo -u utrechtbus ./venv/bin/pip install gunicorn
 
 ## 3. Statische data opbouwen (welke haltes/lijnen horen bij Utrecht)
 
-Dit downloadt eenmalig de landelijke GTFS-feed (~240 MB) en filtert 'm op de
-provinciegrens:
+Eenmalige eerste run (vanaf stap 5 neemt `utrecht-bus-rebuild.timer` het
+periodiek verversen hiervan automatisch over) -- downloadt de landelijke
+GTFS-feed (~240 MB) en filtert 'm op de provinciegrens:
 
 ```bash
 sudo -u utrechtbus ./venv/bin/python -m app.build_static_index
@@ -138,6 +139,25 @@ sudo systemctl status utrecht-bus-collector utrecht-bus-web utrecht-bus-lite
 
 Logs bekijken: `sudo journalctl -u utrecht-bus-collector -f` (of `-web`/`-lite`).
 
+Daarnaast een timer die de statische GTFS-index (stap 3) dagelijks automatisch
+herbouwt en daarna de drie services herstart -- zonder dit blijft een
+draaiend proces voor altijd de dienstregeling gebruiken van het moment dat
+het voor het laatst is (her)start, ook als NS/U-OV/Keolis/Transdev
+tussentijds trip_id's hernummeren (komt in de praktijk voor, zie
+build_static_index.py's eigen "Herhaal dit script periodiek"-opmerking):
+
+```bash
+sudo cp deploy/utrecht-bus-rebuild.service /etc/systemd/system/
+sudo cp deploy/utrecht-bus-rebuild.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now utrecht-bus-rebuild.timer
+sudo systemctl list-timers utrecht-bus-rebuild.timer   # volgende geplande run controleren
+```
+
+Handmatig een keer vooruitlopend draaien (bv. om meteen te testen): `sudo
+systemctl start utrecht-bus-rebuild.service`, gevolgd door `sudo journalctl
+-u utrecht-bus-rebuild -f` om de voortgang te volgen.
+
 ## 6. Reverse proxy: nginx via HestiaCP
 
 Deze server draait **nginx** (beheerd via HestiaCP), niet Caddy -- eerdere
@@ -187,7 +207,10 @@ config, met dezelfde proxy-headers als in `deploy/nginx-lite.conf`.)
 
 ## Onderhoud
 
-- Statische dienstregeling verversen (maandelijks, of na een grote wijziging):
+- Statische dienstregeling verversen: gebeurt sinds stap 5 automatisch via
+  `utrecht-bus-rebuild.timer` (dagelijks 03:15, herstart de drie services
+  erna vanzelf). Handmatig vooruitlopend forceren kan met `sudo systemctl
+  start utrecht-bus-rebuild.service`, of helemaal los van de timer:
   `sudo -u utrechtbus ./venv/bin/python -m app.build_static_index`
   gevolgd door
   `sudo systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite`

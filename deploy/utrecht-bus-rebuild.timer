@@ -1,0 +1,16 @@
+[Unit]
+Description=Dagelijkse herbouw van de statische GTFS-index (Utrecht bus monitor)
+
+[Timer]
+# Vóór de nachtelijke back-up (04:15, zie backup_history() in
+# app/collector.py) zodat ze elkaar niet overlappen. RandomizedDelaySec
+# voorkomt dat dit precies tegelijk met andere gebruikers van dezelfde
+# landelijke GTFS-feed (gtfs.ovapi.nl) loopt.
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=600
+# Haalt een gemiste run in na een reboot/downtime rond het geplande tijdstip,
+# i.p.v. tot de volgende dag te wachten.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
