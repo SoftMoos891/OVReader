@@ -45,7 +45,7 @@ FEED_STATE_PATH = DATA_DIR / "gtfs_feed_info.json"
 # Ophogen zodra de vórm van de weggeschreven bestanden verandert (nieuw
 # bestand, nieuw veld). Zonder dit zou een build met ongewijzigde
 # feed_version worden overgeslagen en dus nooit de nieuwe velden opleveren.
-BUILD_VERSION = 2
+BUILD_VERSION = 3
 
 # Tolerantie voor de Ramer-Douglas-Peucker-vereenvoudiging van routelijnen,
 # in graden (~0.00005 graden is ~5m op deze breedtegraad) -- ver onder wat op
@@ -380,7 +380,16 @@ def load_stop_info(zf, stop_ids):
                     lat, lon = float(row["stop_lat"]), float(row["stop_lon"])
                 except (KeyError, ValueError):
                     continue
-                stops[row["stop_id"]] = {"name": row.get("stop_name", ""), "lat": lat, "lon": lon}
+                stop = {"name": row.get("stop_name", ""), "lat": lat, "lon": lon}
+                # Officieel perronveld uit de GTFS-feed. Veel bruikbaarder dan
+                # het perron uit de haltenaam raden: gevuld voor ~250 haltes
+                # tegenover ~60 met een "(C1)"-achtig achtervoegsel in de naam.
+                # Zonder dit veld bleef de perronkolom leeg op precies de
+                # plekken waar 'ie het hardst nodig is -- bv. de zeven perrons
+                # van Utrecht CS Jaarbeurszijde heten allemaal exact hetzelfde.
+                if row.get("platform_code"):
+                    stop["platform_code"] = row["platform_code"]
+                stops[row["stop_id"]] = stop
     return stops
 
 

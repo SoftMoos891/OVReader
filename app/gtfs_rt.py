@@ -50,26 +50,33 @@ def _read_varint(buf, i):
 def _parse_wire_fields(buf):
     """Ontleedt een protobuf-bericht tot {veldnummer: [ruwe waarde, ...]}.
     Kent geen schema: length-delimited velden (wire type 2) komen als bytes
-    terug, varints als int. Genoeg om gericht in een boodschap te 'graven'."""
+    terug, varints als int. Genoeg om gericht in een boodschap te 'graven'.
+
+    Bij afgekapte of anderszins onzinnige bytes stopt het ontleden gewoon en
+    komt terug wat er tot dan toe wél uit kwam -- dit leest data van een
+    externe bron, en die mag hooguit niets opleveren, nooit de collector
+    omvergooien."""
     out = {}
     i = 0
     while i < len(buf):
         try:
             key, i = _read_varint(buf, i)
+            field_number, wire_type = key >> 3, key & 7
+            if wire_type == 0:
+                value, i = _read_varint(buf, i)
+            elif wire_type == 2:
+                length, i = _read_varint(buf, i)
+                if i + length > len(buf):
+                    break  # afgekapt: de rest is niet te vertrouwen
+                value, i = buf[i:i + length], i + length
+            elif wire_type == 5:
+                value, i = buf[i:i + 4], i + 4
+            elif wire_type == 1:
+                value, i = buf[i:i + 8], i + 8
+            else:
+                break  # onbekend wire type: rest van deze boodschap overslaan
         except IndexError:
-            break
-        field_number, wire_type = key >> 3, key & 7
-        if wire_type == 0:
-            value, i = _read_varint(buf, i)
-        elif wire_type == 2:
-            length, i = _read_varint(buf, i)
-            value, i = buf[i:i + length], i + length
-        elif wire_type == 5:
-            value, i = buf[i:i + 4], i + 4
-        elif wire_type == 1:
-            value, i = buf[i:i + 8], i + 8
-        else:
-            break  # onbekend wire type: rest van deze boodschap overslaan
+            break  # varint liep voorbij het einde van de buffer
         out.setdefault(field_number, []).append(value)
     return out
 

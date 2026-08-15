@@ -44,19 +44,48 @@ _route_shapes = (
 _GTFS_FEED_INFO_PATH = PROJECT_ROOT / "data" / "gtfs_feed_info.json"
 
 
+# Zoveel dagen vóór feed_end_date gaat de statuspagina al waarschuwen. Een
+# GTFS-feed loopt normaal maanden vooruit en wordt ruim op tijd vervangen;
+# als het venster hieronder in zicht komt zonder verse feed is er iets mis
+# met de nachtelijke herbouw, en dan wil je dat weten vóórdat de
+# dienstregeling daadwerkelijk verlopen is.
+GTFS_FEED_EXPIRY_WARNING_DAYS = 14
+
+
 def _gtfs_feed_info():
     """Dienstregelingversie/geldigheid van de geladen statische feed, voor de
     statuspagina. Bewust bij elke aanroep van schijf gelezen (niet bij import
     gecachet): de nachtelijke herbouw werkt dit bestand bij terwijl deze
     webservice al draait, en dan hoort de statuspagina de nieuwe waarde te
     tonen zodra de herstart erachteraan komt -- of eerder. Ontbreekt tot de
-    eerste herbouw met deze versie van build_static_index.py."""
+    eerste herbouw met deze versie van build_static_index.py.
+
+    Vult zelf een 'status' aan (ok/stale/no_data), zodat een verlopen of
+    bijna verlopen dienstregeling zichtbaar wordt i.p.v. dat je het pas
+    merkt aan rare data."""
     if not _GTFS_FEED_INFO_PATH.exists():
         return None
     try:
-        return json.loads(_GTFS_FEED_INFO_PATH.read_text(encoding="utf-8"))
+        info = json.loads(_GTFS_FEED_INFO_PATH.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return None
+
+    end_raw = (info.get("feed_end_date") or "").strip()
+    try:
+        end_date = datetime.strptime(end_raw, "%Y%m%d").date()
+    except ValueError:
+        info["status"] = "no_data"  # geen bruikbare einddatum in de feed
+        return info
+    days_left = (end_date - date.today()).days
+    info["feed_end_date_iso"] = end_date.isoformat()
+    info["days_until_expiry"] = days_left
+    if days_left < 0:
+        info["status"] = "no_data"  # dienstregeling is verlopen
+    elif days_left <= GTFS_FEED_EXPIRY_WARNING_DAYS:
+        info["status"] = "stale"
+    else:
+        info["status"] = "ok"
+    return info
 
 # Voertuignummer -> bustype (zie app/build_bus_types_index.py), voor de
 # voertuig-popup op de kaart. Zelfde bewuste keuze als _route_shapes hierboven:

@@ -33,6 +33,27 @@ def _stop_group_name(name):
     return _PLATFORM_SUFFIX_RE.sub("", name)
 
 
+def _platform_label(stop):
+    """Perronaanduiding van één halte-paal, of None.
+
+    Neemt het achtervoegsel uit de haltenaam als dat er is, en pas anders
+    het officiele platform_code-veld. Die volgorde is bewust: bij vier palen
+    van Utrecht Station Overvecht spreken de twee bronnen elkaar tegen (naam
+    zegt "(A)" waar platform_code "B" zegt, en omgekeerd -- ze staan er
+    paarsgewijs omgedraaid in). De naam is wat er op het bord bij de halte
+    staat en wat de reiziger elders in de app ziet, dus die wint; buiten dat
+    ene station zijn ze het overal eens.
+
+    platform_code levert daarnaast juist de gevallen op die de naam mist:
+    de perrons van bv. Utrecht CS Jaarbeurszijde heten allemaal exact
+    hetzelfde en zijn alleen via dit veld uit elkaar te houden."""
+    name = stop.get("name", "")
+    match = _PLATFORM_SUFFIX_RE.search(name)
+    if match:
+        return match.group().strip()[1:-1]  # "(C1)" -> "C1"
+    return stop.get("platform_code") or None
+
+
 class Timetable:
     def __init__(self):
         self.stops = {}          # stop_id -> {name, lat, lon}
@@ -239,11 +260,17 @@ class Timetable:
             for trip_id, delay in self._live_delay_by_trip(trip_ids, member_id, now_ts).items():
                 delay_by_trip_member[(trip_id, member_id)] = delay
 
-        # Sommige haltes hebben 2 stop_id's met exact dezelfde naam (bv. één
-        # paal per rijrichting) -- dan voegt een "perron"-kolom niets toe.
-        # Alleen tonen als de perrons ook echt van elkaar te onderscheiden
-        # zijn (verschillende namen, zoals de "(C1)".."(D5)"-suffixen).
-        multi_platform = len({self.stops.get(m, {}).get("name") for m in member_ids}) > 1
+        # Sommige haltes hebben 2 stop_id's zonder eigen perronaanduiding
+        # (bv. één paal per rijrichting) -- dan voegt een "perron"-kolom
+        # niets toe. Alleen tonen als er echt meerdere, van elkaar te
+        # onderscheiden perrons zijn. Dit keek eerder naar de halteNAMEN,
+        # waardoor het misging bij haltes waar alle perrons identiek heten
+        # (Utrecht CS Jaarbeurszijde: zeven perrons, één naam) -- daar bleef
+        # de kolom weg terwijl die juist daar het meest nodig is.
+        platform_by_member = {
+            m: _platform_label(self.stops.get(m, {})) for m in member_ids
+        }
+        multi_platform = len({p for p in platform_by_member.values() if p}) > 1
         results = []
         for scheduled_dt, trip_id, meta, member_id in upcoming:
             delay = delay_by_trip_member.get((trip_id, member_id))
@@ -259,7 +286,9 @@ class Timetable:
                 # Alleen ingevuld als de halte meerdere perrons heeft (anders
                 # overbodige info) -- laat zien vanaf welk exact perron een
                 # vertrek gaat, nu er meerdere door elkaar heen getoond worden.
-                "platform": self.stops.get(member_id, {}).get("name") if multi_platform else None,
+                # Al kant-en-klaar als "C1"/"A", dus de frontend hoeft er geen
+                # perroncode meer uit een haltenaam te vissen.
+                "platform": platform_by_member.get(member_id) if multi_platform else None,
             })
         return results
 

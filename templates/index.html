@@ -303,6 +303,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/severity.js') }}"></script>
 <script>
 const map = L.map('map').setView([52.09, 5.20], 10);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -630,18 +631,8 @@ map.on('popupclose', (e) => {
   routeShapeLayer.clearLayers();
 });
 
-const SEVERE_ALERT_KEYWORDS = ['verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
-const SEVERE_CAUSE_LABELS = {
-  ACCIDENT: 'Ongeval', POLICE_ACTIVITY: 'Politie', MEDICAL_EMERGENCY: 'Medisch noodgeval',
-  DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
-};
-function severeAlertLabel(a) {
-  if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
-  const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
-  const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
-  if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
-  return SEVERE_CAUSE_LABELS[a.cause] || null;
-}
+// SEVERE_ALERT_KEYWORDS / SEVERE_CAUSE_LABELS / severeAlertLabel() /
+// railAlertSeverity() komen uit static/js/severity.js, gedeeld met lite.html.
 
 function effectLabel(effect) {
   const map = {
@@ -751,21 +742,6 @@ async function refreshAlerts() {
   }).join('');
 }
 
-// MAINTENANCE (geplande werkzaamheden) telt bewust NOOIT als ernstig, ook
-// niet bij hoge impact: vervangend busvervoer bij groot gepland werk scoort
-// bij NS net zo'n hoog impact-getal als een echte "trein rijdt niet"-
-// verstoring, puur op basis van hoeveel dienst wegvalt -- niet op basis van
-// gepland/ongepland.
-//
-// Drempel voor DISRUPTION/CALAMITY staat op impact>=2 (niet >=3): een echte
-// verstoring met "minder treinen"/"veel minder treinen" (impact 2) is nog
-// steeds een acuut incident, ook al rijden er niet nul treinen -- op verzoek
-// verlaagd nadat >=3 twee actieve verstoringen (politie-inzet, defect spoor)
-// ten onrechte niet als urgent liet zien.
-function railAlertSeverity(a) {
-  if (a.disruption_type === 'MAINTENANCE') return false;
-  return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 2);
-}
 
 const CONSEQUENCE_LEVEL_LABELS = {
   NO_TRAINS: 'Geen treinen', LESS_TRAINS: 'Minder treinen', DELAYS: 'Vertraging',
@@ -1202,11 +1178,10 @@ async function refreshStopDepartures() {
   // het perron waar dat specifieke vertrek vandaan gaat. Alleen een aparte
   // kolom tonen als dat voor deze halte ook echt relevant is (single-
   // perron haltes hebben altijd d.platform === null).
+  // d.platform is al een kale perroncode ("C1"/"A"), samengesteld door
+  // _platform_label() in timetable.py -- hier hoeft niets meer uit een
+  // haltenaam gevist te worden.
   const showPlatform = data.departures.some(d => d.platform);
-  const platformCode = (name) => {
-    const m = name && name.match(/\(([A-Za-z]{1,2}\d{0,3})\)$/);
-    return m ? m[1] : name;
-  };
   el.innerHTML = `<div class="stop-name">${data.stop.name}</div>` +
     `<table><tr><th>Lijn</th><th>Richting</th>${showPlatform ? '<th>Perron</th>' : ''}<th>Vertrek</th><th>Status</th></tr>` +
     data.departures.map(d => {
@@ -1221,7 +1196,7 @@ async function refreshStopDepartures() {
       return `<tr>
         <td>${d.short_name}</td>
         <td>${d.headsign || d.long_name || ''}</td>
-        ${showPlatform ? `<td>${d.platform ? platformCode(d.platform) : '—'}</td>` : ''}
+        ${showPlatform ? `<td>${d.platform || '—'}</td>` : ''}
         <td>${time}</td>
         <td>${status}</td>
       </tr>`;
@@ -1306,14 +1281,28 @@ async function loadHealth() {
       ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiWarningsNote],
       ['Actueel weer (KNMI)', data.components.knmi_weather, knmiWeatherNote],
       ['Luchtkwaliteit (RIVM)', data.components.air_quality, airQualityNote],
-    ];
-    document.getElementById('healthBody').innerHTML = rows.map(([label, c, note]) => `
+    ].map(([label, c, note]) => [label, c.status, `${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}`]);
+
+    // Dienstregeling: geen "hoelang geleden opgehaald" maar hoelang 'ie nog
+    // geldig is -- een verlopen statische feed geeft stilletjes verkeerde
+    // ritten, en dat wil je hier zien staan i.p.v. het te moeten afleiden.
+    const feed = data.gtfs_feed;
+    if (feed) {
+      const days = feed.days_until_expiry;
+      const validity = days === undefined || days === null
+        ? 'geldigheid onbekend'
+        : days < 0 ? `verlopen sinds ${feed.feed_end_date_iso}`
+        : `nog ${days} dag${days === 1 ? '' : 'en'} geldig (t/m ${feed.feed_end_date_iso})`;
+      rows.push(['Dienstregeling', feed.status, `versie ${feed.feed_version || '?'} · ${validity}`]);
+    }
+
+    document.getElementById('healthBody').innerHTML = rows.map(([label, status, sub]) => `
       <div class="health-row">
         <div>
           <div class="health-label">${label}</div>
-          <div class="health-sub">${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}</div>
+          <div class="health-sub">${sub}</div>
         </div>
-        <span class="health-badge ${c.status}">${healthLabel(c.status)}</span>
+        <span class="health-badge ${status}">${healthLabel(status)}</span>
       </div>`).join('');
     document.getElementById('healthInterval').textContent = data.collector_interval_seconds;
   } catch (e) {

@@ -169,6 +169,7 @@
 </footer>
 
 <script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/severity.js') }}"></script>
 <script>
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');
@@ -186,47 +187,8 @@ function effectLabel(effect) {
   return map[effect] || 'Melding';
 }
 
-// Zelfde detectie als op het volledige dashboard (index.html): het GTFS-RT
-// effect-veld is voor veel meldingen te generiek, terwijl de vrije tekst vaak
-// wel aangeeft dat het om iets ernstigers gaat. "verstoring" bevat toevallig
-// de substring "storing", dus die moet eerder gecontroleerd worden.
-//
-// ADDITIONAL_SERVICE ("Extra dienst") kreeg hier ooit altijd de ernstig-badge,
-// omdat vervoerders dat effect soms voor urgente/onvoorziene meldingen
-// gebruiken i.p.v. daadwerkelijk extra dienst. In de praktijk (zie historie
-// in alerts-tabel) is verreweg de meeste ADDITIONAL_SERVICE-melding gewoon
-// een routine "halte vervalt i.v.m. Werkzaamheden/Optocht" -- geen incident.
-// De écht urgente gevallen (bv. "i.v.m. een ongeval") worden al gewoon
-// door de keywords hieronder gedekt, dus de blanket-regel gaf alleen
-// valse ernstig-meldingen zonder iets extra's te vangen.
-//
-// "stremming" is bewust geen keyword (meer): de description van KV15-
-// afkomstige meldingen bevat standaard "Oorzaak : Stremming Effect :
-// Omleiding Maatregelen : ..." bij ELKE aangekondigde halte-verplaatsing,
-// ook routinematige, dagen van tevoren geplande -- niet alleen bij echte
-// actuele incidenten. Zelfde lijst als SEVERE_ALERT_KEYWORDS in
-// collector.py, bewust in sync houden.
-const SEVERE_ALERT_KEYWORDS = ['verstoring', 'storing', 'brand', 'hulpdiensten', 'politie', 'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit'];
-// GTFS-RT Alert.cause is een betrouwbaarder signaal dan tekst-keywords als
-// de vervoerder het daadwerkelijk vult (vaak UNKNOWN_CAUSE, maar als het wel
-// gezet is telt het). Alleen de ondubbelzinnig urgente oorzaken; MAINTENANCE/
-// CONSTRUCTION/HOLIDAY/WEATHER/TECHNICAL_PROBLEM blijven bewust buiten deze
-// lijst -- dat zijn vaak routine meldingen, geen incidenten.
-const SEVERE_CAUSE_LABELS = {
-  ACCIDENT: 'Ongeval', POLICE_ACTIVITY: 'Politie', MEDICAL_EMERGENCY: 'Medisch noodgeval',
-  DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
-};
-function severeAlertLabel(a) {
-  // Nog te beginnen meldingen (valid_from in de toekomst) tellen niet als
-  // urgent, ook niet bij een woord als "stremming" -- dat is dan een
-  // aankondiging van gepland werk, geen actuele situatie. Zelfde regel als
-  // _is_severe_alert() in collector.py, bewust in sync houden.
-  if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
-  const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
-  const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
-  if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
-  return SEVERE_CAUSE_LABELS[a.cause] || null;
-}
+// SEVERE_ALERT_KEYWORDS / SEVERE_CAUSE_LABELS / severeAlertLabel() /
+// railAlertSeverity() komen uit static/js/severity.js, gedeeld met index.html.
 
 function fmtAlertTime(ts) {
   return new Date(ts * 1000).toLocaleString('nl-NL', {
@@ -292,26 +254,6 @@ async function refreshAlerts() {
   }).join('');
 }
 
-// NS-storingen op het spoor: aparte databron (zie /lite/api/rail-alerts en
-// app/ns_rail_alerts.py), al vooraf op de server gefilterd tot storingen die
-// een station in de provincie Utrecht raken. impact.value loopt bij NS van
-// 1 (licht) t/m 3 (trein rijdt niet).
-//
-// MAINTENANCE (geplande werkzaamheden) telt hier bewust NOOIT als ernstig,
-// ook niet bij hoge impact: vervangend busvervoer bij groot gepland werk
-// scoort bij NS net zo'n hoog impact-getal als een echte "trein rijdt niet"-
-// verstoring, puur op basis van hoeveel dienst wegvalt -- niet op basis van
-// gepland/ongepland.
-//
-// Drempel voor DISRUPTION/CALAMITY staat op impact>=2 (niet >=3): een echte
-// verstoring met "minder treinen"/"veel minder treinen" (impact 2) is nog
-// steeds een acuut incident, ook al rijden er niet nul treinen -- op verzoek
-// verlaagd nadat >=3 twee actieve verstoringen (politie-inzet, defect spoor)
-// ten onrechte niet als urgent liet zien.
-function railAlertSeverity(a) {
-  if (a.disruption_type === 'MAINTENANCE') return false;
-  return a.disruption_type === 'CALAMITY' || (a.impact !== null && a.impact >= 2);
-}
 
 // consequence_level: gestructureerd gevolg-veld uit de NS-respons, naast het
 // al gebruikte impact-getal. Alleen de bekende waarden uit onderzoek vertaald;
