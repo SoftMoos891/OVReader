@@ -99,11 +99,12 @@
   <div class="range-toggle">
     <button class="range-btn" data-range="today">Vandaag</button>
     <button class="range-btn active" data-range="week">Afgelopen 7 dagen</button>
-    <button class="range-btn" data-range="2weeks">Afgelopen 14 dagen</button>
-    <button class="range-btn" data-range="30d">Afgelopen 30 dagen</button>
     <button class="range-btn" data-range="this_month">Deze kalendermaand</button>
     <button class="range-btn" data-range="last_month">Vorige kalendermaand</button>
     <button class="range-btn" data-range="all">Alles (sinds start collector)</button>
+    <select class="range-btn month-select" id="month-select">
+      <option value="">Kies een maand&hellip;</option>
+    </select>
     <span class="pill schedule-pill" id="summer-schedule-banner"></span>
   </div>
 
@@ -769,24 +770,66 @@ function syncUrl() {
 function applyUrlState() {
   const params = new URLSearchParams(location.search);
   const range = params.get('range');
-  if (range && document.querySelector(`.range-btn[data-range="${range}"]`)) {
+  if (range && document.querySelector(`button.range-btn[data-range="${range}"]`)) {
     currentRange = range;
-    document.querySelectorAll('.range-btn').forEach(b =>
+    document.querySelectorAll('button.range-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.range === range));
+  } else if (range && range.startsWith('month:')) {
+    currentRange = range;
+    document.querySelectorAll('button.range-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('month-select').value = range;
   }
   upToNow = params.get('up_to_now') !== '0';
   document.getElementById('up-to-now-toggle').checked = upToNow;
 }
 
-document.querySelectorAll('.range-btn').forEach(btn => {
+document.querySelectorAll('button.range-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('button.range-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    document.getElementById('month-select').value = '';
     currentRange = btn.dataset.range;
     filterRouteId = '';
     syncUrl();
     loadAll().catch(console.error);
   });
+});
+
+// Maand-dropdown: gevuld vanaf de vroegst bekende data (trips_ran_daily,
+// zie /api/cancellations/available-months) t/m de huidige maand, nieuwste
+// eerst. Los van de vijf knoppen hierboven -- kiezen deactiveert de
+// knoppen en andersom, zelfde 'range'-URL-param (bv. 'month:2026-07').
+async function populateMonthSelect() {
+  const select = document.getElementById('month-select');
+  let earliest = new Date();
+  try {
+    const res = await fetch('/api/cancellations/available-months');
+    const data = await res.json();
+    if (data.earliest_date) earliest = new Date(data.earliest_date + 'T00:00:00');
+  } catch (e) {
+    // Val terug op alleen de huidige maand als de call faalt.
+  }
+  const MONTH_NAMES_NL = ['januari', 'februari', 'maart', 'april', 'mei', 'juni',
+    'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+  const now = new Date();
+  const options = [];
+  let y = now.getFullYear(), m = now.getMonth(); // 0-indexed
+  const stopY = earliest.getFullYear(), stopM = earliest.getMonth();
+  while (y > stopY || (y === stopY && m >= stopM)) {
+    const key = `month:${y}-${String(m + 1).padStart(2, '0')}`;
+    options.push(`<option value="${key}">${MONTH_NAMES_NL[m]} ${y}</option>`);
+    m -= 1;
+    if (m < 0) { m = 11; y -= 1; }
+  }
+  select.insertAdjacentHTML('beforeend', options.join(''));
+}
+document.getElementById('month-select').addEventListener('change', (e) => {
+  if (!e.target.value) return;
+  document.querySelectorAll('button.range-btn').forEach(b => b.classList.remove('active'));
+  currentRange = e.target.value;
+  filterRouteId = '';
+  syncUrl();
+  loadAll().catch(console.error);
 });
 document.getElementById('up-to-now-toggle').addEventListener('change', (e) => {
   upToNow = e.target.checked;
@@ -799,9 +842,14 @@ document.getElementById('trip-search').addEventListener('input', () => { tripPag
 document.getElementById('prev-page').addEventListener('click', () => { if (tripPage > 0) { tripPage--; loadTrips(); } });
 document.getElementById('next-page').addEventListener('click', () => { tripPage++; loadTrips(); });
 
-applyUrlState();
+// populateMonthSelect() moet klaar zijn vóórdat applyUrlState() een
+// 'month:...'-deeplink kan selecteren (de <option> moet al bestaan) --
+// daarom in dezelfde keten i.p.v. los aangeroepen.
+populateMonthSelect().then(() => {
+  applyUrlState();
+  loadAll().catch(console.error);
+});
 renderScheduleBanner();
-loadAll().catch(console.error);
 loadHealth().catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
 setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);

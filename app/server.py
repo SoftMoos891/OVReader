@@ -938,17 +938,18 @@ def busnummers_page():
 
 def _date_bounds_for_range(range_key):
     """Geeft (since_date, until_date) als ISO-datumstrings voor een range-key
-    ('today'/'week'/'2weeks'/'30d'/'all'/'this_month'/'last_month'), gedeeld
-    door de uitval- en statistiek-endpoints.
+    ('today'/'week'/'2weeks'/'30d'/'all'/'this_month'/'last_month'/
+    'month:YYYY-MM'), gedeeld door de uitval- en statistiek-endpoints.
 
-    'this_month'/'last_month' zijn de enige twee ranges waarbij until_date
-    niet per se vandaag is: 'last_month' levert een afgesloten periode terug
-    (1e t/m laatste dag van de vorige kalendermaand), volledig in het
-    verleden. Callers die today_str als variabelenaam gebruikten voor de
-    tweede returnwaarde deden dat omdat until_date voorheen altijd vandaag
-    was -- dat klopt sinds deze uitbreiding niet meer, dus daar waar de
-    daadwerkelijke datum van vandaag nodig is (los van de gekozen range)
-    moet een aparte date.today() gebruikt worden."""
+    'this_month'/'last_month'/'month:YYYY-MM' zijn de enige ranges waarbij
+    until_date niet per se vandaag is: 'last_month' en een afgesloten
+    'month:YYYY-MM' uit het verleden leveren een volledig-in-het-verleden
+    periode terug (1e t/m laatste dag van die maand). Callers die today_str
+    als variabelenaam gebruikten voor de tweede returnwaarde deden dat omdat
+    until_date voorheen altijd vandaag was -- dat klopt sinds deze
+    uitbreiding niet meer, dus daar waar de daadwerkelijke datum van vandaag
+    nodig is (los van de gekozen range) moet een aparte date.today() gebruikt
+    worden."""
     today = date.today()
     today_str = today.isoformat()
     if range_key == "all":
@@ -959,6 +960,19 @@ def _date_bounds_for_range(range_key):
         last_day_prev_month = today.replace(day=1) - timedelta(days=1)
         first_day_prev_month = last_day_prev_month.replace(day=1)
         return first_day_prev_month.isoformat(), last_day_prev_month.isoformat()
+    if range_key and range_key.startswith("month:"):
+        # Vrij te kiezen maand uit de maand-dropdown, bv. 'month:2026-07'.
+        # last_day = laatste dag van die maand, maar niet voorbij vandaag
+        # (een nog lopende of toekomstige maand zou anders een until_date
+        # in de toekomst opleveren).
+        try:
+            year, month = (int(p) for p in range_key[len("month:"):].split("-"))
+            first_day = date(year, month, 1)
+        except (ValueError, TypeError):
+            return today.replace(day=1).isoformat(), today_str
+        next_month_first = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        last_day = min(next_month_first - timedelta(days=1), today)
+        return first_day.isoformat(), last_day.isoformat()
     days = RANGE_DAYS.get(range_key, 1)
     since_date = (today - timedelta(days=days - 1)).isoformat()
     return since_date, today_str
@@ -1598,6 +1612,23 @@ def api_cancellations():
         "per_month_by_operator": per_month_by_operator,
         "previous": previous,
     })
+
+
+@app.route("/api/cancellations/available-months")
+def api_cancellations_available_months():
+    """Vroegste maand waarvoor data bestaat, voor de maand-dropdown op
+    /uitval. Afgeleid uit trips_ran_daily (niet trip_cancellations): die
+    wordt elke dag gevuld zodra de collector draait, ook op dagen zonder een
+    enkele uitval, en is dus een betrouwbaardere 'sinds wanneer draait dit'-
+    indicator dan een tabel die alleen bij daadwerkelijke uitval een rij
+    krijgt."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT MIN(service_date) AS earliest FROM trips_ran_daily").fetchone()
+    finally:
+        conn.close()
+    earliest = row["earliest"] if row and row["earliest"] else date.today().isoformat()
+    return jsonify({"earliest_date": earliest})
 
 
 @app.route("/api/cancellations/trips")
