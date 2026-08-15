@@ -613,16 +613,25 @@ def lite_api_uitval_daily():
     CHART_DAYS dagen, voor de trendgrafiek op /lite. Zelfde dag-uitsplitsing
     als server.api_cancellations()'s daily/daily_by_operator-velden, maar
     zonder de overige (weekday/hour/week/month/previous-period)
-    breakdowns -- dat is precies wat de lite-scope bewust weglaat."""
+    breakdowns -- dat is precies wat de lite-scope bewust weglaat.
+
+    Voor vandaag wordt vervallen uitval met een nog niet verstreken
+    start_time genegeerd (zelfde 'up_to_now'-redenering als
+    server.api_cancellations()): 'gereden' bevat sowieso alleen al
+    waargenomen ritten, dus zonder deze filter zou vandaag's percentage
+    uitval-hele-dag tegen gereden-tot-nu-toe afzetten en zo kunstmatig hoog
+    uitvallen. Voltooide dagen blijven ongewijzigd."""
     until_date = date.today()
     since_date = until_date - timedelta(days=CHART_DAYS - 1)
     since_str, until_str = since_date.isoformat(), until_date.isoformat()
+    today_str = until_date.isoformat()
+    now_time_str = datetime.now().strftime("%H:%M:%S")
 
     conn = db.get_conn()
     try:
         canceled_rows = conn.execute(
-            "SELECT service_date, route_id, COUNT(*) AS cnt FROM trip_cancellations "
-            "WHERE service_date >= ? AND service_date <= ? GROUP BY service_date, route_id",
+            "SELECT service_date, route_id, start_time, COUNT(*) AS cnt FROM trip_cancellations "
+            "WHERE service_date >= ? AND service_date <= ? GROUP BY service_date, route_id, start_time",
             (since_str, until_str),
         ).fetchall()
         ran_rows = conn.execute(
@@ -645,6 +654,8 @@ def lite_api_uitval_daily():
     for r in canceled_rows:
         if not _index.is_bus_route(r["route_id"]):
             continue
+        if r["service_date"] == today_str and r["start_time"] and r["start_time"] > now_time_str:
+            continue  # vooraf aangekondigde uitval voor een vertrektijd die nog moet komen
         daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})["canceled"] += r["cnt"]
         op = route_meta(r["route_id"])["operator"]
         daily_by_op.setdefault(op, {}).setdefault(r["service_date"], {"canceled": 0, "ran": 0})["canceled"] += r["cnt"]
