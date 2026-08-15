@@ -213,7 +213,14 @@ class Timetable:
                 continue
             midnight = datetime.combine(d, datetime.min.time())
             for member_id in member_ids:
-                for trip_id, _stop_sequence, time_str in self.stop_times.get(member_id, []):
+                for entry in self.stop_times.get(member_id, []):
+                    # Normaal 3 elementen; een vierde (waarde 2) betekent
+                    # "alleen op afroep" -- zie find_stop_times_for_trips()
+                    # in build_static_index.py. Vertrekken waar je helemaal
+                    # niet kunt instappen (pickup_type 1, de eindhalte van
+                    # vrijwel elke rit) staan daar al niet meer in.
+                    trip_id, _stop_sequence, time_str = entry[0], entry[1], entry[2]
+                    on_demand = len(entry) > 3 and entry[3] == 2
                     meta = self.trip_meta.get(trip_id)
                     if not meta or meta.get("service_id") not in active:
                         continue
@@ -221,7 +228,7 @@ class Timetable:
                     if seconds is None:
                         continue
                     scheduled_dt = midnight + timedelta(seconds=seconds)
-                    candidates.append((scheduled_dt, trip_id, meta, member_id))
+                    candidates.append((scheduled_dt, trip_id, meta, member_id, on_demand))
 
         window_start = now_dt - timedelta(minutes=1)  # kleine marge voor net-vertrokken bussen
         window_end = now_dt + timedelta(minutes=window_minutes)
@@ -253,7 +260,7 @@ class Timetable:
         # daadwerkelijk in upcoming voorkomt apart aangeroepen i.p.v. één
         # keer voor het hele stop_id.
         trip_ids_by_member = {}
-        for _dt, trip_id, _meta, member_id in upcoming:
+        for _dt, trip_id, _meta, member_id, _on_demand in upcoming:
             trip_ids_by_member.setdefault(member_id, []).append(trip_id)
         delay_by_trip_member = {}
         for member_id, trip_ids in trip_ids_by_member.items():
@@ -272,7 +279,7 @@ class Timetable:
         }
         multi_platform = len({p for p in platform_by_member.values() if p}) > 1
         results = []
-        for scheduled_dt, trip_id, meta, member_id in upcoming:
+        for scheduled_dt, trip_id, meta, member_id, on_demand in upcoming:
             delay = delay_by_trip_member.get((trip_id, member_id))
             estimated_dt = scheduled_dt + timedelta(seconds=delay) if delay is not None else None
             results.append({
@@ -283,6 +290,9 @@ class Timetable:
                 "estimated_time": estimated_dt.strftime("%H:%M") if estimated_dt else None,
                 "delay_seconds": delay,
                 "is_live": delay is not None,
+                # U-Flex e.d.: rijdt alleen als je 'm vooraf reserveert, dus
+                # geen vertrek waar je zomaar op kunt gaan staan wachten.
+                "on_demand": on_demand,
                 # Alleen ingevuld als de halte meerdere perrons heeft (anders
                 # overbodige info) -- laat zien vanaf welk exact perron een
                 # vertrek gaat, nu er meerdere door elkaar heen getoond worden.

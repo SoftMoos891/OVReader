@@ -45,7 +45,7 @@ FEED_STATE_PATH = DATA_DIR / "gtfs_feed_info.json"
 # Ophogen zodra de vórm van de weggeschreven bestanden verandert (nieuw
 # bestand, nieuw veld). Zonder dit zou een build met ongewijzigde
 # feed_version worden overgeslagen en dus nooit de nieuwe velden opleveren.
-BUILD_VERSION = 3
+BUILD_VERSION = 4
 
 # Tolerantie voor de Ramer-Douglas-Peucker-vereenvoudiging van routelijnen,
 # in graden (~0.00005 graden is ~5m op deze breedtegraad) -- ver onder wat op
@@ -337,7 +337,23 @@ def find_stop_times_for_trips(zf, trip_ids):
     (trip_termini) -- dit is het echte begin- en eindpunt van de rit volgens
     de dienstregeling, in tegenstelling tot een 'vorige/volgende halte'
     afgeleid uit live posities (bleek onbetrouwbaar: die kon bv. een halte in
-    de tegenovergestelde richting tonen)."""
+    de tegenovergestelde richting tonen).
+
+    pickup_type bepaalt of een halte-tijd überhaupt een *vertrek* is:
+
+      0  normaal instappen                          -> (trip_id, seq, tijd)
+      1  niet instappen, alleen uitstappen          -> helemaal overgeslagen
+      2  alleen op afroep (U-Flex)                  -> (trip_id, seq, tijd, 2)
+
+    Type 1 is in de praktijk de eindhalte van vrijwel elke rit (184.237 van
+    de 4,07 mln U-OV halte-tijden, tegenover 177.076 ritten): daar komt de
+    bus aan en gaat 'ie uit dienst. Die stonden in de haltezoeker als gewoon
+    vertrek tussen de rest -- een tijd waarop je niet mee kunt.
+
+    De halte zelf blijft wél in stop_ids meetellen, ook als er alleen
+    type 1-rijen voor bestaan: anders zou een halte die uitsluitend
+    eindpunt is helemaal uit utrecht_stops.json verdwijnen en daarmee ook
+    uit het zoeken-op-naam en de meldingen."""
     stop_times_by_stop = {}
     trip_termini = {}  # trip_id -> [min_seq, min_stop_id, max_seq, max_stop_id]
     with zf.open("stop_times.txt") as f:
@@ -347,6 +363,7 @@ def find_stop_times_for_trips(zf, trip_ids):
         idx = {name: i for i, name in enumerate(header)}
         i_trip, i_stop, i_seq = idx["trip_id"], idx["stop_id"], idx["stop_sequence"]
         i_arr, i_dep = idx["arrival_time"], idx["departure_time"]
+        i_pickup = idx.get("pickup_type")
         for i, row in enumerate(reader):
             trip_id = row[i_trip]
             if trip_id in trip_ids:
@@ -356,7 +373,20 @@ def find_stop_times_for_trips(zf, trip_ids):
                     stop_sequence = 0
                 time_str = row[i_dep] or row[i_arr]
                 stop_id = row[i_stop]
-                stop_times_by_stop.setdefault(stop_id, []).append((trip_id, stop_sequence, time_str))
+                pickup = row[i_pickup] if i_pickup is not None else "0"
+                # setdefault ook bij een overgeslagen vertrek: de halte moet
+                # blijven bestaan, alleen deze tijd hoort er niet bij.
+                entries = stop_times_by_stop.setdefault(stop_id, [])
+                if pickup != "1":
+                    # Vierde element alleen bij op-afroep (0,3% van de rijen);
+                    # standaard weggelaten om dit bestand -- 4 mln rijen, ~117
+                    # MB, volledig in het geheugen van elke webworker -- niet
+                    # onnodig te laten groeien. Lezers moeten dus op lengte
+                    # controleren, zie Timetable.next_departures().
+                    entries.append(
+                        (trip_id, stop_sequence, time_str, 2) if pickup == "2"
+                        else (trip_id, stop_sequence, time_str)
+                    )
                 termini = trip_termini.get(trip_id)
                 if termini is None:
                     trip_termini[trip_id] = [stop_sequence, stop_id, stop_sequence, stop_id]

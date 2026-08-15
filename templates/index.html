@@ -1189,7 +1189,12 @@ async function refreshStopDepartures() {
       // data voor dit specifieke vertrek is (bv. omdat de rit nog niet is
       // begonnen) -- géén bevestiging dat de bus op tijd is. Voorheen stond
       // hier ten onrechte altijd "op tijd", ook zonder enige live data.
-      const status = d.delay_seconds === null
+      // Een op-afroeprit (U-Flex) rijdt alleen na reservering, dus daar zegt
+      // "op tijd"/"onbekend" niets zinnigs over -- die krijgt zijn eigen
+      // label i.p.v. een vertragingsstatus.
+      const status = d.on_demand
+        ? '<span class="pill muted">Op afroep</span>'
+        : d.delay_seconds === null
         ? '<span class="pill muted">Onbekend</span>'
         : `<span class="pill ${delayPillClass(d.delay_seconds)}">${delayText(d.delay_seconds)}</span>`;
       const time = d.estimated_time || d.scheduled_time;
