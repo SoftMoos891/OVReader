@@ -17,7 +17,7 @@ from flask import (
 )
 
 from . import db, records
-from .collector import FETCH_INTERVAL_SECONDS, RETENTION_DAYS
+from .collector import DELAY_RETENTION_DAYS, FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
 from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
 from .timetable import Timetable
@@ -849,9 +849,9 @@ def api_air_quality():
 
 @app.route("/api/stats")
 def api_stats():
-    """Punctualiteit per operator en per route, over ruwe data (zie RETENTION_DAYS
-    in app/collector.py) aangevuld met opgerolde dagstatistieken voor oudere
-    periodes. Optioneel
+    """Punctualiteit per operator en per route, over ruwe data (zie
+    DELAY_RETENTION_DAYS in app/collector.py) aangevuld met opgerolde
+    dagstatistieken voor oudere periodes. Optioneel
     ?range=today/week/2weeks/30d/all om tot een periode te beperken (zonder
     parameter: alle historie, zoals voorheen -- gebruikt door het live-dashboard).
 
@@ -1213,9 +1213,9 @@ def _compute_stats_peak(range_key, route_id, operator):
 def api_stats_trips():
     """Drill-down: individuele ritten met hun hoogst waargenomen vertraging,
     voor een lijn/operator over een gekozen periode. Werkt alleen binnen het
-    raw-retentievenster (zie RETENTION_DAYS in app/collector.py) -- oudere
-    metingen zijn al opgerold tot dagstatistieken en per-rit-detail is dan
-    niet meer beschikbaar."""
+    raw-retentievenster van trip_delays (zie DELAY_RETENTION_DAYS in
+    app/collector.py) -- oudere metingen zijn al opgerold tot dagstatistieken
+    en per-rit-detail is dan niet meer beschikbaar."""
     range_key = request.args.get("range", "week")
     since_date, until_date = _date_bounds_for_range(range_key)
     since_ts, until_ts = _range_to_epoch(since_date, until_date)
@@ -1259,7 +1259,9 @@ def api_stats_trips():
 
     return jsonify({
         "range": range_key, "since_date": since_date, "until_date": until_date,
-        "raw_retention_days": RETENTION_DAYS,
+        # Dit endpoint leest trip_delays, niet vehicle_positions -- dus de
+        # (kortere) vertragingsretentie, niet die van de voertuighistorie.
+        "raw_retention_days": DELAY_RETENTION_DAYS,
         "total": len(items),
         "limit": limit, "offset": offset,
         "items": items[offset:offset + limit],

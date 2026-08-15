@@ -298,3 +298,69 @@ def test_rollup_yields_lock_between_days_for_concurrent_writer(temp_db, monkeypa
     count = conn.execute("SELECT COUNT(*) AS c FROM vehicle_positions").fetchone()["c"]
     conn.close()
     assert count == 1
+
+
+# ── Gescheiden bewaartermijnen per ruwe tabel ─────────────────────────────
+#
+# trip_delays is verreweg de duurste tabel (~16,7 mln rijen/dag) en heeft
+# daarom een kortere termijn dan vehicle_positions, dat klein is maar wel
+# bepaalt hoever /busnummers kan terugkijken. Zouden die twee weer aan één
+# constante hangen, dan halveert een besparing op de vertragingen stilletjes
+# ook de voertuighistorie -- vandaar deze test.
+
+def test_delay_retention_is_shorter_than_vehicle_retention():
+    assert collector.DELAY_RETENTION_DAYS < collector.RETENTION_DAYS
+
+
+def test_cleanup_keeps_vehicle_positions_that_outlive_the_delay_retention(temp_db):
+    """Een voertuigpositie tussen beide termijnen in moet blijven staan:
+    ouder dan de vertragingsretentie, maar nog binnen de voertuighistorie."""
+    tussenin = int(time.time()) - (collector.DELAY_RETENTION_DAYS + 1) * 86400
+    assert tussenin > int(time.time()) - collector.RETENTION_DAYS * 86400
+
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO vehicle_positions (fetched_at, vehicle_id, trip_id, route_id, lat, lon)
+           VALUES (?, 'bus-1', 't1', 'TESTROUTE', 52.0, 5.0)""",
+        (tussenin,),
+    )
+    conn.execute(
+        """INSERT INTO trip_delays
+           (fetched_at, trip_id, route_id, stop_id, stop_sequence, arrival_delay, departure_delay)
+           VALUES (?, 't1', 'TESTROUTE', 'S1', 1, 60, NULL)""",
+        (tussenin,),
+    )
+    conn.commit()
+    conn.close()
+
+    collector.rollup_completed_days()
+    collector.cleanup_old_data()
+
+    conn = temp_db.get_conn()
+    voertuigen = conn.execute("SELECT COUNT(*) c FROM vehicle_positions").fetchone()["c"]
+    vertragingen = conn.execute("SELECT COUNT(*) c FROM trip_delays").fetchone()["c"]
+    conn.close()
+
+    assert voertuigen == 1, "voertuighistorie mag niet mee verdwijnen met de vertragingen"
+    assert vertragingen == 0, "vertraging voorbij DELAY_RETENTION_DAYS hoort opgeruimd te zijn"
+
+
+def test_cleanup_still_never_deletes_unrolled_delays(temp_db):
+    """De watermark-beveiliging blijft gelden nu de termijn korter is: zonder
+    rollup mag er geen enkele ruwe vertraging verdwijnen."""
+    oud = int(time.time()) - (collector.DELAY_RETENTION_DAYS + 5) * 86400
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO trip_delays
+           (fetched_at, trip_id, route_id, stop_id, stop_sequence, arrival_delay, departure_delay)
+           VALUES (?, 't1', 'TESTROUTE', 'S1', 1, 0, NULL)""",
+        (oud,),
+    )
+    conn.commit()
+    conn.close()
+
+    collector.cleanup_old_data()  # bewust zonder rollup vooraf
+
+    conn = temp_db.get_conn()
+    assert conn.execute("SELECT COUNT(*) c FROM trip_delays").fetchone()["c"] == 1
+    conn.close()

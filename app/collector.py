@@ -25,17 +25,31 @@ from .road_situations import (
 )
 
 FETCH_INTERVAL_SECONDS = 30
-# Hoe lang trip_delays/vehicle_positions als RUWE (per-halte/per-fetch) rijen
-# bewaard blijven voordat ze worden opgerold tot dagstatistieken en verwijderd
-# (zie cleanup_old_data()). Was 14 dagen; op productieschaal (tientallen
-# miljoenen rijen) maakte dat elke query die niet volledig buiten dit venster
-# valt - inclusief de standaard "Afgelopen 14 dagen"-weergave op /trends, die
-# daarmee toevallig exact samenviel - een dure scan over de volledige ruwe
-# tabel i.p.v. de veel kleinere, voorgeaggregeerde rolluptabellen. 7 dagen
-# halveert de ruwe tabel en laat elke query die verder terugkijkt grotendeels
-# uit de rollup lezen. Kost: individuele-rit-drilldown (/api/stats/trips)
-# werkt alleen nog binnen dit kortere venster.
+# Hoe lang vehicle_positions als RUWE rijen bewaard blijft (zie
+# cleanup_old_data()). Bepaalt hoever /busnummers terug kan kijken: zodra
+# deze rijen weg zijn, is niet meer te herleiden welk voertuig welke rit
+# reed (de rolluptabellen bevatten geen vehicle_id).
+#
+# Deze tabel is veel kleiner dan trip_delays hieronder -- ~215 rijen per
+# ophaalcyclus tegenover ~5.800, dus ruim een factor 25 -- en is daarom
+# bewust NIET verlaagd toen de vertragingsretentie omlaag ging.
 RETENTION_DAYS = 7
+# Hoe lang trip_delays als RUWE (per-halte/per-fetch) rijen bewaard blijft.
+# Apart van RETENTION_DAYS hierboven, want dit is verreweg de duurste tabel:
+# ~5.800 rijen per cyclus van 30s is ~16,7 miljoen rijen per dag.
+#
+# Was gelijk aan RETENTION_DAYS (7 dagen, ~117 mln rijen). Verlaagd naar 2
+# omdat vrijwel niets die diepte nodig heeft: de trend- en piekgrafieken
+# lezen ruwe data uitsluitend voor VANDAAG en halen al het oudere uit
+# route_stats_daily/route_stats_period_daily, en de live-weergaven kijken
+# hooguit 20 minuten terug (LIVE_DELAY_FRESHNESS_SECONDS in timetable.py)
+# of 90 seconden (VEHICLE_FRESHNESS_SECONDS in server.py). Kost:
+# individuele-rit-drilldown (/api/stats/trips) werkt alleen nog binnen dit
+# kortere venster.
+#
+# Verlagen is veilig: cleanup_old_data() gaat nooit voorbij de
+# rollup_watermark, dus nog niet opgetelde data blijft hoe dan ook staan.
+DELAY_RETENTION_DAYS = 2
 # In tegenstelling tot trip_delays hierboven is dit GEEN dure tabel: hoogstens
 # 1 rij per rit per dag (geen per-halte/per-fetch-detail), dus jaren aan
 # geschiedenis kost nauwelijks schijfruimte. Ruim gezet zodat uitvaltrends
@@ -413,21 +427,24 @@ def _delete_batched(table, column, cutoff, batch_size=_CLEANUP_BATCH_SIZE):
 
 
 def cleanup_old_data():
-    """Verwijdert ruwe metingen ouder dan RETENTION_DAYS. De dagstatistieken
-    zijn hier al opgeteld door rollup_completed_days(), dus er hoeft hier
-    geen aggregatie meer te gebeuren -- alleen een veilige delete, nooit
-    voorbij de rollup_watermark (om te voorkomen dat nog niet opgetelde
-    ruwe data verdwijnt).
+    """Verwijdert ruwe metingen ouder dan hun bewaartermijn. De
+    dagstatistieken zijn hier al opgeteld door rollup_completed_days(), dus
+    er hoeft hier geen aggregatie meer te gebeuren -- alleen een veilige
+    delete, nooit voorbij de rollup_watermark (om te voorkomen dat nog niet
+    opgetelde ruwe data verdwijnt).
 
-    trip_delays/vehicle_positions worden gebatcht verwijderd (zie
-    _delete_batched); de kleinere geschiedenistabellen (per service_date,
-    dus laag volume) blijven in één transactie."""
+    De twee ruwe tabellen hebben een eigen termijn: trip_delays is de dure
+    (DELAY_RETENTION_DAYS), vehicle_positions is klein maar bepaalt hoever
+    /busnummers terugkijkt (RETENTION_DAYS). Allebei gebatcht verwijderd
+    (zie _delete_batched); de kleinere geschiedenistabellen (per
+    service_date, dus laag volume) blijven in één transactie."""
     cutoff = _now() - RETENTION_DAYS * 86400
+    delay_cutoff = _now() - DELAY_RETENTION_DAYS * 86400
     conn = db.get_conn()
     try:
         row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
         watermark = row["rolled_through_epoch"] if row else 0
-        safe_cutoff = min(cutoff, watermark)
+        safe_cutoff = min(delay_cutoff, watermark)
     finally:
         conn.close()
 

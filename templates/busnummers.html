@@ -83,7 +83,7 @@
       <datalist id="vehicleList"></datalist>
       <button class="search-btn" id="searchBtn" onclick="searchVehicle()">Zoeken</button>
     </div>
-    <div class="note">Alleen ritten van de afgelopen 7 dagen zijn nog te herleiden naar een voertuignummer — daarna wordt ruwe data opgerold tot dagstatistieken zonder voertuigkoppeling.</div>
+    <div class="note" id="retention-note">Alleen recente ritten zijn nog te herleiden naar een voertuignummer — daarna wordt ruwe data opgerold tot dagstatistieken zonder voertuigkoppeling.</div>
   </div>
 
   <div class="panel" id="resultPanel" style="display:none;">
@@ -198,13 +198,15 @@ function fmtAgoShort(seconds) {
   return `${d} dag${d === 1 ? '' : 'en'} geleden`;
 }
 
-function renderLastPosition(pos) {
+function renderLastPosition(pos, retentionDays) {
   const note = document.getElementById('lastPosNote');
   const mapEl = document.getElementById('lastPosMap');
   if (!pos) {
     mapEl.style.display = 'none';
     note.style.display = '';
-    note.textContent = 'Geen locatiegegevens bekend voor dit voertuig in de afgelopen 7 dagen.';
+    // Bewaartermijn uit de API i.p.v. hardgecodeerd: die staat in
+    // app/collector.py en is daar los instelbaar per tabel.
+    note.textContent = `Geen locatiegegevens bekend voor dit voertuig in de afgelopen ${retentionDays || '?'} dagen.`;
     return;
   }
   note.style.display = 'none';
@@ -245,7 +247,12 @@ async function searchVehicle() {
     const res = await fetch(`/api/vehicles/history?vehicle_id=${encodeURIComponent(vehicleId)}`);
     const data = await res.json();
     document.getElementById('resultVtype').textContent = data.vehicle_type || '';
-    renderLastPosition(data.last_position);
+    if (data.raw_retention_days) {
+      document.getElementById('retention-note').textContent =
+        `Alleen ritten van de afgelopen ${data.raw_retention_days} dagen zijn nog te herleiden naar een `
+        + 'voertuignummer — daarna wordt ruwe data opgerold tot dagstatistieken zonder voertuigkoppeling.';
+    }
+    renderLastPosition(data.last_position, data.raw_retention_days);
     if (data.count === 0) {
       document.getElementById('resultBody').innerHTML =
         `<div class="empty">Geen ritten gevonden voor voertuig ${vehicleId} in de afgelopen ${data.raw_retention_days} dagen.</div>`;
