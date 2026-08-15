@@ -125,9 +125,9 @@ def collect_once():
             conn.executemany(
                 """INSERT INTO vehicle_positions
                    (fetched_at, vehicle_id, trip_id, route_id, lat, lon, speed, bearing,
-                    direction_id, current_status, stop_id, headsign)
+                    direction_id, current_status, stop_id, headsign, delay_seconds)
                    VALUES (:fetched_at, :vehicle_id, :trip_id, :route_id, :lat, :lon, :speed, :bearing,
-                           :direction_id, :current_status, :stop_id, :headsign)""",
+                           :direction_id, :current_status, :stop_id, :headsign, :delay_seconds)""",
                 [{**p, "fetched_at": fetched_at} for p in positions],
             )
         except Exception:
@@ -135,14 +135,15 @@ def collect_once():
             traceback.print_exc()
 
         trip_updates_feed = None
+        trip_updates_ext = {}
         try:
-            trip_updates_feed = fetch_trip_updates_feed()
+            trip_updates_feed, trip_updates_ext = fetch_trip_updates_feed()
         except Exception:
             print("[collector] fout bij ophalen trip-updates feed:")
             traceback.print_exc()
 
         try:
-            delays = parse_trip_delays(trip_updates_feed, _index) if trip_updates_feed is not None else []
+            delays = parse_trip_delays(trip_updates_feed, _index, trip_updates_ext) if trip_updates_feed is not None else []
             conn.executemany(
                 """INSERT INTO trip_delays
                    (fetched_at, trip_id, route_id, stop_id, stop_sequence, arrival_delay, departure_delay)
@@ -159,7 +160,7 @@ def collect_once():
             traceback.print_exc()
 
         try:
-            cancellations = parse_cancellations(trip_updates_feed, _index) if trip_updates_feed is not None else []
+            cancellations = parse_cancellations(trip_updates_feed, _index, trip_updates_ext) if trip_updates_feed is not None else []
             for c in cancellations:
                 service_date = c["service_date"] or time.strftime("%Y-%m-%d", time.localtime(fetched_at))
                 conn.execute(
@@ -181,7 +182,7 @@ def collect_once():
             traceback.print_exc()
 
         try:
-            skipped = parse_skipped_stops(trip_updates_feed, _index) if trip_updates_feed is not None else []
+            skipped = parse_skipped_stops(trip_updates_feed, _index, trip_updates_ext) if trip_updates_feed is not None else []
             for s in skipped:
                 service_date = s["service_date"] or time.strftime("%Y-%m-%d", time.localtime(fetched_at))
                 conn.execute(

@@ -14,6 +14,8 @@ data/utrecht_calendar.json
 data/utrecht_trip_meta.json
 data/utrecht_stop_times.json
 data/utrecht_shapes.json
+data/utrecht_realtime_trips.json
+data/gtfs_feed_info.json
 data/vild_locations.json
 data/bus_types.json
 data/backups/

@@ -215,6 +215,13 @@ config, met dezelfde proxy-headers als in `deploy/nginx-lite.conf`.)
   gevolgd door
   `sudo systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite`
   (de lite-service leest ook `utrecht_routes.json`, dus wel meenemen).
+  Is de landelijke feed niet gewijzigd, dan slaat het script zowel de
+  download (~230 MB) als het herbouwen over -- dat duurt dan een paar
+  seconden i.p.v. minuten. Toch alles opnieuw opbouwen:
+  `... -m app.build_static_index --force`.
+- Welke dienstregelingversie er geladen is, staat in `/api/health` onder
+  `gtfs_feed` (en in `data/gtfs_feed_info.json`) -- handig om te
+  controleren of de nachtelijke herbouw zijn werk doet.
 - Code-updates: rsync/git pull opnieuw, dan
   `sudo systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite`.
 

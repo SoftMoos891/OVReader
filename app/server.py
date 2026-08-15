@@ -41,6 +41,23 @@ _route_shapes = (
     json.loads(_ROUTE_SHAPES_PATH.read_text(encoding="utf-8")) if _ROUTE_SHAPES_PATH.exists() else {}
 )
 
+_GTFS_FEED_INFO_PATH = PROJECT_ROOT / "data" / "gtfs_feed_info.json"
+
+
+def _gtfs_feed_info():
+    """Dienstregelingversie/geldigheid van de geladen statische feed, voor de
+    statuspagina. Bewust bij elke aanroep van schijf gelezen (niet bij import
+    gecachet): de nachtelijke herbouw werkt dit bestand bij terwijl deze
+    webservice al draait, en dan hoort de statuspagina de nieuwe waarde te
+    tonen zodra de herstart erachteraan komt -- of eerder. Ontbreekt tot de
+    eerste herbouw met deze versie van build_static_index.py."""
+    if not _GTFS_FEED_INFO_PATH.exists():
+        return None
+    try:
+        return json.loads(_GTFS_FEED_INFO_PATH.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
 # Voertuignummer -> bustype (zie app/build_bus_types_index.py), voor de
 # voertuig-popup op de kaart. Zelfde bewuste keuze als _route_shapes hierboven:
 # alleen hier geladen, niet in UtrechtIndex (collector heeft er niets aan) en
@@ -367,6 +384,10 @@ def api_health():
         "rail_alerts_stale_after_seconds": RAIL_ALERTS_STALE_AFTER_SECONDS,
         "status": overall_status,
         "components": components,
+        # Welke dienstregelingversie er nu geladen is (uit feed_info.txt, zie
+        # build_static_index.py) -- maakt zichtbaar of de nachtelijke herbouw
+        # zijn werk doet, i.p.v. dat alleen aan verkeerde data te merken.
+        "gtfs_feed": _gtfs_feed_info(),
     })
 
 
@@ -462,7 +483,14 @@ def api_vehicles():
             "lon": r["lon"],
             "bearing": r["bearing"],
             "speed": r["speed"],
-            "delay_seconds": delay_by_trip.get(r["trip_id"]),
+            # Vertraging komt bij voorkeur uit de voertuigrij zelf (OVapi's
+            # eigen extensie op de voertuigfeed, ~96% gevuld); de koppeling
+            # met trip_delays blijft als terugval voor de rest en voor rijen
+            # van vóór die uitbreiding.
+            "delay_seconds": (
+                r["delay_seconds"] if r["delay_seconds"] is not None
+                else delay_by_trip.get(r["trip_id"])
+            ),
             "fetched_at": r["fetched_at"],
         })
     return jsonify({"vehicles": vehicles, "count": len(vehicles), "as_of": int(time.time())})

@@ -19,6 +19,7 @@ import io
 import json
 import math
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -36,6 +37,15 @@ OUT_CALENDAR = DATA_DIR / "utrecht_calendar.json"
 OUT_TRIP_META = DATA_DIR / "utrecht_trip_meta.json"
 OUT_STOP_TIMES = DATA_DIR / "utrecht_stop_times.json"
 OUT_SHAPES = DATA_DIR / "utrecht_shapes.json"
+OUT_REALTIME_TRIPS = DATA_DIR / "utrecht_realtime_trips.json"
+# Bevat zowel feed_info.txt-velden als de HTTP-cachekopjes van de vorige
+# download; zie load_feed_state()/download_gtfs_zip().
+FEED_STATE_PATH = DATA_DIR / "gtfs_feed_info.json"
+
+# Ophogen zodra de vórm van de weggeschreven bestanden verandert (nieuw
+# bestand, nieuw veld). Zonder dit zou een build met ongewijzigde
+# feed_version worden overgeslagen en dus nooit de nieuwe velden opleveren.
+BUILD_VERSION = 2
 
 # Tolerantie voor de Ramer-Douglas-Peucker-vereenvoudiging van routelijnen,
 # in graden (~0.00005 graden is ~5m op deze breedtegraad) -- ver onder wat op
@@ -56,23 +66,76 @@ def log(msg):
     print(f"[build_static_index] {msg}", flush=True)
 
 
-def download_gtfs_zip():
-    """Downloadt altijd een verse kopie -- de vorige versie sloeg dit over
-    zodra data/gtfs-nl.zip al bestond, wat een terugkerend "elke rit toont
-    'Onbekend'"-probleem veroorzaakte: een her-run van dit script schreef
-    dan wel verse output-JSON's weg (nieuwe bestandsdatum), maar baseerde
-    die op een oeroude gecachte zip waarvan de trip_id's allang niet meer
-    overeenkwamen met de live GTFS-RT-feed. Dat maakte de docstring hierboven
-    ("herhaal dit script periodiek") feitelijk een no-op na de allereerste
-    keer. Bandbreedte (~230 MB) is hier ondergeschikt aan correcte data --
-    dit script draait toch al maar incidenteel, niet in een strakke loop."""
-    log("Download landelijke statische GTFS-feed (~230 MB)...")
-    with requests.get(GTFS_ZIP_URL, stream=True, timeout=120) as r:
+def load_feed_state():
+    """Wat we van de vorige geslaagde build onthouden (HTTP-cachekopjes +
+    feed_version), of een leeg dict als dit de eerste keer is."""
+    if not FEED_STATE_PATH.exists():
+        return {}
+    try:
+        return json.loads(FEED_STATE_PATH.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}  # corrupt/onleesbaar: gewoon opnieuw opbouwen
+
+
+def download_gtfs_zip(state, force=False):
+    """Haalt de landelijke GTFS-feed op, maar slaat de download over als de
+    server zelf zegt dat er niets is gewijzigd. Geeft True terug als er
+    daadwerkelijk nieuwe bytes zijn opgehaald.
+
+    Let op het verschil met de bug die hier ooit zat: die versie sloeg de
+    download over zodra data/gtfs-nl.zip simpelweg bestond, waardoor het
+    script na de eerste keer voorgoed op een bevroren zip bleef bouwen -- de
+    trip_id's liepen stilzwijgend uit de pas met de live feed en elke rit
+    toonde 'Onbekend'. Hier neemt niet het bestaan van een bestand die
+    beslissing, maar de server: we sturen de Last-Modified/ETag terug die we
+    bij de vorige download van diezelfde server kregen, en alleen als die
+    met 304 (Not Modified) antwoordt hergebruiken we de kopie op schijf.
+    Wijzigt de feed, dan krijgen we gewoon 200 met verse bytes.
+
+    Extra vangnetten: zonder bestaande zip (of met --force) wordt er
+    sowieso gedownload, en een onleesbare/afgekapte zip wordt door de
+    zipfile-module in main() alsnog als fout gemeld."""
+    headers = {}
+    if not force and GTFS_ZIP_PATH.exists():
+        if state.get("http_last_modified"):
+            headers["If-Modified-Since"] = state["http_last_modified"]
+        if state.get("http_etag"):
+            headers["If-None-Match"] = state["http_etag"]
+
+    log("Controleer of de landelijke statische GTFS-feed is gewijzigd...")
+    with requests.get(GTFS_ZIP_URL, headers=headers, stream=True, timeout=120) as r:
+        if r.status_code == 304:
+            log("Feed ongewijzigd sinds de vorige build (HTTP 304) -- download overgeslagen.")
+            return False
         r.raise_for_status()
+        log("Feed is gewijzigd; download (~230 MB)...")
         with open(GTFS_ZIP_PATH, "wb") as f:
             for chunk in r.iter_content(chunk_size=1 << 20):
                 f.write(chunk)
+        state["http_last_modified"] = r.headers.get("Last-Modified")
+        state["http_etag"] = r.headers.get("ETag")
     log("Download klaar.")
+    return True
+
+
+def read_feed_info(zf):
+    """feed_info.txt uit de GTFS-feed: publicatieversie en geldigheidsduur
+    van de dienstregeling. Daarmee kunnen we (a) een ongewijzigde feed
+    herkennen en het dure herbouwen overslaan, en (b) in de app tonen welke
+    dienstregelingversie er eigenlijk geladen is."""
+    try:
+        with zf.open("feed_info.txt") as f:
+            row = next(csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig")), None)
+    except KeyError:
+        return {}
+    if not row:
+        return {}
+    return {
+        "feed_version": row.get("feed_version", ""),
+        "feed_start_date": row.get("feed_start_date", ""),
+        "feed_end_date": row.get("feed_end_date", ""),
+        "feed_publisher_name": row.get("feed_publisher_name", ""),
+    }
 
 
 def find_uov_routes(zf):
@@ -119,6 +182,7 @@ def find_trips_for_routes(zf, route_ids):
     trip_to_route = {}
     trip_meta = {}
     shape_counts = {}  # (route_id, direction_id) -> {shape_id: aantal trips}
+    realtime_trips = {}  # realtime_trip_id -> {route_id, headsign}
     with zf.open("trips.txt") as f:
         reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
         for row in reader:
@@ -129,12 +193,25 @@ def find_trips_for_routes(zf, route_ids):
                     "service_id": row.get("service_id", ""),
                     "headsign": row.get("trip_headsign", ""),
                 }
+                # OVapi's eigen, semantische ritsleutel
+                # ("KEOLIS:5056:40001") -- overleeft een hernummering van
+                # trip_id's bij een dienstregelingwijziging, zie
+                # UtrechtIndex.realtime_trip_meta_for() in gtfs_rt.py. Veel
+                # trip_id's (dienstdagen) delen er één, maar route en
+                # headsign zijn per realtime_trip_id eenduidig, dus
+                # overschrijven is hier onschadelijk.
+                realtime_trip_id = row.get("realtime_trip_id")
+                if realtime_trip_id:
+                    realtime_trips[realtime_trip_id] = {
+                        "route_id": row["route_id"],
+                        "headsign": row.get("trip_headsign", ""),
+                    }
                 shape_id = row.get("shape_id")
                 if shape_id:
                     key = (row["route_id"], row.get("direction_id", ""))
                     counts = shape_counts.setdefault(key, {})
                     counts[shape_id] = counts.get(shape_id, 0) + 1
-    return trip_to_route, trip_meta, shape_counts
+    return trip_to_route, trip_meta, shape_counts, realtime_trips
 
 
 def find_dominant_shapes(shape_counts):
@@ -307,11 +384,41 @@ def load_stop_info(zf, stop_ids):
     return stops
 
 
+ALL_OUTPUTS = (
+    OUT_STOPS, OUT_ROUTES, OUT_TRIPS, OUT_CALENDAR,
+    OUT_TRIP_META, OUT_STOP_TIMES, OUT_SHAPES, OUT_REALTIME_TRIPS,
+)
+
+
 def main():
+    force = "--force" in sys.argv
     DATA_DIR.mkdir(exist_ok=True)
-    download_gtfs_zip()
+    state = load_feed_state()
+    download_gtfs_zip(state, force=force)
 
     with zipfile.ZipFile(GTFS_ZIP_PATH) as zf:
+        feed_info = read_feed_info(zf)
+        if feed_info.get("feed_version"):
+            log(
+                f"Dienstregelingversie {feed_info['feed_version']} "
+                f"(geldig {feed_info.get('feed_start_date','?')}-{feed_info.get('feed_end_date','?')})."
+            )
+
+        # Alleen overslaan als álles klopt: zelfde dienstregelingversie,
+        # zelfde outputformaat, en elk verwacht bestand daadwerkelijk
+        # aanwezig. Dat laatste vangt ook het geval af waarin deze code een
+        # nieuw bestand is gaan schrijven dat er nog niet is.
+        unchanged = (
+            not force
+            and feed_info.get("feed_version")
+            and state.get("feed_version") == feed_info["feed_version"]
+            and state.get("build_version") == BUILD_VERSION
+            and all(p.exists() for p in ALL_OUTPUTS)
+        )
+        if unchanged:
+            log("Dienstregeling en outputformaat ongewijzigd -- herbouw overgeslagen (--force forceert).")
+            return
+
         log(f"Filter routes.txt op agency_id={TARGET_AGENCY_ID!r}, bus (route_type=3) + U-tram (route_type=0)...")
         routes = find_uov_routes(zf)
         agency_name = load_agency_name(zf)
@@ -319,8 +426,9 @@ def main():
             r["agency_name"] = agency_name
         log(f"{len(routes)} U-OV lijnen gevonden (bus + tram).")
 
-        trip_to_route, trip_meta, shape_counts = find_trips_for_routes(zf, set(routes))
-        log(f"{len(trip_to_route):,} trips gevonden voor deze lijnen.")
+        trip_to_route, trip_meta, shape_counts, realtime_trips = find_trips_for_routes(zf, set(routes))
+        log(f"{len(trip_to_route):,} trips gevonden voor deze lijnen "
+            f"({len(realtime_trips):,} unieke realtime_trip_id's).")
 
         service_ids = {m["service_id"] for m in trip_meta.values() if m["service_id"]}
         log(f"Parse calendar.txt/calendar_dates.txt voor {len(service_ids)} service_ids...")
@@ -375,10 +483,20 @@ def main():
     OUT_TRIP_META.write_text(json.dumps(trip_meta, ensure_ascii=False), encoding="utf-8")
     OUT_STOP_TIMES.write_text(json.dumps(stop_times_by_stop, ensure_ascii=False), encoding="utf-8")
     OUT_SHAPES.write_text(json.dumps(route_shape_points, ensure_ascii=False), encoding="utf-8")
+    OUT_REALTIME_TRIPS.write_text(json.dumps(realtime_trips, ensure_ascii=False), encoding="utf-8")
     log(
         f"Weggeschreven: {OUT_STOPS.name}, {OUT_ROUTES.name}, {OUT_TRIPS.name}, "
-        f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, {OUT_SHAPES.name}"
+        f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, "
+        f"{OUT_SHAPES.name}, {OUT_REALTIME_TRIPS.name}"
     )
+
+    # Pas ná een geslaagde build wegschrijven: crasht het script halverwege,
+    # dan blijft de oude state staan en probeert de volgende run het opnieuw
+    # i.p.v. de halve build als "klaar" te beschouwen.
+    state.update(feed_info)
+    state["build_version"] = BUILD_VERSION
+    state["built_at"] = int(time.time())
+    FEED_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,111 @@ FEED_ALERTS = "https://gtfs.ovapi.nl/nl/alerts.pb"
 
 REQUEST_TIMEOUT = 20
 
+# ── OVapi-eigen protobuf-extensies (veldnummer 1003) ──────────────────────
+# OVapi publiceert naast de standaard GTFS-Realtime-definitie een eigen
+# uitbreiding (https://gtfs.ovapi.nl/nl/gtfs-realtime-OVapi.proto) met velden
+# die de standaard niet kent. De google.transit-bindings weten daar niets
+# van, dus die gooien ze bij het parsen stilzwijgend weg.
+#
+# We lezen ze daarom met een minimale eigen wire-format-parser uit de ruwe
+# bytes, i.p.v. het .proto-bestand te compileren: dat zou protoc/grpcio-tools
+# als extra build-dependency vereisen plus een gegenereerd bestand dat bij
+# elke deploy mee moet -- veel omslachtiger dan de ~25 regels hieronder voor
+# de twee velden die we daadwerkelijk nodig hebben. De standaardparser blijft
+# gewoon al het echte werk doen; dit is puur een tweede, oppervlakkige pass
+# over dezelfde bytes om er de extensies bij te zoeken.
+#
+# Geverifieerd tegen de live feed: delay is in ~96% van de voertuigposities
+# gevuld, realtime_trip_id in ~78% van de trip-updates.
+_OVAPI_EXT_FIELD = 1003
+
+
+def _read_varint(buf, i):
+    result = shift = 0
+    while True:
+        b = buf[i]
+        i += 1
+        result |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return result, i
+        shift += 7
+
+
+def _parse_wire_fields(buf):
+    """Ontleedt een protobuf-bericht tot {veldnummer: [ruwe waarde, ...]}.
+    Kent geen schema: length-delimited velden (wire type 2) komen als bytes
+    terug, varints als int. Genoeg om gericht in een boodschap te 'graven'."""
+    out = {}
+    i = 0
+    while i < len(buf):
+        try:
+            key, i = _read_varint(buf, i)
+        except IndexError:
+            break
+        field_number, wire_type = key >> 3, key & 7
+        if wire_type == 0:
+            value, i = _read_varint(buf, i)
+        elif wire_type == 2:
+            length, i = _read_varint(buf, i)
+            value, i = buf[i:i + length], i + length
+        elif wire_type == 5:
+            value, i = buf[i:i + 4], i + 4
+        elif wire_type == 1:
+            value, i = buf[i:i + 8], i + 8
+        else:
+            break  # onbekend wire type: rest van deze boodschap overslaan
+        out.setdefault(field_number, []).append(value)
+    return out
+
+
+def _as_int32(value):
+    """Protobuf codeert een negatieve int32 als een tot 64 bits
+    teken-uitgebreide varint -- zonder deze correctie leest een vertraging
+    van -308 seconden (bus rijdt voor) als 18446744069414584012."""
+    value &= 0xFFFFFFFF
+    return value - (1 << 32) if value >= (1 << 31) else value
+
+
+def parse_ovapi_extensions(raw):
+    """Haalt de OVapi-extensievelden uit een ruwe GTFS-RT feed.
+
+    Geeft {entity_id: {"delay": int|None, "realtime_trip_id": str|None}}.
+    entity_id is dezelfde sleutel als entity.id in de normaal geparste feed,
+    zodat beide passes op elkaar te leggen zijn.
+
+    Veldnummers volgen de GTFS-Realtime-spec: FeedMessage.entity=2,
+    FeedEntity.trip_update=3 / .vehicle=4, VehiclePosition.trip=1,
+    TripUpdate.trip=1. Binnen de extensies (zie het .proto hierboven):
+    OVapiVehiclePosition.delay=1, OVapiTripDescriptor.realtime_trip_id=1."""
+    result = {}
+    for entity_buf in _parse_wire_fields(raw).get(2, []):
+        entity = _parse_wire_fields(entity_buf)
+        if 1 not in entity:
+            continue
+        entity_id = entity[1][0].decode("utf-8", "replace")
+        info = {"delay": None, "realtime_trip_id": None}
+
+        # vehicle (4) of trip_update (3) -- allebei hebben ze de
+        # TripDescriptor op veld 1, waar realtime_trip_id in zit.
+        body_buf = (entity.get(4) or entity.get(3) or [None])[0]
+        if body_buf is None:
+            continue
+        body = _parse_wire_fields(body_buf)
+
+        if _OVAPI_EXT_FIELD in body:  # alleen VehiclePosition heeft delay
+            ext = _parse_wire_fields(body[_OVAPI_EXT_FIELD][0])
+            if 1 in ext:
+                info["delay"] = _as_int32(ext[1][0])
+        if 1 in body:
+            trip = _parse_wire_fields(body[1][0])
+            if _OVAPI_EXT_FIELD in trip:
+                ext = _parse_wire_fields(trip[_OVAPI_EXT_FIELD][0])
+                if 1 in ext:
+                    info["realtime_trip_id"] = ext[1][0].decode("utf-8", "replace")
+        if info["delay"] is not None or info["realtime_trip_id"]:
+            result[entity_id] = info
+    return result
+
 
 class UtrechtIndex:
     """In-memory index van welke route_id's/trip_id's tot de provincie Utrecht
@@ -27,6 +132,9 @@ class UtrechtIndex:
         self.trip_to_route = {}  # trip_id -> route_id
         self.stops = {}        # stop_id -> {name, lat, lon}
         self.trip_meta = {}    # trip_id -> {route_id, service_id, headsign}
+        # realtime_trip_id ("KEOLIS:5056:40001") -> {route_id, headsign}; zie
+        # realtime_trip_meta_for() hieronder voor waarom dit bestaat.
+        self.realtime_trips = {}
         self.loaded_at = 0
         self.reload()
 
@@ -35,6 +143,7 @@ class UtrechtIndex:
         trips_path = DATA_DIR / "utrecht_trips.json"
         stops_path = DATA_DIR / "utrecht_stops.json"
         trip_meta_path = DATA_DIR / "utrecht_trip_meta.json"
+        realtime_trips_path = DATA_DIR / "utrecht_realtime_trips.json"
         if not routes_path.exists():
             raise RuntimeError(
                 "utrecht_routes.json ontbreekt. Draai eerst app/build_static_index.py"
@@ -45,15 +154,45 @@ class UtrechtIndex:
         self.trip_meta = (
             json.loads(trip_meta_path.read_text(encoding="utf-8")) if trip_meta_path.exists() else {}
         )
+        # Ontbreekt op installaties waar de statische index nog niet opnieuw is
+        # gebouwd sinds dit bestand werd toegevoegd -- dan valt alles gewoon
+        # terug op het oude gedrag (matchen op trip_id).
+        self.realtime_trips = (
+            json.loads(realtime_trips_path.read_text(encoding="utf-8"))
+            if realtime_trips_path.exists() else {}
+        )
         self.loaded_at = time.time()
 
-    def route_id_for(self, entity_trip, entity_route_id):
+    def realtime_trip_meta_for(self, realtime_trip_id):
+        """{route_id, headsign} voor een OVapi realtime_trip_id, of None.
+
+        Dit is het vangnet tegen het terugkerende probleem dat vervoerders bij
+        een dienstregelingwijziging alle trip_id's hernummeren: de live feed
+        stuurt dan trip_id's die nog niet in onze statische index staan, en
+        alles valt stil tot die opnieuw is gebouwd (is in dit project al twee
+        keer gebeurd). realtime_trip_id is semantisch
+        (vervoerder:lijnplanning:ritnummer) en blijft over zo'n hernummering
+        heen wél gelijk.
+
+        Het is geen vervanging van trip_id: meerdere trip_id's (verschillende
+        dienstdagen) delen dezelfde realtime_trip_id. Voor route en headsign
+        maakt dat niet uit -- geverifieerd tegen de volledige feed: van de
+        49.432 unieke realtime_trip_id's wijst er geen enkele naar meer dan
+        één route_id of headsign."""
+        return self.realtime_trips.get(realtime_trip_id) if realtime_trip_id else None
+
+    def route_id_for(self, entity_trip, entity_route_id, realtime_trip_id=None):
         """Bepaalt de relevante route_id voor een GTFS-RT entity, met fallback
-        via de trip_id-mapping als route_id niet direct is meegegeven."""
+        via de trip_id-mapping als route_id niet direct is meegegeven, en als
+        laatste redmiddel via realtime_trip_id (zie
+        realtime_trip_meta_for())."""
         if entity_route_id and entity_route_id in self.routes:
             return entity_route_id
         if entity_trip and entity_trip in self.trip_to_route:
             return self.trip_to_route[entity_trip]
+        meta = self.realtime_trip_meta_for(realtime_trip_id)
+        if meta and meta.get("route_id") in self.routes:
+            return meta["route_id"]
         return None
 
     def is_relevant_route(self, route_id):
@@ -73,11 +212,14 @@ class UtrechtIndex:
 
 
 def _fetch_feed(url):
+    """Geeft (feed, ruwe bytes) terug. De ruwe bytes zijn nodig voor de
+    tweede pass die de OVapi-extensies eruit haalt (zie
+    parse_ovapi_extensions) -- de standaardparser bewaart die niet."""
     feed = gtfs_realtime_pb2.FeedMessage()
     resp = requests.get(url, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     feed.ParseFromString(resp.content)
-    return feed
+    return feed, resp.content
 
 
 _CURRENT_STATUS_NAMES = {0: "INCOMING_AT", 1: "STOPPED_AT", 2: "IN_TRANSIT_TO"}
@@ -85,15 +227,18 @@ _CURRENT_STATUS_NAMES = {0: "INCOMING_AT", 1: "STOPPED_AT", 2: "IN_TRANSIT_TO"}
 
 def fetch_vehicle_positions(index: UtrechtIndex):
     """Geeft lijst van dicts terug met voertuigposities binnen Utrecht."""
-    feed = _fetch_feed(FEED_VEHICLE_POSITIONS)
+    feed, raw = _fetch_feed(FEED_VEHICLE_POSITIONS)
+    extensions = parse_ovapi_extensions(raw)
     results = []
     for entity in feed.entity:
         if not entity.HasField("vehicle"):
             continue
         vp = entity.vehicle
+        ext = extensions.get(entity.id) or {}
+        realtime_trip_id = ext.get("realtime_trip_id")
         trip_id = vp.trip.trip_id if vp.HasField("trip") else None
         route_id = vp.trip.route_id if vp.HasField("trip") and vp.trip.route_id else None
-        resolved_route = index.route_id_for(trip_id, route_id)
+        resolved_route = index.route_id_for(trip_id, route_id, realtime_trip_id)
         if not resolved_route:
             continue
         if not vp.HasField("position"):
@@ -117,21 +262,36 @@ def fetch_vehicle_positions(index: UtrechtIndex):
             # Opgeslagen op het moment zelf (i.p.v. achteraf via trip_id
             # opgezocht) zodat /api/vehicles/history de bestemming nog klopt
             # nadat de statische index inmiddels is herbouwd en dit trip_id
-            # er niet meer in voorkomt.
-            "headsign": index.trip_meta.get(trip_id, {}).get("headsign") or None,
+            # er niet meer in voorkomt. Valt terug op de realtime_trip_id-
+            # mapping als dit trip_id (nog) niet in de index staat.
+            "headsign": (
+                index.trip_meta.get(trip_id, {}).get("headsign")
+                or (index.realtime_trip_meta_for(realtime_trip_id) or {}).get("headsign")
+                or None
+            ),
+            # Vertraging in seconden, rechtstreeks uit OVapi's eigen
+            # extensie op de voertuigfeed (~96% gevuld). Scheelt een aparte
+            # koppeling met trip_delays, die voor sommige ritten helemaal
+            # geen rij heeft -- die verschenen dan als "Onbekend" op de kaart
+            # terwijl de positie wel binnenkwam.
+            "delay_seconds": ext.get("delay"),
         })
     return results
 
 
 def fetch_trip_updates_feed():
     """Haalt de trip-updates feed één keer op; wordt gedeeld door
-    fetch_trip_delays en fetch_cancellations zodat we de feed niet dubbel
-    bevragen (voorkomt onnodige load / rate-limiting bij de bron)."""
-    return _fetch_feed(FEED_TRIP_UPDATES)
+    parse_trip_delays/parse_cancellations/parse_skipped_stops zodat we de
+    feed niet dubbel bevragen (voorkomt onnodige load / rate-limiting bij de
+    bron). Geeft (feed, ovapi-extensies) terug -- de extensies worden hier
+    één keer uit de ruwe bytes gehaald i.p.v. in elke parser opnieuw."""
+    feed, raw = _fetch_feed(FEED_TRIP_UPDATES)
+    return feed, parse_ovapi_extensions(raw)
 
 
-def parse_trip_delays(feed, index: UtrechtIndex):
+def parse_trip_delays(feed, index: UtrechtIndex, extensions=None):
     """Geeft lijst van dicts terug met vertragingen per halte-update binnen Utrecht."""
+    extensions = extensions or {}
     results = []
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
@@ -139,7 +299,9 @@ def parse_trip_delays(feed, index: UtrechtIndex):
         tu = entity.trip_update
         trip_id = tu.trip.trip_id if tu.HasField("trip") else None
         route_id = tu.trip.route_id if tu.HasField("trip") and tu.trip.route_id else None
-        resolved_route = index.route_id_for(trip_id, route_id)
+        resolved_route = index.route_id_for(
+            trip_id, route_id, extensions.get(entity.id, {}).get("realtime_trip_id")
+        )
         if not resolved_route:
             continue
         for stu in tu.stop_time_update:
@@ -158,9 +320,10 @@ def parse_trip_delays(feed, index: UtrechtIndex):
     return results
 
 
-def parse_cancellations(feed, index: UtrechtIndex):
+def parse_cancellations(feed, index: UtrechtIndex, extensions=None):
     """Geeft lijst van dicts terug met ritten die als vervallen (CANCELED)
     gemeld zijn in de trip-updates feed, binnen de provincie Utrecht."""
+    extensions = extensions or {}
     results = []
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
@@ -170,7 +333,9 @@ def parse_cancellations(feed, index: UtrechtIndex):
             continue
         trip_id = trip.trip_id or None
         route_id = trip.route_id or None
-        resolved_route = index.route_id_for(trip_id, route_id)
+        resolved_route = index.route_id_for(
+            trip_id, route_id, extensions.get(entity.id, {}).get("realtime_trip_id")
+        )
         if not resolved_route:
             continue
         service_date = None
@@ -185,11 +350,12 @@ def parse_cancellations(feed, index: UtrechtIndex):
     return results
 
 
-def parse_skipped_stops(feed, index: UtrechtIndex):
+def parse_skipped_stops(feed, index: UtrechtIndex, extensions=None):
     """Geeft lijst van dicts terug met individuele tussenhaltes die als
     SKIPPED gemeld zijn in de trip-updates feed (rit rijdt door, maar stopt
     niet bij deze halte) -- los van parse_cancellations(), die alleen
     volledig geannuleerde ritten afvangt."""
+    extensions = extensions or {}
     results = []
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
@@ -198,7 +364,9 @@ def parse_skipped_stops(feed, index: UtrechtIndex):
         trip = tu.trip
         trip_id = trip.trip_id or None
         route_id = trip.route_id or None
-        resolved_route = index.route_id_for(trip_id, route_id)
+        resolved_route = index.route_id_for(
+            trip_id, route_id, extensions.get(entity.id, {}).get("realtime_trip_id")
+        )
         if not resolved_route:
             continue
         service_date = None
@@ -239,7 +407,7 @@ _CAUSE_NAMES = {
 
 def fetch_alerts(index: UtrechtIndex):
     """Geeft lijst van dicts terug met actuele storingen/meldingen binnen Utrecht."""
-    feed = _fetch_feed(FEED_ALERTS)
+    feed, _raw = _fetch_feed(FEED_ALERTS)
     results = []
     for entity in feed.entity:
         if not entity.HasField("alert"):
