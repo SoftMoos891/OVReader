@@ -288,10 +288,10 @@ def fetch_vehicle_positions(index: UtrechtIndex):
 
 def fetch_trip_updates_feed():
     """Haalt de trip-updates feed één keer op; wordt gedeeld door
-    parse_trip_delays/parse_cancellations/parse_skipped_stops zodat we de
-    feed niet dubbel bevragen (voorkomt onnodige load / rate-limiting bij de
-    bron). Geeft (feed, ovapi-extensies) terug -- de extensies worden hier
-    één keer uit de ruwe bytes gehaald i.p.v. in elke parser opnieuw."""
+    parse_trip_delays en parse_cancellations zodat we de feed niet dubbel
+    bevragen (voorkomt onnodige load / rate-limiting bij de bron). Geeft
+    (feed, ovapi-extensies) terug -- de extensies worden hier één keer uit
+    de ruwe bytes gehaald i.p.v. in elke parser opnieuw."""
     feed, raw = _fetch_feed(FEED_TRIP_UPDATES)
     return feed, parse_ovapi_extensions(raw)
 
@@ -357,39 +357,12 @@ def parse_cancellations(feed, index: UtrechtIndex, extensions=None):
     return results
 
 
-def parse_skipped_stops(feed, index: UtrechtIndex, extensions=None):
-    """Geeft lijst van dicts terug met individuele tussenhaltes die als
-    SKIPPED gemeld zijn in de trip-updates feed (rit rijdt door, maar stopt
-    niet bij deze halte) -- los van parse_cancellations(), die alleen
-    volledig geannuleerde ritten afvangt."""
-    extensions = extensions or {}
-    results = []
-    for entity in feed.entity:
-        if not entity.HasField("trip_update"):
-            continue
-        tu = entity.trip_update
-        trip = tu.trip
-        trip_id = trip.trip_id or None
-        route_id = trip.route_id or None
-        resolved_route = index.route_id_for(
-            trip_id, route_id, extensions.get(entity.id, {}).get("realtime_trip_id")
-        )
-        if not resolved_route:
-            continue
-        service_date = None
-        if trip.start_date and len(trip.start_date) == 8:
-            service_date = f"{trip.start_date[0:4]}-{trip.start_date[4:6]}-{trip.start_date[6:8]}"
-        for stu in tu.stop_time_update:
-            if stu.schedule_relationship != gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.SKIPPED:
-                continue
-            results.append({
-                "trip_id": trip_id,
-                "route_id": resolved_route,
-                "service_date": service_date,  # None afgehandeld door caller (fallback op vandaag)
-                "stop_id": stu.stop_id,
-                "stop_sequence": stu.stop_sequence,
-            })
-    return results
+# parse_skipped_stops() stond hier: individuele tussenhaltes die de feed als
+# SKIPPED meldt (rit rijdt door zonder te stoppen). De enige weergave ervan
+# ("Vaak overgeslagen haltes" op /uitval) is verwijderd, waarna de collector
+# die tabel alleen nog maar zat te vullen -- op verzoek gestopt, en daarmee
+# is deze parser vervallen. De feed levert de gegevens nog steeds; zie de
+# git-geschiedenis van dit bestand als het ooit terug moet.
 
 
 _EFFECT_NAMES = {

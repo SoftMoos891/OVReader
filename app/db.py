@@ -290,9 +290,15 @@ CREATE INDEX IF NOT EXISTS idx_cancel_route ON trip_cancellations(route_id);
 
 -- Individueel overgeslagen tussenhaltes (GTFS-RT stop_time_update met
 -- schedule_relationship SKIPPED) -- los van trip_cancellations, die alleen
--- volledig geannuleerde ritten bijhoudt. Eén rij per (rit, halte, dag), dus
--- net als trip_cancellations begrensd door het daadwerkelijke aantal
--- ritten/dag i.p.v. per 30s-poll te groeien zoals trip_delays.
+-- volledig geannuleerde ritten bijhoudt.
+--
+-- WORDT NIET MEER GEVULD. De enige weergave hiervan ("Vaak overgeslagen
+-- haltes" op /uitval) is verwijderd, waarna de collector deze tabel alleen
+-- nog maar zat te vullen zonder lezer -- op verzoek gestopt (zie
+-- collect_once() in app/collector.py). De tabel blijft staan zodat de al
+-- verzamelde historie niet verloren gaat; die valt vanzelf weg via de
+-- retentie in cleanup_old_data(). Weghalen kan pas als die historie
+-- definitief niet meer nodig is.
 CREATE TABLE IF NOT EXISTS skipped_stops (
     trip_id TEXT NOT NULL,
     service_date TEXT NOT NULL,

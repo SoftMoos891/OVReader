@@ -11,7 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from . import db
 from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
-    parse_trip_delays, parse_cancellations, parse_skipped_stops, fetch_alerts,
+    parse_trip_delays, parse_cancellations, fetch_alerts,
 )
 from .knmi_warnings import fetch_utrecht_warnings, format_active_from
 from .knmi_weather import fetch_de_bilt_weather
@@ -181,27 +181,16 @@ def collect_once():
             print("[collector] fout bij ophalen cancellations:")
             traceback.print_exc()
 
-        try:
-            skipped = parse_skipped_stops(trip_updates_feed, _index, trip_updates_ext) if trip_updates_feed is not None else []
-            for s in skipped:
-                service_date = s["service_date"] or time.strftime("%Y-%m-%d", time.localtime(fetched_at))
-                conn.execute(
-                    """INSERT INTO skipped_stops
-                       (trip_id, service_date, route_id, stop_id, stop_sequence, first_seen, last_seen)
-                       VALUES (:trip_id, :service_date, :route_id, :stop_id, :stop_sequence, :now, :now)
-                       ON CONFLICT(trip_id, service_date, stop_id) DO UPDATE SET last_seen=:now""",
-                    {
-                        "trip_id": s["trip_id"],
-                        "service_date": service_date,
-                        "route_id": s["route_id"],
-                        "stop_id": s["stop_id"],
-                        "stop_sequence": s["stop_sequence"],
-                        "now": fetched_at,
-                    },
-                )
-        except Exception:
-            print("[collector] fout bij verwerken overgeslagen haltes:")
-            traceback.print_exc()
+        # Overgeslagen haltes (GTFS-RT SKIPPED) werden hier verzameld in
+        # skipped_stops, voor het paneel "Vaak overgeslagen haltes" op
+        # /uitval. Dat paneel is verwijderd omdat het in de praktijk niets
+        # opleverde, waarna deze tabel elke 30 seconden bleef aangroeien
+        # zonder dat iets 'm nog las -- op verzoek gestopt.
+        #
+        # De tabel zelf blijft bestaan (zie app/db.py) en houdt de al
+        # verzamelde historie vast; die valt vanzelf weg via de retentie in
+        # cleanup_old_data(). Terugzetten betekent: dit blok herstellen en
+        # parse_skipped_stops() weer toevoegen aan app/gtfs_rt.py.
 
         try:
             alerts = fetch_alerts(_index)
