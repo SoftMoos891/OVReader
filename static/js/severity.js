@@ -46,12 +46,35 @@ const SEVERE_CAUSE_LABELS = {
   DEMONSTRATION: 'Demonstratie', STRIKE: 'Staking',
 };
 
+// Hoeveel haltes een melding moet raken voordat een trefwoord 'm urgent
+// maakt. Zonder deze ondergrens keek de detectie alleen naar het WOORD en
+// nooit naar de OMVANG: een ongeval waardoor twee haltes een paar uur
+// vervielen kreeg exact dezelfde rode badge als een ongeval waardoor de
+// hele tramlijn tussen Westraven en Jaarbeursplein stillag (4 tegenover 16
+// stop_ids). Haltes komen per rijrichting dubbel in de feed voor, dus 6
+// stop_ids is ongeveer 3 fysieke haltes.
+//
+// Toegegeven: dit blijft een gekozen getal, geen wetmatigheid. Een zwaar
+// incident dat toevallig maar één halte raakt glipt er dus doorheen. Het is
+// wel een betere vraag dan voorheen -- "hoeveel is er geraakt" in plaats van
+// alleen "staat het woord er".
+const SEVERE_ALERT_MIN_STOPS = 6;
+
+// Een melding die een hele lijn raakt (routes gevuld) telt sowieso als groot
+// genoeg: dan heeft de vervoerder de storing op lijnniveau aangemeld, wat
+// per definitie breder is dan een paar losse haltes.
+function severeAlertIsLargeEnough(a) {
+  if (a.routes && a.routes.length) return true;
+  return (a.stops || []).length >= SEVERE_ALERT_MIN_STOPS;
+}
+
 // Geeft een label ('Ongeval') als de melding urgent is, anders null.
 // Nog te beginnen meldingen (valid_from in de toekomst) tellen niet als
 // urgent -- dat is dan een aankondiging van gepland werk, geen actuele
 // situatie. Zelfde regel als _is_severe_alert() in app/collector.py.
 function severeAlertLabel(a) {
   if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
+  if (!severeAlertIsLargeEnough(a)) return null;
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
   if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);

@@ -80,12 +80,24 @@ SEVERE_ALERT_KEYWORDS = [
 ]
 SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMONSTRATION", "STRIKE"}
 
+# Zie de gelijknamige constante in static/js/severity.js voor de onderbouwing;
+# tests/test_severity_sync.py bewaakt dat de twee hetzelfde blijven.
+SEVERE_ALERT_MIN_STOPS = 6
 
-def _is_severe_alert(header, description, cause, valid_from=None, now=None):
+
+def _is_severe_alert(header, description, cause, valid_from=None, now=None,
+                     stop_count=0, route_count=0):
     """Nog te beginnen meldingen (valid_from ligt in de toekomst) tellen niet
     als ernstig/urgent, ook niet bij een woord als "stremming" in de tekst --
-    dat is dan een aankondiging van gepland werk, geen actuele situatie."""
+    dat is dan een aankondiging van gepland werk, geen actuele situatie.
+
+    Naast het trefwoord telt ook de OMVANG: een melding die maar een paar
+    haltes raakt is geen urgente situatie, ook al staat het woord "ongeval"
+    erin. Een melding op lijnniveau (route_count > 0) is altijd groot genoeg.
+    Zelfde regel als severeAlertIsLargeEnough() in static/js/severity.js."""
     if valid_from and now and valid_from > now:
+        return False
+    if not route_count and stop_count < SEVERE_ALERT_MIN_STOPS:
         return False
     text = f"{header or ''} {description or ''}".lower()
     if any(kw in text for kw in SEVERE_ALERT_KEYWORDS):
@@ -238,7 +250,8 @@ def collect_once():
                 # uitval-meldingen: eenmalig vastgelegd bij eerste constatering
                 # (INSERT OR IGNORE op alert_id), blijft staan ook nadat de
                 # melding zelf weer inactief wordt.
-                if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at):
+                if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at,
+                                    len(a["stop_ids"]), len(a["route_ids"])):
                     title = f"Melding U-OV: {a['header'] or (a['description'] or '')[:80] or 'zie details'}"
                     description = f"{a['description'] or a['header'] or ''}".strip()
                     if a["stop_ids"]:

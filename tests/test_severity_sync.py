@@ -16,7 +16,12 @@ from pathlib import Path
 
 import pytest
 
-from app.collector import SEVERE_ALERT_CAUSES, SEVERE_ALERT_KEYWORDS
+from app.collector import (
+    SEVERE_ALERT_CAUSES,
+    SEVERE_ALERT_KEYWORDS,
+    SEVERE_ALERT_MIN_STOPS,
+    _is_severe_alert,
+)
 
 SEVERITY_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "severity.js"
 
@@ -32,6 +37,13 @@ def _js_array(source, name):
     match = re.search(rf"const {name} = \[(.*?)\];", source, re.S)
     assert match, f"{name} niet gevonden in severity.js"
     return [m.group(1) for m in re.finditer(r"'([^']*)'", match.group(1))]
+
+
+def _js_number(source, name):
+    """Leest een `const <naam> = <getal>;` uit de JS-bron."""
+    match = re.search(rf"const {name} = (\d+);", source)
+    assert match, f"{name} niet gevonden in severity.js"
+    return int(match.group(1))
 
 
 def _js_object_keys(source, name):
@@ -72,7 +84,7 @@ def test_stremming_is_not_a_keyword(js_source):
 def test_python_and_js_agree_on_a_set_of_example_alerts(js_source):
     """Vergelijkt het daadwerkelijke oordeel, niet alleen de lijsten -- zo
     valt ook een wijziging in de logica zelf op."""
-    from app.collector import _is_severe_alert
+
 
     voorbeelden = [
         ({"header": "i.v.m. een ongeval rijden er geen trams", "description": "",
@@ -87,10 +99,65 @@ def test_python_and_js_agree_on_a_set_of_example_alerts(js_source):
 
     keywords = _js_array(js_source, "SEVERE_ALERT_KEYWORDS")
     causes = _js_object_keys(js_source, "SEVERE_CAUSE_LABELS")
+    # Ruim boven de omvangdrempel: deze test gaat over de woord-/oorzaak-
+    # herkenning, niet over de omvang (die heeft zijn eigen tests hieronder).
+    groot = SEVERE_ALERT_MIN_STOPS
     for alert, verwacht_ernstig in voorbeelden:
-        python_oordeel = _is_severe_alert(alert["header"], alert["description"], alert["cause"])
+        python_oordeel = _is_severe_alert(
+            alert["header"], alert["description"], alert["cause"], stop_count=groot
+        )
         tekst = f"{alert['header']} {alert['description']}".lower()
         js_oordeel = any(k in tekst for k in keywords) or alert["cause"] in causes
 
         assert python_oordeel == verwacht_ernstig, alert
         assert js_oordeel == verwacht_ernstig, alert
+
+
+def test_threshold_is_identical(js_source):
+    """De omvangdrempel staat aan beide kanten hard gecodeerd; loopt die uit
+    elkaar, dan verschilt de rode badge op het dashboard van wat er in de
+    RSS-feed belandt."""
+    assert _js_number(js_source, "SEVERE_ALERT_MIN_STOPS") == SEVERE_ALERT_MIN_STOPS
+
+
+def test_small_accident_is_not_severe():
+    """De aanleiding voor de omvangdrempel: "Halte vervalt tot nader order
+    i.v.m een ongeval" raakte 4 stop_ids (2 haltes, beide richtingen) en
+    kreeg toch dezelfde rode badge als een tramlijn die stillag."""
+    assert not _is_severe_alert(
+        "Halte vervalt tot nader order i.v.m een ongeval.",
+        "Oorzaak : Ongeval Effect : Omleiding Maatregelen : Vervallen halte(n)",
+        "OTHER_CAUSE",
+        stop_count=4,
+    )
+
+
+def test_large_accident_is_still_severe():
+    """Het tegenvoorbeeld uit dezelfde week: geen trams tussen P+R Westraven
+    en Jaarbeursplein, 16 stop_ids. Moet urgent blijven."""
+    assert _is_severe_alert(
+        "U-OV: i.v.m. een ongeval rijden er geen trams tussen P+R Westraven en Jaarbeursplein.",
+        "Oorzaak : Ongeval Effect : Omleiding",
+        "OTHER_CAUSE",
+        stop_count=16,
+    )
+
+
+def test_line_level_alert_bypasses_the_stop_threshold():
+    """Een melding die op lijnniveau is aangemeld is per definitie breder dan
+    een paar losse haltes, ook als er weinig stop_ids bij staan."""
+    assert _is_severe_alert(
+        "Lijn 12 rijdt niet i.v.m. een aanrijding.", "", "OTHER_CAUSE",
+        stop_count=0, route_count=1,
+    )
+
+
+def test_magnitude_alone_is_not_enough():
+    """Omvang vervangt het trefwoord niet: de optocht-melding op lijn 81 raakt
+    ~20 haltes maar blijft een geplande, routinematige situatie."""
+    assert not _is_severe_alert(
+        "Lijn 81: halte vervallen tot 17:00.",
+        "Oorzaak : Optocht Effect : Omleiding",
+        "OTHER_CAUSE",
+        stop_count=20,
+    )
