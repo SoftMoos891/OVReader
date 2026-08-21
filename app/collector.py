@@ -423,7 +423,15 @@ def _delete_batched(table, column, cutoff, batch_size=_CLEANUP_BATCH_SIZE):
     Gebruikt id IN (SELECT id ... LIMIT ?) in plaats van DELETE ... LIMIT,
     want die laatste vereist een SQLite-build met SQLITE_ENABLE_UPDATE_DELETE_LIMIT
     die hier niet aanwezig is. table/column komen alleen uit code, nooit uit
-    gebruikersinvoer."""
+    gebruikersinvoer.
+
+    De 0.2s pauze na elke batch is er niet voor de duur van dit commit zelf
+    (dat is al kort), maar om de schrijflock even los te laten -- zonder
+    pauze grijpt deze loop 'm anders meteen weer terug voordat een andere
+    job (collect_once() / fetch_*_job()) aan de beurt komt, wat bij een
+    grote achterstand (tientallen batches) alsnog tot herhaalde "database is
+    locked" bij die andere jobs leidde, ook al duurde geen enkele batch zelf
+    lang genoeg om de busy-timeout te raken."""
     while True:
         conn = db.get_conn()
         try:
@@ -437,6 +445,7 @@ def _delete_batched(table, column, cutoff, batch_size=_CLEANUP_BATCH_SIZE):
             conn.close()
         if deleted < batch_size:
             return
+        time.sleep(0.2)
 
 
 def cleanup_old_data():
