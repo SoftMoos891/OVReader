@@ -74,9 +74,14 @@ CANCELLATION_ALERT_THRESHOLD_PCT = 5.0
 # verplaatsing, ook routinematige, dagen van tevoren geplande -- niet
 # alleen bij echte actuele incidenten. Met cause daarbij op OTHER_CAUSE
 # (niet ACCIDENT e.d.) is dat woord dus geen betrouwbaar ernst-signaal.
+#
+# "defect" (dekt "defecte tram"/"defect voertuig") wél: een technische
+# storing aan het voertuig zelf is altijd een actueel incident, in
+# tegenstelling tot "stremming" komt dit woord niet standaard in geplande
+# halte-aankondigingen voor.
 SEVERE_ALERT_KEYWORDS = [
     "verstoring", "storing", "brand", "hulpdiensten", "politie",
-    "ongeval", "aanrijding", "ambulance", "gewonde", "calamiteit",
+    "ongeval", "aanrijding", "ambulance", "gewonde", "calamiteit", "defect",
 ]
 SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMONSTRATION", "STRIKE"}
 

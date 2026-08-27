@@ -31,9 +31,14 @@
 // meldingen bevat standaard "Oorzaak : Stremming Effect : Omleiding
 // Maatregelen : ..." bij ELKE aangekondigde halte-verplaatsing, ook
 // routinematige, dagen van tevoren geplande.
+//
+// "defect" (dekt "defecte tram"/"defect voertuig") wél: een technische
+// storing aan het voertuig zelf is altijd een actueel incident, in
+// tegenstelling tot "stremming" komt dit woord niet standaard in geplande
+// halte-aankondigingen voor.
 const SEVERE_ALERT_KEYWORDS = [
   'verstoring', 'storing', 'brand', 'hulpdiensten', 'politie',
-  'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit',
+  'ongeval', 'aanrijding', 'ambulance', 'gewonde', 'calamiteit', 'defect',
 ];
 
 // GTFS-RT Alert.cause is een betrouwbaarder signaal dan tekst-keywords als de
