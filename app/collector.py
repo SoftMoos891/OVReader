@@ -835,6 +835,16 @@ def fetch_knmi_warnings_job():
     try:
         warnings = fetch_utrecht_warnings(api_key)
 
+        # Vorige snapshot (vóór de DELETE hieronder) bewaren om een 0->1-
+        # overgang in is_current te kunnen zien: een waarschuwing die bij de
+        # vorige fetch nog "vanaf morgen 09:00" was en nu is aangebroken,
+        # krijgt dan een aparte "is begonnen"-melding (zie hieronder) i.p.v.
+        # dat de lezer dat alleen aan het verstrijken van de tijd kan zien.
+        previous_state = {
+            r["phenomenon_id"]: (r["color"], r["is_current"])
+            for r in conn.execute("SELECT phenomenon_id, color, is_current FROM knmi_warnings")
+        }
+
         # Permanente RSS-melding bij code geel/oranje/rood, zelfde log-i.p.v.-
         # live-status-redenering als bij de andere bronnen hierboven -- ook al
         # is knmi_warnings zelf een snapshot-tabel (DELETE+INSERT hieronder,
@@ -848,7 +858,9 @@ def fetch_knmi_warnings_job():
         active_guids = set()
         for w in warnings:
             guid = f"knmi-warning-{w['phenomenon_id']}-{w['color']}"
+            started_guid = f"{guid}-started"
             active_guids.add(guid)
+            active_guids.add(started_guid)
             # is_current is False zolang alle timeslices met deze kleur nog
             # in de toekomst liggen (bv. code geel vanaf morgen 09:00) --
             # zonder deze vermelding suggereert de melding dat de
@@ -869,6 +881,23 @@ def fetch_knmi_warnings_job():
                    VALUES (:guid, 'knmi_warning', :title, :description, :now, :now)""",
                 {"guid": guid, "title": title, "description": description, "now": fetched_at},
             )
+            # Losse "is begonnen"-melding zodra deze exacte kleur overgaat
+            # van "nog niet actief" naar "actief" -- alleen bij een expliciet
+            # geziene overgang (vorige fetch had dezelfde kleur met
+            # is_current=0), niet bij de allereerste keer dat een fenomeen
+            # wordt gezien (dan is er nog geen "was nog niet actief" om vanaf
+            # te melden, en zou dit bv. direct na een herstart van de
+            # collector een valse melding geven voor een waarschuwing die
+            # allang liep).
+            if w["is_current"] and previous_state.get(w["phenomenon_id"]) == (w["color"], 0):
+                started_title = f"Weerwaarschuwing: code {w['color_label'].lower()} is begonnen ({w['phenomenon_label']})"
+                started_description = f"{body} Klik hier voor meer data.".strip()
+                conn.execute(
+                    """INSERT OR IGNORE INTO rss_feed_items
+                       (guid, kind, title, description, pub_date, created_at)
+                       VALUES (:guid, 'knmi_warning', :title, :description, :now, :now)""",
+                    {"guid": started_guid, "title": started_title, "description": started_description, "now": fetched_at},
+                )
         open_rows = conn.execute(
             "SELECT guid FROM rss_feed_items WHERE kind='knmi_warning' AND resolved_at IS NULL"
         ).fetchall()
@@ -881,10 +910,10 @@ def fetch_knmi_warnings_job():
             conn.execute(
                 """INSERT INTO knmi_warnings
                    (phenomenon_id, phenomenon_label, color, color_label,
-                    active_from, worst_at, header, description, last_updated)
+                    active_from, worst_at, header, description, is_current, last_updated)
                    VALUES (:phenomenon_id, :phenomenon_label, :color, :color_label,
-                           :active_from, :worst_at, :header, :description, :now)""",
-                {**w, "now": fetched_at},
+                           :active_from, :worst_at, :header, :description, :is_current, :now)""",
+                {**w, "is_current": int(w["is_current"]), "now": fetched_at},
             )
         conn.execute(
             """INSERT INTO knmi_fetch_status (id, last_success_at) VALUES (1, :now)

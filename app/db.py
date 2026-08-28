@@ -173,6 +173,11 @@ CREATE TABLE IF NOT EXISTS knmi_warnings (
     worst_at TEXT,
     header TEXT,
     description TEXT,
+    -- Of het fenomeen bij de vorige fetch al actief was (active_from <= now
+    -- op dat moment) -- bewaard zodat de collector een 0->1-overgang kan
+    -- signaleren (waarschuwing is inmiddels ingegaan) voor een aparte
+    -- "is begonnen"-RSS-melding, zie fetch_knmi_warnings_job().
+    is_current INTEGER,
     last_updated INTEGER
 );
 
@@ -387,6 +392,10 @@ def _migrate(conn):
     rss_item_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rss_feed_items)")}
     if "resolved_at" not in rss_item_cols:
         conn.execute("ALTER TABLE rss_feed_items ADD COLUMN resolved_at INTEGER")
+
+    knmi_warning_cols = {r["name"] for r in conn.execute("PRAGMA table_info(knmi_warnings)")}
+    if "is_current" not in knmi_warning_cols:
+        conn.execute("ALTER TABLE knmi_warnings ADD COLUMN is_current INTEGER")
 
     rail_alert_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rail_alerts)")}
     if "consequence_level" not in rail_alert_cols:
