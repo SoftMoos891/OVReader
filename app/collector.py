@@ -884,18 +884,20 @@ def fetch_knmi_warnings_job():
             # -> geen nieuwe RSS-melding). Bij een nog open rij (resolved_at
             # IS NULL) verandert de WHERE-clause niets, dus geen re-notify
             # elke 30 min voor een ongewijzigde waarschuwing.
+            category = w["color_label"].lower()
             conn.execute(
                 """INSERT INTO rss_feed_items
-                   (guid, kind, title, description, pub_date, created_at, resolved_at)
-                   VALUES (:guid, 'knmi_warning', :title, :description, :now, :now, NULL)
+                   (guid, kind, title, description, pub_date, created_at, resolved_at, category)
+                   VALUES (:guid, 'knmi_warning', :title, :description, :now, :now, NULL, :category)
                    ON CONFLICT(guid) DO UPDATE SET
                        title=excluded.title,
                        description=excluded.description,
                        pub_date=excluded.pub_date,
                        created_at=excluded.created_at,
-                       resolved_at=NULL
+                       resolved_at=NULL,
+                       category=excluded.category
                    WHERE rss_feed_items.resolved_at IS NOT NULL""",
-                {"guid": guid, "title": title, "description": description, "now": fetched_at},
+                {"guid": guid, "title": title, "description": description, "now": fetched_at, "category": category},
             )
             # Losse "is begonnen"-melding zodra deze exacte kleur overgaat
             # van "nog niet actief" naar "actief" -- alleen bij een expliciet
@@ -910,16 +912,17 @@ def fetch_knmi_warnings_job():
                 started_description = f"{body} Klik hier voor meer data.".strip()
                 conn.execute(
                     """INSERT INTO rss_feed_items
-                       (guid, kind, title, description, pub_date, created_at, resolved_at)
-                       VALUES (:guid, 'knmi_warning', :title, :description, :now, :now, NULL)
+                       (guid, kind, title, description, pub_date, created_at, resolved_at, category)
+                       VALUES (:guid, 'knmi_warning', :title, :description, :now, :now, NULL, :category)
                        ON CONFLICT(guid) DO UPDATE SET
                            title=excluded.title,
                            description=excluded.description,
                            pub_date=excluded.pub_date,
                            created_at=excluded.created_at,
-                           resolved_at=NULL
+                           resolved_at=NULL,
+                           category=excluded.category
                        WHERE rss_feed_items.resolved_at IS NOT NULL""",
-                    {"guid": started_guid, "title": started_title, "description": started_description, "now": fetched_at},
+                    {"guid": started_guid, "title": started_title, "description": started_description, "now": fetched_at, "category": category},
                 )
         open_rows = conn.execute(
             "SELECT guid FROM rss_feed_items WHERE kind='knmi_warning' AND resolved_at IS NULL"

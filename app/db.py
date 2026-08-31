@@ -256,7 +256,12 @@ CREATE TABLE IF NOT EXISTS rss_feed_items (
     -- krijgt dan " (voorbij)" erachter, zodat een lezer van de feed/
     -- geschiedenispagina meteen ziet dat het achterhaald is. guid/pub_date
     -- blijven ongewijzigd (geen nieuwe melding, geen re-notify).
-    resolved_at INTEGER
+    resolved_at INTEGER,
+    -- Optioneel: RSS <category> voor meldingen met een eigen ernst-kleur
+    -- (op dit moment alleen knmi_warning: 'geel'/'oranje'/'rood'), zodat een
+    -- RSS-lezer die kan tonen zonder de titel te moeten parsen. NULL voor
+    -- soorten zonder zo'n kleur (uitval, spoorstoringen, wegsituaties).
+    category TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_rss_items_pubdate ON rss_feed_items(pub_date);
 
@@ -392,6 +397,8 @@ def _migrate(conn):
     rss_item_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rss_feed_items)")}
     if "resolved_at" not in rss_item_cols:
         conn.execute("ALTER TABLE rss_feed_items ADD COLUMN resolved_at INTEGER")
+    if "category" not in rss_item_cols:
+        conn.execute("ALTER TABLE rss_feed_items ADD COLUMN category TEXT")
 
     knmi_warning_cols = {r["name"] for r in conn.execute("PRAGMA table_info(knmi_warnings)")}
     if "is_current" not in knmi_warning_cols:

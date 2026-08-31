@@ -586,13 +586,18 @@ def lite_rss_uitval():
     # zo'n lezer bij het openen van 1 melding alles als gelezen zien. Het
     # guid als fragment erachter plakken maakt elke link uniek zonder dat er
     # een echte pagina achter dat fragment hoeft te bestaan.
+    # <category> alleen erbij als de melding een eigen ernst-kleur heeft
+    # (nu: KNMI-weerwaarschuwingen, zie collector.py) -- zo kan een RSS-lezer
+    # die kleur tonen zonder de titel te moeten parsen, en blijft dit veld
+    # afwezig (i.p.v. leeg) voor soorten zonder kleur.
     items = [f"""
     <item>
       <title>{xml_escape(r['title'])}</title>
       <link>{xml_escape(LITE_BASE_URL)}#{xml_escape(url_quote(r['guid'], safe=''))}</link>
       <guid isPermaLink="false">{xml_escape(r['guid'])}</guid>
       <pubDate>{format_datetime(datetime.fromtimestamp(r['pub_date'], tz=timezone.utc))}</pubDate>
-      <description>{xml_escape(r['description'])}</description>
+      <description>{xml_escape(r['description'])}</description>{f"""
+      <category>{xml_escape(r['category'])}</category>""" if r['category'] else ""}
     </item>""" for r in rows]
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
