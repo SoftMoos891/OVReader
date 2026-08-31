@@ -875,10 +875,24 @@ def fetch_knmi_warnings_job():
             body = w['description'] or w['header'] or w['phenomenon_label']
             prefix = "" if w["is_current"] else f"Geldt vanaf {format_active_from(w['active_from'])}. "
             description = f"{prefix}{body} Klik hier voor meer data.".strip()
+            # Upsert i.p.v. INSERT OR IGNORE: de guid bevat geen tijdstip
+            # (alleen fenomeen+kleur), dus een eerdere, allang afgehandelde
+            # waarschuwing met dezelfde combinatie laat anders een nieuwe
+            # waarschuwing stilzwijgend verdwijnen (guid bestaat al -> IGNORE
+            # -> geen nieuwe RSS-melding). Bij een nog open rij (resolved_at
+            # IS NULL) verandert de WHERE-clause niets, dus geen re-notify
+            # elke 30 min voor een ongewijzigde waarschuwing.
             conn.execute(
-                """INSERT OR IGNORE INTO rss_feed_items
-                   (guid, kind, title, description, pub_date, created_at)
-                   VALUES (:guid, 'knmi_warning', :title, :description, :now, :now)""",
+                """INSERT INTO rss_feed_items
+                   (guid, kind, title, description, pub_date, created_at, resolved_at)
+                   VALUES (:guid, 'knmi_warning', :title, :description, :now, :now, NULL)
+                   ON CONFLICT(guid) DO UPDATE SET
+                       title=excluded.title,
+                       description=excluded.description,
+                       pub_date=excluded.pub_date,
+                       created_at=excluded.created_at,
+                       resolved_at=NULL
+                   WHERE rss_feed_items.resolved_at IS NOT NULL""",
                 {"guid": guid, "title": title, "description": description, "now": fetched_at},
             )
             # Losse "is begonnen"-melding zodra deze exacte kleur overgaat
@@ -893,9 +907,16 @@ def fetch_knmi_warnings_job():
                 started_title = f"Weerwaarschuwing: code {w['color_label'].lower()} is begonnen ({w['phenomenon_label']})"
                 started_description = f"{body} Klik hier voor meer data.".strip()
                 conn.execute(
-                    """INSERT OR IGNORE INTO rss_feed_items
-                       (guid, kind, title, description, pub_date, created_at)
-                       VALUES (:guid, 'knmi_warning', :title, :description, :now, :now)""",
+                    """INSERT INTO rss_feed_items
+                       (guid, kind, title, description, pub_date, created_at, resolved_at)
+                       VALUES (:guid, 'knmi_warning', :title, :description, :now, :now, NULL)
+                       ON CONFLICT(guid) DO UPDATE SET
+                           title=excluded.title,
+                           description=excluded.description,
+                           pub_date=excluded.pub_date,
+                           created_at=excluded.created_at,
+                           resolved_at=NULL
+                       WHERE rss_feed_items.resolved_at IS NOT NULL""",
                     {"guid": started_guid, "title": started_title, "description": started_description, "now": fetched_at},
                 )
         open_rows = conn.execute(
