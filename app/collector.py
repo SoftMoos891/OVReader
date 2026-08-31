@@ -823,7 +823,9 @@ def fetch_knmi_warnings_job():
     zie de logica hieronder vóór de DELETE.
 
     Het bronbestand is ~2-3 MB en verandert maar een paar keer per dag, dus
-    elke 30 minuten is ruim actueel genoeg en scheelt onnodige downloads.
+    inhoudelijk is elke 10 minuten ruim vaak genoeg -- die cadans staat vooral
+    om de "is begonnen"-melding (zie hieronder) niet te lang te laten hangen
+    na de daadwerkelijke ingangstijd van een waarschuwing.
 
     Zonder KNMI_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen
     -- de rest van de app blijft gewoon werken."""
@@ -1150,7 +1152,7 @@ def start_scheduler():
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
     scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
     scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
-    scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=30, id="knmi_warnings", max_instances=1)
+    scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=10, id="knmi_warnings", max_instances=1)
     scheduler.add_job(fetch_knmi_weather_job, "interval", minutes=15, id="knmi_weather", max_instances=1)
     scheduler.add_job(fetch_air_quality_job, "interval", minutes=30, id="air_quality", max_instances=1)
     scheduler.start()
