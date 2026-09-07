@@ -142,6 +142,10 @@ class UtrechtIndex:
         # realtime_trip_id ("KEOLIS:5056:40001") -> {route_id, headsign}; zie
         # realtime_trip_meta_for() hieronder voor waarom dit bestaat.
         self.realtime_trips = {}
+        # Halte-ID's die door de U-tram worden bediend (set), uit
+        # utrecht_tram_stops.json -- zie is_tram_alert() in
+        # app/tram_disruptions.py.
+        self.tram_stop_ids = set()
         self.loaded_at = 0
         self.reload()
 
@@ -151,6 +155,7 @@ class UtrechtIndex:
         stops_path = DATA_DIR / "utrecht_stops.json"
         trip_meta_path = DATA_DIR / "utrecht_trip_meta.json"
         realtime_trips_path = DATA_DIR / "utrecht_realtime_trips.json"
+        tram_stops_path = DATA_DIR / "utrecht_tram_stops.json"
         if not routes_path.exists():
             raise RuntimeError(
                 "utrecht_routes.json ontbreekt. Draai eerst app/build_static_index.py"
@@ -168,7 +173,19 @@ class UtrechtIndex:
             json.loads(realtime_trips_path.read_text(encoding="utf-8"))
             if realtime_trips_path.exists() else {}
         )
+        # Zelfde vangnet als hierboven: ontbreekt op installaties waar de
+        # statische index nog niet opnieuw is gebouwd sinds dit bestand werd
+        # toegevoegd. Een lege set betekent alleen dat de tramanalyse
+        # terugvalt op tekstherkenning, niet dat er iets stukgaat.
+        self.tram_stop_ids = set(
+            json.loads(tram_stops_path.read_text(encoding="utf-8"))
+            if tram_stops_path.exists() else []
+        )
         self.loaded_at = time.time()
+
+    def tram_route_ids(self):
+        """route_id's van de U-tram (20/21/22) in de huidige index."""
+        return {rid for rid, r in self.routes.items() if r.get("operator") == TRANSDEV_TRAM}
 
     def realtime_trip_meta_for(self, realtime_trip_id):
         """{route_id, headsign} voor een OVapi realtime_trip_id, of None.

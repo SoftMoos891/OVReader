@@ -60,13 +60,36 @@
   .record-card.empty-card { color: var(--muted); font-style: italic; font-size: 12px;
                              display: flex; align-items: center; justify-content: center; min-height: 96px; text-align: center; }
   .record-card.empty-card::before { background: var(--border); }
+
+  /* ── U-tram-sectie ───────────────────────────────────────────────── */
+  .section-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+                   margin: 34px 0 14px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .section-title h2 { font-size: 16px; margin: 0; letter-spacing: -.01em; }
+  .section-title .note { color: var(--muted); font-size: 12px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kpi { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .kpi .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+  .kpi .k-value { font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 700; margin-top: 5px; }
+  .kpi .k-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .chart-scroll { overflow-x: auto; }
+  .chart-scroll svg { display: block; }
+  .chart-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+  .bar-row { display: grid; grid-template-columns: 96px 1fr 58px; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; }
+  .bar-row .track { background: var(--panel2); border-radius: 4px; height: 16px; overflow: hidden; }
+  .bar-row .fill { background: var(--accent); height: 100%; border-radius: 4px; min-width: 2px; }
+  .bar-row .num { font-family: 'IBM Plex Mono', monospace; color: var(--muted); text-align: right; }
+  .bar-row.muted .fill { background: var(--border2); }
+  td.mono, th.mono { font-family: 'IBM Plex Mono', monospace; }
+  .alert-text { color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
 <header>
   <a href="/" class="dvz-logo-badge" title="DVZ Reader">DVZ</a>
   <h1>📈 Trends &amp; analyse</h1>
-  <span class="sub">Opvallende uitvaldagen en ranglijst slechtste lijnen — busvervoer provincie Utrecht (Keolis + Transdev). Excl. U-tram 20/21/22.</span>
+  <span class="sub">Opvallende uitvaldagen en ranglijst slechtste lijnen — busvervoer provincie Utrecht (Keolis + Transdev). De U-tram staat los onderaan: die telt niet mee in de uitvalcijfers.</span>
   <a class="back" href="/">&larr; Terug naar live overzicht</a>
   <button class="status-btn" onclick="openHealthModal()" title="Systeemstatus"><span class="status-dot" id="healthDot"></span>Status</button>
   <a class="status-btn" href="/logout" title="Uitloggen">Uitloggen</a>
@@ -107,6 +130,60 @@
       <input type="text" id="ranking-filter" placeholder="Filter op lijn/operator...">
     </div>
     <div class="table-scroll" id="ranking-table"><div class="empty">Laden...</div></div>
+  </div>
+
+  <div class="section-title">
+    <h2>🚊 U-tram 20/21/22 — verstoringen</h2>
+    <span class="note" id="tram-period"></span>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Hoe vaak ligt de tram eruit?</h2>
+      <span style="color:var(--muted); font-size:11px;">Uit de U-OV-meldingen; opeenvolgende meldingen over dezelfde storing tellen als één</span>
+    </div>
+    <div class="kpi-grid" id="tram-kpis"><div class="empty">Laden...</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Per dag — storingsuren en punctualiteit</h2>
+    </div>
+    <div class="chart-scroll" id="tram-daychart"><div class="empty">Laden...</div></div>
+    <div class="chart-legend">
+      <span><i style="background:var(--bad)"></i>uren verstoord</span>
+      <span><i style="background:var(--accent)"></i>op tijd (% van de metingen, −2 tot +3 min)</span>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="panel">
+      <div class="panel-header"><h2>Per weekdag</h2></div>
+      <div id="tram-weekday"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Per tijdstip van de dag</h2></div>
+      <div id="tram-hour"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="panel">
+      <div class="panel-header"><h2>Gemelde oorzaak</h2></div>
+      <div id="tram-causes"><div class="empty">Laden...</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Gevolg voor de reiziger</h2></div>
+      <div id="tram-effects"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Storingen in deze periode</h2>
+      <span style="color:var(--muted); font-size:11px;" id="tram-incidents-hint"></span>
+    </div>
+    <div class="table-scroll" id="tram-incidents"><div class="empty">Laden...</div></div>
   </div>
 </main>
 
@@ -251,6 +328,191 @@ function renderRankingTable() {
   }));
 }
 
+// ── U-tram: verstoringen ────────────────────────────────────────────────
+// De tram valt buiten de uitvalcijfers hierboven (de trip-updates-feed levert
+// er geen bruikbare uitval voor), dus deze sectie leunt op de U-OV-meldingen
+// zelf -- zie app/tram_disruptions.py.
+
+function fmtDuration(seconds) {
+  if (!seconds) return '0 min';
+  const h = Math.floor(seconds / 3600), m = Math.round((seconds % 3600) / 60);
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} uur` : `${h} u ${m} min`;
+}
+
+function fmtEpochDateShort(epoch) {
+  return new Date(epoch * 1000).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
+function fmtDateTime(epoch) {
+  return new Date(epoch * 1000).toLocaleString('nl-NL',
+    { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function kpi(label, value, meta) {
+  return `<div class="kpi"><div class="k-label">${label}</div>
+    <div class="k-value">${value}</div><div class="k-meta">${meta || ''}</div></div>`;
+}
+
+function renderTramKpis(data) {
+  const s = data.summary;
+  const longest = s.longest_incident;
+  document.getElementById('tram-period').textContent =
+    `${fmtDateShort(data.since_date)} t/m ${fmtDateShort(data.until_date)} · ${s.days_in_range} dagen`;
+  document.getElementById('tram-kpis').innerHTML = [
+    kpi('Storingen', s.incident_count, `${s.alert_count} losse meldingen`),
+    kpi('Dagen met storing', `${s.days_with_disruption_pct}%`,
+        `${s.days_with_disruption} van ${s.days_in_range} dagen`),
+    kpi('Gemiddeld per week', s.incidents_per_week, 'storingen'),
+    kpi('Mediane duur', fmtDuration(s.median_duration_seconds), 'per storing'),
+    kpi('Totaal verstoord', fmtDuration(s.total_disrupted_seconds), 'in deze periode'),
+    kpi('Langste storing', longest ? fmtDuration(longest.duration_seconds) : '—',
+        longest ? `${fmtEpochDateShort(longest.started_at)} · ${longest.cause}` : ''),
+    kpi('Gepland werk', s.planned_count,
+        'aangekondigd — telt niet mee als storing'),
+  ].join('');
+}
+
+// Eén grafiek voor beide reeksen, want de vraag is juist of ze samenhangen:
+// staven = hoeveel uur de tram die dag verstoord was, lijn = het aandeel
+// metingen dat op tijd was. Handmatige SVG -- de pagina laadt bewust geen
+// grafiekbibliotheek.
+function renderTramDayChart(data) {
+  const days = data.per_day;
+  const host = document.getElementById('tram-daychart');
+  if (!days.length) { host.innerHTML = '<div class="empty">Geen dagen in deze periode</div>'; return; }
+
+  const punctualityByDay = Object.fromEntries(data.punctuality.map(p => [p.date, p.on_time_pct]));
+  const barW = Math.max(9, Math.min(30, Math.floor(760 / days.length)));
+  const gap = barW > 14 ? 3 : 2;
+  const w = days.length * (barW + gap) + 54, h = 190, top = 14, bottom = 26;
+  const plotH = h - top - bottom;
+  const maxHours = Math.max(1, ...days.map(d => d.disrupted_seconds / 3600));
+
+  // Punctualiteit leeft in de praktijk tussen ~80 en 100% -- die 0-80 wegsnijden
+  // maakt het verschil tussen een goede en een slechte dag pas zichtbaar.
+  const punctMin = 75;
+  const punctY = pct => top + plotH - ((Math.max(pct, punctMin) - punctMin) / (100 - punctMin)) * plotH;
+
+  const bars = days.map((d, i) => {
+    const x = 46 + i * (barW + gap);
+    const hours = d.disrupted_seconds / 3600;
+    const barH = hours > 0 ? Math.max(2, (hours / maxHours) * plotH) : 0;
+    const title = `${fmtDateShort(d.date)}: ${d.incidents} storing(en), ${fmtDuration(d.disrupted_seconds)} verstoord`
+      + (punctualityByDay[d.date] !== undefined ? ` · ${punctualityByDay[d.date]}% op tijd` : '');
+    return `<rect x="${x}" y="${top + plotH - barH}" width="${barW}" height="${barH}"
+      fill="var(--bad)" opacity="${d.incidents ? .85 : 0}" rx="2"><title>${title}</title></rect>`;
+  }).join('');
+
+  const points = days.map((d, i) => [46 + i * (barW + gap) + barW / 2, punctualityByDay[d.date]])
+    .filter(([, pct]) => pct !== undefined)
+    .map(([x, pct]) => `${x},${punctY(pct).toFixed(1)}`);
+  const line = points.length > 1
+    ? `<polyline points="${points.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="1.8"/>` : '';
+
+  // Alleen de eerste, de laatste en elke zoveelste dag een label, anders lopen
+  // de datums over elkaar heen bij een lange periode.
+  const step = Math.ceil(days.length / 10);
+  const labels = days.map((d, i) => (i % step === 0 || i === days.length - 1)
+    ? `<text x="${46 + i * (barW + gap) + barW / 2}" y="${h - 8}" text-anchor="middle"
+        font-size="10" fill="var(--muted)">${fmtDateShort(d.date)}</text>` : '').join('');
+
+  const yAxis = [0, maxHours / 2, maxHours].map(v => {
+    const y = top + plotH - (v / maxHours) * plotH;
+    return `<line x1="46" x2="${w - 8}" y1="${y}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+      <text x="40" y="${y + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)">${v.toFixed(v < 10 ? 1 : 0)}u</text>`;
+  }).join('');
+
+  host.innerHTML = `<svg width="${w}" height="${h}" role="img"
+      aria-label="Storingsuren per dag met daaroverheen het percentage op tijd">
+    ${yAxis}${bars}${line}${labels}
+    <text x="${w - 8}" y="${punctY(100) + 3.5}" text-anchor="end" font-size="10" fill="var(--accent)">100%</text>
+    <text x="${w - 8}" y="${top + plotH - 2}" text-anchor="end" font-size="10" fill="var(--accent)">${punctMin}%</text>
+  </svg>`;
+}
+
+function barRows(rows, valueFor, labelFor, metaFor, muted) {
+  const max = Math.max(1, ...rows.map(valueFor));
+  return rows.map(r => `<div class="bar-row${muted && !valueFor(r) ? ' muted' : ''}">
+      <span>${labelFor(r)}</span>
+      <span class="track"><span class="fill" style="width:${(valueFor(r) / max) * 100}%"></span></span>
+      <span class="num">${metaFor(r)}</span>
+    </div>`).join('');
+}
+
+function renderTramWeekday(data) {
+  const rows = data.per_weekday;
+  document.getElementById('tram-weekday').innerHTML =
+    barRows(rows, r => r.incidents, r => r.label,
+            r => `${r.incidents}×`, true)
+    + `<div class="alert-text" style="margin-top:8px">Aantal storingen per weekdag over ${data.summary.days_in_range} dagen.
+       Een weekdag komt niet altijd even vaak voor in de periode; de telling per dag staat in de tooltip van de grafiek hierboven.</div>`;
+}
+
+function renderTramHour(data) {
+  // Per dagdeel van 3 uur: per los uur is de spreiding bij enkele tientallen
+  // storingen te dun om er iets in te zien.
+  const buckets = [];
+  for (let h = 0; h < 24; h += 3) {
+    buckets.push({
+      label: `${String(h).padStart(2, '0')}–${String(h + 3).padStart(2, '0')}`,
+      incidents: data.per_hour.slice(h, h + 3).reduce((sum, x) => sum + x.incidents, 0),
+    });
+  }
+  document.getElementById('tram-hour').innerHTML =
+    barRows(buckets, b => b.incidents, b => b.label, b => `${b.incidents}×`, true)
+    + '<div class="alert-text" style="margin-top:8px">Op het moment dat de storing begon.</div>';
+}
+
+function renderTramCauses(data) {
+  const host = document.getElementById('tram-causes');
+  if (!data.causes.length) { host.innerHTML = '<div class="empty">Geen storingen in deze periode</div>'; return; }
+  host.innerHTML = barRows(data.causes, c => c.count, c => c.label, c => `${c.count}× · ${c.share_pct}%`)
+    + (data.planned_causes.length
+        ? `<div class="alert-text" style="margin-top:10px">Daarnaast aangekondigd gepland werk:
+           ${data.planned_causes.map(c => `${c.label} (${c.count}×)`).join(', ')}.</div>`
+        : '');
+}
+
+function renderTramEffects(data) {
+  const host = document.getElementById('tram-effects');
+  host.innerHTML = data.effects.length
+    ? barRows(data.effects, e => e.count, e => e.label, e => `${e.count}×`)
+      + '<div class="alert-text" style="margin-top:10px">Zoals U-OV het gevolg zelf in de melding benoemt, per losse melding.</div>'
+    : '<div class="empty">Geen meldingen in deze periode</div>';
+}
+
+function renderTramIncidents(data) {
+  const host = document.getElementById('tram-incidents');
+  document.getElementById('tram-incidents-hint').textContent =
+    data.incidents.length ? `${data.incidents.length} getoond, nieuwste eerst` : '';
+  if (!data.incidents.length) {
+    host.innerHTML = '<div class="empty">Geen storingen in deze periode</div>';
+    return;
+  }
+  host.innerHTML = `<table>
+    <tr><th>Begin</th><th>Duur</th><th>Oorzaak</th><th>Meldingen</th><th>Eerste melding</th></tr>` +
+    data.incidents.map(i => `<tr>
+      <td class="mono">${fmtDateTime(i.started_at)}</td>
+      <td class="mono">${fmtDuration(i.duration_seconds)}</td>
+      <td>${i.cause}</td>
+      <td class="mono">${i.alerts.length}</td>
+      <td class="alert-text">${i.header ? i.header.replace(/</g, '&lt;').replace(/\s+/g, ' ').slice(0, 140) : ''}</td>
+    </tr>`).join('') + '</table>';
+}
+
+async function loadTram() {
+  const res = await fetch(`/api/tram/disruptions?range=${currentRange}`);
+  const data = await res.json();
+  renderTramKpis(data);
+  renderTramDayChart(data);
+  renderTramWeekday(data);
+  renderTramHour(data);
+  renderTramCauses(data);
+  renderTramEffects(data);
+  renderTramIncidents(data);
+}
+
 // Deeplinks: gekozen periode in de URL (bv. /trends?range=30d), zodat een
 // specifieke weergave te bookmarken/delen is. Zelfde patroon als /uitval.
 function syncUrl() {
@@ -274,6 +536,7 @@ document.querySelectorAll('.range-btn').forEach(btn => {
     currentRange = btn.dataset.range;
     syncUrl();
     loadRanking().catch(console.error);
+    loadTram().catch(console.error);
   });
 });
 document.getElementById('ranking-filter').addEventListener('input', renderRankingTable);
@@ -282,13 +545,16 @@ applyUrlState();
 loadHealth().catch(console.error);
 loadRecords().catch(console.error);
 loadRanking().catch(console.error);
+loadTram().catch(console.error);
 setInterval(() => { if (!document.hidden) loadRanking().catch(console.error); }, 60000);
 setInterval(() => { if (!document.hidden) loadRecords().catch(console.error); }, 300000);
+setInterval(() => { if (!document.hidden) loadTram().catch(console.error); }, 180000);
 setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     loadRanking().catch(console.error);
     loadRecords().catch(console.error);
+    loadTram().catch(console.error);
     loadHealth().catch(console.error);
   }
 });

@@ -16,7 +16,7 @@ from flask import (
     session, url_for,
 )
 
-from . import db, records
+from . import db, records, tram_disruptions
 from .collector import DELAY_RETENTION_DAYS, FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
 from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
@@ -1284,6 +1284,118 @@ def api_records():
 
     data = _cached_daily(("records",), compute)
     return jsonify({"generated_at": int(time.time()), **data})
+
+
+# Cache-TTL voor de tramanalyse op /trends. Korter dan STATS_CACHE_TTL_SECONDS:
+# de `alerts`-tabel is klein (honderden rijen, geen aggregatie over miljoenen
+# metingen), dus dit hoeft niet zuinig te zijn -- en een storing die net begon
+# wil je binnen een paar minuten terugzien i.p.v. pas na een half uur.
+TRAM_CACHE_TTL_SECONDS = 180
+
+
+@app.route("/api/tram/disruptions")
+def api_tram_disruptions():
+    """Verstoringen op de U-tram 20/21/22 over een gekozen periode -- hoe vaak,
+    op welke dagen/uren, en met welke gemelde oorzaak. Zie
+    app/tram_disruptions.py; de tram valt buiten de uitval- en
+    punctualiteitscijfers van de rest van /trends omdat de trip-updates-feed er
+    geen bruikbare uitval voor levert.
+
+    Twee caches met opzet: de meldingen zelf zijn goedkoop en mogen vaak
+    verversen, de punctualiteitsreeks leunt op dezelfde dagelijkse cyclus als de
+    andere /trends-grafieken omdat die wél ruwe trip_delays van vandaag leest."""
+    range_key = request.args.get("range", "30d")
+    overview = _cached(("tram-disruptions", range_key), TRAM_CACHE_TTL_SECONDS,
+                       lambda: _compute_tram_disruptions(range_key))
+    punctuality = _cached_daily(("tram-punctuality", range_key),
+                                lambda: _compute_tram_punctuality(range_key))
+    return jsonify({"range": range_key, "generated_at": int(time.time()),
+                    "punctuality": punctuality, **overview})
+
+
+def _compute_tram_disruptions(range_key):
+    since_date, until_date = _date_bounds_for_range(range_key)
+    _, until_ts = _range_to_epoch(since_date, until_date)
+
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM alerts WHERE first_seen <= ? ORDER BY first_seen", (until_ts,)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    tram_rows = [r for r in rows if tram_disruptions.is_tram_alert(r, _index)]
+    # range=all rekt since_date op tot EARLIEST_POSSIBLE_DATE (jaar 2000);
+    # zonder deze inkorting zou per_day duizenden lege dagen bevatten van
+    # vóórdat de collector überhaupt draaide.
+    if tram_rows:
+        first_day = time.strftime("%Y-%m-%d", time.localtime(tram_rows[0]["first_seen"]))
+        since_date = max(since_date, first_day)
+    in_range = [r for r in tram_rows if r["first_seen"] >= _epoch_of_date(since_date)]
+    return tram_disruptions.build_overview(in_range, since_date, until_date)
+
+
+def _epoch_of_date(iso_date):
+    return int(datetime.combine(date.fromisoformat(iso_date), dtime.min).timestamp())
+
+
+def _compute_tram_punctuality(range_key):
+    """Dagreeks op-tijd%/gem. vertraging voor alleen de tramlijnen. Zelfde
+    opbouw als _compute_stats_trend() (dagrollup + ruwe data van vandaag), maar
+    met het tegenovergestelde routefilter: hier juist alléén de tram."""
+    since_date, until_date = _date_bounds_for_range(range_key)
+    since_ts, until_ts = _range_to_epoch(since_date, until_date)
+    tram_routes = _index.tram_route_ids()
+    if not tram_routes:
+        return []
+
+    today_start_ts = int(datetime.combine(date.today(), dtime.min).timestamp())
+    raw_since_ts = max(since_ts, today_start_ts)
+    placeholders = ",".join("?" * len(tram_routes))
+    tram_route_list = sorted(tram_routes)
+
+    conn = db.get_conn()
+    try:
+        raw = conn.execute(
+            f"""
+            SELECT strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
+                   COUNT(*) AS sample_count,
+                   SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
+                   AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds
+            FROM trip_delays
+            WHERE fetched_at >= ? AND fetched_at <= ? AND route_id IN ({placeholders})
+            GROUP BY day
+            """,
+            (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, raw_since_ts, until_ts, *tram_route_list),
+        ).fetchall()
+        rolled = conn.execute(
+            f"""
+            SELECT day, sample_count, on_time_count, avg_delay_seconds
+            FROM route_stats_daily
+            WHERE day >= ? AND day <= ? AND route_id IN ({placeholders})
+            """,
+            (since_date, until_date, *tram_route_list),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_day = {}
+    for r in list(raw) + list(rolled):
+        entry = by_day.setdefault(r["day"], {"sample_count": 0, "on_time_count": 0, "avg_sum": 0.0})
+        entry["sample_count"] += r["sample_count"] or 0
+        entry["on_time_count"] += r["on_time_count"] or 0
+        entry["avg_sum"] += (r["avg_delay_seconds"] or 0) * (r["sample_count"] or 0)
+
+    return [
+        {
+            "date": day,
+            "sample_count": by_day[day]["sample_count"],
+            "on_time_pct": round(100.0 * by_day[day]["on_time_count"] / by_day[day]["sample_count"], 1),
+            "avg_delay_seconds": round(by_day[day]["avg_sum"] / by_day[day]["sample_count"], 1),
+        }
+        for day in sorted(by_day) if by_day[day]["sample_count"]
+    ]
 
 
 @app.route("/api/stops")

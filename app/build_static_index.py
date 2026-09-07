@@ -38,6 +38,14 @@ OUT_TRIP_META = DATA_DIR / "utrecht_trip_meta.json"
 OUT_STOP_TIMES = DATA_DIR / "utrecht_stop_times.json"
 OUT_SHAPES = DATA_DIR / "utrecht_shapes.json"
 OUT_REALTIME_TRIPS = DATA_DIR / "utrecht_realtime_trips.json"
+# Halte-ID's die door de U-tram (route_type 0) worden bediend. Apart
+# bestand omdat het alleen hier goedkoop af te leiden is (uit stop_times van
+# de tramtrips, die dit script toch al streamt) en de webservice er geen
+# 100 MB utrecht_stop_times.json voor hoeft te parsen. Zie
+# app/tram_disruptions.py: U-OV-meldingen over de tram noemen zelden een
+# route_id, maar wel de betrokken haltes -- en tramhaltes zijn exclusief
+# (geen enkele wordt ook door een bus bediend), dus dat is een harde match.
+OUT_TRAM_STOPS = DATA_DIR / "utrecht_tram_stops.json"
 # Bevat zowel feed_info.txt-velden als de HTTP-cachekopjes van de vorige
 # download; zie load_feed_state()/download_gtfs_zip().
 FEED_STATE_PATH = DATA_DIR / "gtfs_feed_info.json"
@@ -45,7 +53,7 @@ FEED_STATE_PATH = DATA_DIR / "gtfs_feed_info.json"
 # Ophogen zodra de vórm van de weggeschreven bestanden verandert (nieuw
 # bestand, nieuw veld). Zonder dit zou een build met ongewijzigde
 # feed_version worden overgeslagen en dus nooit de nieuwe velden opleveren.
-BUILD_VERSION = 4
+BUILD_VERSION = 5
 
 # Tolerantie voor de Ramer-Douglas-Peucker-vereenvoudiging van routelijnen,
 # in graden (~0.00005 graden is ~5m op deze breedtegraad) -- ver onder wat op
@@ -423,9 +431,24 @@ def load_stop_info(zf, stop_ids):
     return stops
 
 
+def find_tram_stops(routes, trip_to_route, stop_times_by_stop):
+    """Halte-ID's die door minstens één tramtrip worden aangedaan.
+
+    Gaat op route_type (0 = tram) en niet op de operator-indeling uit
+    concession_mapping: die wordt pas ná deze stap gezet, en route_type komt
+    rechtstreeks uit de feed."""
+    tram_routes = {rid for rid, r in routes.items() if r.get("route_type") == TRAM_ROUTE_TYPE}
+    tram_trips = {tid for tid, rid in trip_to_route.items() if rid in tram_routes}
+    return sorted(
+        stop_id for stop_id, entries in stop_times_by_stop.items()
+        if any(entry[0] in tram_trips for entry in entries)
+    )
+
+
 ALL_OUTPUTS = (
     OUT_STOPS, OUT_ROUTES, OUT_TRIPS, OUT_CALENDAR,
     OUT_TRIP_META, OUT_STOP_TIMES, OUT_SHAPES, OUT_REALTIME_TRIPS,
+    OUT_TRAM_STOPS,
 )
 
 
@@ -478,6 +501,9 @@ def main():
         stop_info = load_stop_info(zf, stop_ids)
         log(f"{len(stop_info):,} haltes gevonden, {sum(len(v) for v in stop_times_by_stop.values()):,} halte-tijden.")
 
+        tram_stop_ids = find_tram_stops(routes, trip_to_route, stop_times_by_stop)
+        log(f"{len(tram_stop_ids)} daarvan zijn tramhaltes (U-tram 20/21/22).")
+
         for trip_id, (_min_seq, first_stop_id, _max_seq, last_stop_id) in trip_termini.items():
             if trip_id in trip_meta:
                 trip_meta[trip_id]["first_stop_id"] = first_stop_id
@@ -523,10 +549,11 @@ def main():
     OUT_STOP_TIMES.write_text(json.dumps(stop_times_by_stop, ensure_ascii=False), encoding="utf-8")
     OUT_SHAPES.write_text(json.dumps(route_shape_points, ensure_ascii=False), encoding="utf-8")
     OUT_REALTIME_TRIPS.write_text(json.dumps(realtime_trips, ensure_ascii=False), encoding="utf-8")
+    OUT_TRAM_STOPS.write_text(json.dumps(tram_stop_ids, ensure_ascii=False), encoding="utf-8")
     log(
         f"Weggeschreven: {OUT_STOPS.name}, {OUT_ROUTES.name}, {OUT_TRIPS.name}, "
         f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, "
-        f"{OUT_SHAPES.name}, {OUT_REALTIME_TRIPS.name}"
+        f"{OUT_SHAPES.name}, {OUT_REALTIME_TRIPS.name}, {OUT_TRAM_STOPS.name}"
     )
 
     # Pas ná een geslaagde build wegschrijven: crasht het script halverwege,
