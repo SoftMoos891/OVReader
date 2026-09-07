@@ -420,6 +420,63 @@ def api_health():
     })
 
 
+@app.route("/api/diagnostics/feed")
+def api_diagnostics_feed():
+    """Vangnet tegen stilzwijgend gemiste uitval, ontstaan na de
+    uitval-vergelijking met de provincie van 7 sep 2026 (Transdev-cijfer lag
+    structureel lager dan wat de provincie meldde, zonder aanwijsbare oorzaak
+    in de eigen matching-logica op dat moment). Twee losse signalen:
+
+    - 'route_index_builds': per maandelijkse build_static_index.py-run het
+      aantal gevonden U-OV-lijnen per operator, plus welke route_id's
+      bijkwamen/verdwenen t.o.v. de vorige build. Vangt dienstregeling-
+      wijzigingen die route_id's laten verschuiven (zie route_id_for() in
+      gtfs_rt.py) -- is al twee keer eerder de oorzaak geweest van
+      stilvallende matching.
+    - 'unresolved_cancellations_daily': per dag, per OVapi realtime_trip_id-
+      prefix (landelijke vervoerdercode, bv. 'KEOLIS'/'CXX'), het aantal
+      CANCELED-meldingen die niet naar een bekende Utrecht-route herleid
+      konden worden. Prefix is GEEN garantie dat het om een Utrecht-rit gaat
+      (dezelfde vervoerders rijden ook elders) -- dit is een baseline om een
+      plotselinge stijging in te kunnen signaleren, geen directe
+      'gemiste Transdev-uitval'-teller."""
+    conn = db.get_conn()
+    try:
+        builds = conn.execute(
+            """SELECT built_at, total_routes, keolis_count, transdev_count, transdev_tram_count,
+                      unknown_count, routes_added, routes_removed
+               FROM route_index_builds ORDER BY built_at DESC LIMIT 12"""
+        ).fetchall()
+        unresolved = conn.execute(
+            """SELECT service_date, prefix, unresolved_count
+               FROM unresolved_cancellations_daily
+               WHERE service_date >= date('now', '-30 days')
+               ORDER BY service_date DESC, prefix"""
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "route_index_builds": [
+            {
+                "built_at": b["built_at"],
+                "total_routes": b["total_routes"],
+                "keolis_count": b["keolis_count"],
+                "transdev_count": b["transdev_count"],
+                "transdev_tram_count": b["transdev_tram_count"],
+                "unknown_count": b["unknown_count"],
+                "routes_added": json.loads(b["routes_added"]),
+                "routes_removed": json.loads(b["routes_removed"]),
+            }
+            for b in builds
+        ],
+        "unresolved_cancellations_daily": [
+            {"service_date": u["service_date"], "prefix": u["prefix"], "unresolved_count": u["unresolved_count"]}
+            for u in unresolved
+        ],
+    })
+
+
 @app.route("/api/backup/latest")
 def api_backup_latest():
     """Nieuwste nachtelijke back-up van de historie-tabellen (zie

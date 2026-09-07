@@ -25,6 +25,7 @@ from pathlib import Path
 
 import requests
 
+from . import db
 from .concession_mapping import classify_operator, UNKNOWN
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -541,6 +542,25 @@ def main():
             "Transdev -- voeg toe aan app/concession_mapping.py: " + "; ".join(unknown_lines)
         )
 
+    # Route-reconciliatie t.o.v. de vorige build: welke route_id's zijn
+    # bijgekomen/verdwenen. Vangnet tegen dienstregelingwijzigingen die
+    # route_id's laten verschuiven, waardoor cancellations op die lijnen
+    # stil onopgelost blijven (zie route_id_for() in gtfs_rt.py) -- ontstaan
+    # na de uitval-vergelijking met de provincie van 7 sep 2026.
+    old_routes = {}
+    if OUT_ROUTES.exists():
+        try:
+            old_routes = json.loads(OUT_ROUTES.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            old_routes = {}
+    routes_added = sorted(set(routes) - set(old_routes))
+    routes_removed = sorted(set(old_routes) - set(routes))
+    if routes_added or routes_removed:
+        log(
+            "Routewijzigingen t.o.v. vorige build -- "
+            f"bijgekomen: {routes_added or '-'}, verdwenen: {routes_removed or '-'}"
+        )
+
     OUT_STOPS.write_text(json.dumps(stop_info, ensure_ascii=False), encoding="utf-8")
     OUT_ROUTES.write_text(json.dumps(routes, ensure_ascii=False), encoding="utf-8")
     OUT_TRIPS.write_text(json.dumps(trip_to_route, ensure_ascii=False), encoding="utf-8")
@@ -555,6 +575,27 @@ def main():
         f"{OUT_CALENDAR.name}, {OUT_TRIP_META.name}, {OUT_STOP_TIMES.name}, "
         f"{OUT_SHAPES.name}, {OUT_REALTIME_TRIPS.name}, {OUT_TRAM_STOPS.name}"
     )
+
+    db.init_db()
+    conn = db.get_conn()
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO route_index_builds
+               (built_at, total_routes, keolis_count, transdev_count, transdev_tram_count,
+                unknown_count, routes_added, routes_removed)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                int(time.time()), len(routes),
+                operator_counts.get("Keolis", 0),
+                operator_counts.get("Transdev", 0),
+                operator_counts.get("Transdev tram", 0),
+                operator_counts.get(UNKNOWN, 0),
+                json.dumps(routes_added), json.dumps(routes_removed),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Pas ná een geslaagde build wegschrijven: crasht het script halverwege,
     # dan blijft de oude state staan en probeert de volgende run het opnieuw

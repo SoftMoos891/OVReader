@@ -339,6 +339,40 @@ CREATE TABLE IF NOT EXISTS rollup_watermark (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     rolled_through_epoch INTEGER NOT NULL DEFAULT 0
 );
+
+-- Eén rij per maandelijkse build_static_index.py-run: hoeveel U-OV-lijnen er
+-- toen gevonden werden (per operator) en welke route_id's t.o.v. de vorige
+-- build zijn bijgekomen/verdwenen. Losstaand vangnet tegen het probleem dat
+-- een dienstregelingwijziging trip/route-id's laat verschuiven waardoor
+-- cancellations stil onopgelost blijven (zie realtime_trip_meta_for() in
+-- gtfs_rt.py) -- ontstaan na de uitval-vergelijking met de provincie van
+-- 7 sep 2026, die liet zien dat het Transdev-uitvalcijfer structureel lager
+-- lag dan wat de provincie meldde.
+CREATE TABLE IF NOT EXISTS route_index_builds (
+    built_at INTEGER PRIMARY KEY,
+    total_routes INTEGER NOT NULL,
+    keolis_count INTEGER NOT NULL,
+    transdev_count INTEGER NOT NULL,
+    transdev_tram_count INTEGER NOT NULL,
+    unknown_count INTEGER NOT NULL,
+    routes_added TEXT NOT NULL,
+    routes_removed TEXT NOT NULL
+);
+
+-- Per collector-cyclus bijgewerkte dagteller: CANCELED-meldingen in de
+-- ruwe trip-updates feed die niet naar een bekende Utrecht-route herleid
+-- konden worden, gegroepeerd op het prefix van hun OVapi realtime_trip_id
+-- ("KEOLIS"/"CXX"/overig). Prefix is een landelijke vervoerdercode, dus dit
+-- is GEEN directe "gemiste Transdev-uitval"-teller (de meeste van deze
+-- meldingen horen bij ritten buiten de provincie Utrecht) -- wel een
+-- baseline om een plotselinge stijging (bv. door een dienstregelingwijziging
+-- die onze statische index veroudert) aan af te kunnen zien.
+CREATE TABLE IF NOT EXISTS unresolved_cancellations_daily (
+    service_date TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    unresolved_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (service_date, prefix)
+);
 """
 
 

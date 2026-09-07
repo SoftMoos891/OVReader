@@ -374,6 +374,33 @@ def parse_cancellations(feed, index: UtrechtIndex, extensions=None):
     return results
 
 
+def count_unresolved_cancellations_by_prefix(feed, index: UtrechtIndex, extensions=None):
+    """Telt CANCELED-meldingen in de trip-updates feed die NIET naar een
+    bekende Utrecht-route herleid konden worden, gegroepeerd op het prefix
+    van hun OVapi realtime_trip_id (bv. 'KEOLIS', 'CXX' -- zie
+    UtrechtIndex.realtime_trips). Dit zijn landelijke vervoerdercodes, dus
+    de meeste van deze tellingen horen bij ritten van diezelfde vervoerder
+    buiten de provincie Utrecht en zijn terecht genegeerd -- dit is dus geen
+    directe "gemiste uitval"-teller, wel een baseline om een plotselinge
+    stijging in te kunnen signaleren (bv. na een dienstregelingwijziging die
+    onze statische index veroudert; zie route_id_for())."""
+    extensions = extensions or {}
+    counts = {}
+    for entity in feed.entity:
+        if not entity.HasField("trip_update"):
+            continue
+        trip = entity.trip_update.trip
+        if trip.schedule_relationship != gtfs_realtime_pb2.TripDescriptor.CANCELED:
+            continue
+        realtime_trip_id = extensions.get(entity.id, {}).get("realtime_trip_id")
+        resolved_route = index.route_id_for(trip.trip_id or None, trip.route_id or None, realtime_trip_id)
+        if resolved_route:
+            continue
+        prefix = realtime_trip_id.split(":")[0] if realtime_trip_id else "(geen realtime_trip_id)"
+        counts[prefix] = counts.get(prefix, 0) + 1
+    return counts
+
+
 # parse_skipped_stops() stond hier: individuele tussenhaltes die de feed als
 # SKIPPED meldt (rit rijdt door zonder te stoppen). De enige weergave ervan
 # ("Vaak overgeslagen haltes" op /uitval) is verwijderd, waarna de collector

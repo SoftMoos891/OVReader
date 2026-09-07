@@ -12,6 +12,7 @@ from . import db
 from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
     parse_trip_delays, parse_cancellations, fetch_alerts,
+    count_unresolved_cancellations_by_prefix,
 )
 from .knmi_warnings import fetch_utrecht_warnings, format_active_from
 from .knmi_weather import fetch_de_bilt_weather
@@ -210,6 +211,24 @@ def collect_once():
                 )
         except Exception:
             print("[collector] fout bij ophalen cancellations:")
+            traceback.print_exc()
+
+        try:
+            if trip_updates_feed is not None:
+                today = time.strftime("%Y-%m-%d", time.localtime(fetched_at))
+                unresolved_counts = count_unresolved_cancellations_by_prefix(
+                    trip_updates_feed, _index, trip_updates_ext
+                )
+                for prefix, cnt in unresolved_counts.items():
+                    conn.execute(
+                        """INSERT INTO unresolved_cancellations_daily (service_date, prefix, unresolved_count)
+                           VALUES (:day, :prefix, :cnt)
+                           ON CONFLICT(service_date, prefix) DO UPDATE SET
+                               unresolved_count = unresolved_count + :cnt""",
+                        {"day": today, "prefix": prefix, "cnt": cnt},
+                    )
+        except Exception:
+            print("[collector] fout bij tellen onopgeloste cancellations:")
             traceback.print_exc()
 
         # Overgeslagen haltes (GTFS-RT SKIPPED) werden hier verzameld in
@@ -486,6 +505,7 @@ def cleanup_old_data():
         conn.execute("DELETE FROM trip_cancellations WHERE service_date < ?", (history_cutoff_date,))
         conn.execute("DELETE FROM trips_ran_daily WHERE service_date < ?", (history_cutoff_date,))
         conn.execute("DELETE FROM skipped_stops WHERE service_date < ?", (history_cutoff_date,))
+        conn.execute("DELETE FROM unresolved_cancellations_daily WHERE service_date < ?", (history_cutoff_date,))
         conn.commit()
     finally:
         conn.close()
