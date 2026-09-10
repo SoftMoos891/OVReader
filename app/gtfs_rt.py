@@ -139,6 +139,12 @@ class UtrechtIndex:
         self.trip_to_route = {}  # trip_id -> route_id
         self.stops = {}        # stop_id -> {name, lat, lon}
         self.trip_meta = {}    # trip_id -> {route_id, service_id, headsign}
+        # service_id -> {days, start_date, end_date, added, removed}, uit
+        # calendar.txt/calendar_dates.txt -- gebruikt door
+        # collector.rollup_schedule_gap() om te bepalen welke trip_id's op
+        # een gegeven dag daadwerkelijk gepland stonden (zie service_active()
+        # aldaar), los van wat de realtime feed heeft gemeld.
+        self.calendar = {}
         # realtime_trip_id ("KEOLIS:5056:40001") -> {route_id, headsign}; zie
         # realtime_trip_meta_for() hieronder voor waarom dit bestaat.
         self.realtime_trips = {}
@@ -154,6 +160,7 @@ class UtrechtIndex:
         trips_path = DATA_DIR / "utrecht_trips.json"
         stops_path = DATA_DIR / "utrecht_stops.json"
         trip_meta_path = DATA_DIR / "utrecht_trip_meta.json"
+        calendar_path = DATA_DIR / "utrecht_calendar.json"
         realtime_trips_path = DATA_DIR / "utrecht_realtime_trips.json"
         tram_stops_path = DATA_DIR / "utrecht_tram_stops.json"
         if not routes_path.exists():
@@ -165,6 +172,9 @@ class UtrechtIndex:
         self.stops = json.loads(stops_path.read_text(encoding="utf-8"))
         self.trip_meta = (
             json.loads(trip_meta_path.read_text(encoding="utf-8")) if trip_meta_path.exists() else {}
+        )
+        self.calendar = (
+            json.loads(calendar_path.read_text(encoding="utf-8")) if calendar_path.exists() else {}
         )
         # Ontbreekt op installaties waar de statische index nog niet opnieuw is
         # gebouwd sinds dit bestand werd toegevoegd -- dan valt alles gewoon

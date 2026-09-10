@@ -373,6 +373,32 @@ CREATE TABLE IF NOT EXISTS unresolved_cancellations_daily (
     unresolved_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (service_date, prefix)
 );
+
+-- Eén rij per (afgesloten dag, operator): hoeveel ritten er volgens de
+-- statische dienstregeling die dag gepland stonden (scheduled_count) tegenover
+-- hoeveel daarvan ook daadwerkelijk ergens in trips_ran_daily/
+-- trip_cancellations zijn beland (seen_count). Het verschil is een rit
+-- waarover de realtime feed HELEMAAL niets heeft gemeld -- niet gereden,
+-- niet als CANCELED gezien -- en die dus in geen van beide tabellen
+-- voorkomt. Losstaand van unresolved_cancellations_daily (dat vangt alleen
+-- CANCELED-meldingen die niet aan een route te koppelen waren; dit hier
+-- vangt ritten die de feed nooit heeft benoemd). U-flex-lijnen (vraag-
+-- afhankelijk vervoer) zijn uitgesloten: hun statische trip_id's zijn
+-- honderden theoretische boekingsslots per dag, geen vaste dienstregeling,
+-- en zouden scheduled_count kunstmatig opblazen (zie rollup_schedule_gap()
+-- in app/collector.py). Gevuld vanaf 8 sep 2026, de vroegste dag die de
+-- huidige statische calendar (voorwaarts kijkend vanaf de laatste
+-- build_static_index.py-run) nog dekt -- oudere dagen kunnen met de huidige
+-- statische index niet met terugwerkende kracht berekend worden en blijven
+-- daarom afwezig in deze tabel i.p.v. op 0 gezet.
+CREATE TABLE IF NOT EXISTS schedule_gap_daily (
+    service_date TEXT NOT NULL,
+    operator TEXT NOT NULL,
+    scheduled_count INTEGER NOT NULL,
+    seen_count INTEGER NOT NULL,
+    PRIMARY KEY (service_date, operator)
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_gap_date ON schedule_gap_daily(service_date);
 """
 
 

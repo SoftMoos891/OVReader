@@ -427,6 +427,127 @@ def rollup_completed_days():
         print(f"[collector] dag-rollup klaar (tot {day_end})")
 
 
+# Lijnnummers voor vraagafhankelijk vervoer (U-flex bij Transdev, A/B/M bij
+# Keolis): hun statische trip_id's zijn honderden theoretische boekingsslots
+# per dag, geen vaste dienstregeling, en horen niet mee in een gepland-vs-
+# gezien-vergelijking. Zie schedule_gap_daily in app/db.py.
+_DRT_SHORT_NAMES = {"Flex", "A", "B", "M"}
+
+
+def _service_active_on(calendar_entry, date_str, weekday):
+    """True als een GTFS calendar-service_id (calendar_entry, uit
+    UtrechtIndex.calendar) op date_str (YYYYMMDD) rijdt, calendar_dates-
+    uitzonderingen (added/removed) inbegrepen."""
+    if calendar_entry is None:
+        return False
+    if date_str in calendar_entry.get("removed", []):
+        return False
+    if date_str in calendar_entry.get("added", []):
+        return True
+    days = calendar_entry.get("days") or [False] * 7
+    if not days[weekday]:
+        return False
+    start, end = calendar_entry.get("start_date") or "", calendar_entry.get("end_date") or ""
+    if start and date_str < start:
+        return False
+    if end and date_str > end:
+        return False
+    return True
+
+
+def _scheduled_trip_ids_for_day(index, service_date):
+    """{operator: set(trip_id)} met de volgens de statische dienstregeling op
+    service_date (YYYY-MM-DD) geplande trip_id's, DRT-lijnen uitgesloten
+    (zie _DRT_SHORT_NAMES)."""
+    d = dt.date.fromisoformat(service_date)
+    date_str = d.strftime("%Y%m%d")
+    weekday = d.weekday()
+    result = {}
+    for trip_id, meta in index.trip_meta.items():
+        entry = index.calendar.get(meta.get("service_id", ""))
+        if not _service_active_on(entry, date_str, weekday):
+            continue
+        route = index.routes.get(meta["route_id"], {})
+        if route.get("short_name") in _DRT_SHORT_NAMES:
+            continue
+        operator = route.get("operator", "Onbekend")
+        result.setdefault(operator, set()).add(trip_id)
+    return result
+
+
+def rollup_schedule_gap():
+    """Vult schedule_gap_daily bij voor elke volledig afgesloten dag die de
+    huidige statische calendar nog dekt en nog niet verwerkt is: per
+    operator hoeveel ritten er gepland stonden tegenover hoeveel daarvan
+    ook daadwerkelijk iets in trips_ran_daily/trip_cancellations hebben
+    achtergelaten (zie schedule_gap_daily in app/db.py voor de achtergrond).
+
+    De calendar dekt alleen een voorwaarts venster vanaf de laatste
+    build_static_index.py-run (huidige feed: vanaf 8-9 sep 2026) -- dagen
+    daarvoor kunnen niet met terugwerkende kracht berekend worden en worden
+    overgeslagen (start_day wordt nooit vóór earliest_date gezet).
+
+    Net als rollup_completed_days() verwerkt dit één dag per transactie/
+    commit: de berekening zelf (één keer over trip_meta, ~150k entries) is
+    goedkoop, maar zo blijft een onderbreking hervatbaar en de schrijflock
+    kort."""
+    global _index
+    if _index is None:
+        _index = UtrechtIndex()
+    if not _index.calendar:
+        return  # nog geen calendar.json gebouwd op deze installatie
+
+    all_dates = set()
+    for entry in _index.calendar.values():
+        all_dates.update(entry.get("added", []))
+        if entry.get("start_date"):
+            all_dates.add(entry["start_date"])
+        if entry.get("end_date"):
+            all_dates.add(entry["end_date"])
+    if not all_dates:
+        return
+    earliest = min(all_dates)
+    earliest_date = dt.date(int(earliest[0:4]), int(earliest[4:6]), int(earliest[6:8]))
+
+    today = dt.date.today()
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT MAX(service_date) AS m FROM schedule_gap_daily").fetchone()
+    finally:
+        conn.close()
+    start_day = dt.date.fromisoformat(row["m"]) + dt.timedelta(days=1) if row and row["m"] else earliest_date
+    start_day = max(start_day, earliest_date)
+
+    day = start_day
+    while day < today:  # vandaag is nog niet afgesloten -- 'gepland' zou nog groeien
+        service_date = day.isoformat()
+        scheduled = _scheduled_trip_ids_for_day(_index, service_date)
+        conn = db.get_conn()
+        try:
+            recorded_ran = {r[0] for r in conn.execute(
+                "SELECT trip_id FROM trips_ran_daily WHERE service_date = ?", (service_date,)
+            )}
+            recorded_canceled = {r[0] for r in conn.execute(
+                "SELECT trip_id FROM trip_cancellations WHERE service_date = ?", (service_date,)
+            )}
+            recorded_any = recorded_ran | recorded_canceled
+            for operator, trip_ids in scheduled.items():
+                seen = len(trip_ids & recorded_any)
+                conn.execute(
+                    """INSERT INTO schedule_gap_daily (service_date, operator, scheduled_count, seen_count)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(service_date, operator) DO UPDATE SET
+                           scheduled_count = excluded.scheduled_count,
+                           seen_count = excluded.seen_count""",
+                    (service_date, operator, len(trip_ids), seen),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        print(f"[collector] schedule-gap-rollup klaar voor {service_date}")
+        day += dt.timedelta(days=1)
+
+
 _CLEANUP_BATCH_SIZE = 50_000
 
 
@@ -1162,6 +1283,7 @@ def start_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
     scheduler.add_job(rollup_completed_days, "interval", hours=1, id="rollup", max_instances=1)
+    scheduler.add_job(rollup_schedule_gap, "interval", hours=1, id="schedule_gap_rollup", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
     # vacuum_db() is bewust niet meer gescheduled: de dagelijkse VACUUM
     # vereist tijdelijk ~evenveel vrije schijfruimte als de database groot
@@ -1193,4 +1315,5 @@ def start_scheduler():
     # in kleine, losse transacties (zie aldaar), dus dit blokkeert hoogstens
     # een paar korte lock-vensters i.p.v. een enkele, minutenlange transactie.
     rollup_completed_days()
+    rollup_schedule_gap()
     return scheduler

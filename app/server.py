@@ -1628,8 +1628,25 @@ def api_cancellations():
                GROUP BY r.service_date, r.route_id""",
             (since_date, until_date),
         ).fetchall()
+        schedule_gap_rows = conn.execute(
+            """SELECT operator, SUM(scheduled_count) AS scheduled, SUM(seen_count) AS seen
+               FROM schedule_gap_daily WHERE service_date >= ? AND service_date <= ?
+               GROUP BY operator""",
+            (since_date, until_date),
+        ).fetchall()
     finally:
         conn.close()
+
+    # Per operator: van de geplande ritten (DRT-lijnen als U-flex uitgesloten,
+    # zie schedule_gap_daily in app/db.py) hoeveel er GEEN enkele data hebben
+    # opgeleverd -- niet gereden, niet als uitgevallen gezien. Alleen gevuld
+    # voor dagen die schedule_gap_daily al heeft verwerkt (afgesloten dagen
+    # binnen het dekkingsvenster van de huidige statische calendar); een
+    # gekozen periode zonder zulke dagen levert hier gewoon niets op.
+    schedule_gap_by_op = {
+        r["operator"]: {"scheduled": r["scheduled"], "seen": r["seen"], "no_data": r["scheduled"] - r["seen"]}
+        for r in schedule_gap_rows
+    }
 
     daily = {}
     route_canceled = {}
@@ -1720,9 +1737,13 @@ def api_cancellations():
     per_operator = []
     for name, a in per_operator_acc.items():
         atotal = a["canceled"] + a["ran"]
+        gap = schedule_gap_by_op.get(name)
         per_operator.append({
             "operator": name, "canceled": a["canceled"], "ran": a["ran"],
             "cancellation_pct": round(100.0 * a["canceled"] / atotal, 1) if atotal else 0.0,
+            "scheduled": gap["scheduled"] if gap else None,
+            "no_data": gap["no_data"] if gap else None,
+            "no_data_pct": round(100.0 * gap["no_data"] / gap["scheduled"], 1) if gap and gap["scheduled"] else None,
         })
     per_operator.sort(key=lambda x: -x["canceled"])
 
@@ -1828,6 +1849,7 @@ def api_cancellations():
         "total_canceled": total_canceled,
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
+        "schedule_gap_covered": bool(schedule_gap_by_op),
         "daily": daily_list,
         "daily_by_operator": daily_by_operator,
         "per_route": per_route,

@@ -147,8 +147,26 @@
     </div>
     <div class="panel">
       <h2>Per operator</h2>
-      <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Alleen busvervoer — U-tram 20/21/22 niet meegenomen.</div>
+      <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">Alleen busvervoer — U-tram 20/21/22 niet meegenomen. "Geen data" = gepland maar niets over gehoord, alleen voor afgesloten dagen.</div>
       <div id="agency-table"><div class="empty">Laden...</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Databetrouwbaarheid</h2>
+    <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">
+      Vangnet tegen stilzwijgend gemiste uitval, sinds de uitval-vergelijking met de provincie van 7 sep 2026 die liet zien dat het Transdev-cijfer structureel lager lag dan gemeld. Los van de periodekeuze hierboven.
+    </div>
+    <div class="grid2" style="margin-bottom:0;">
+      <div>
+        <div style="font-size:12px; font-weight:600; margin-bottom:6px;">Lijnen per index-build</div>
+        <div class="table-scroll" id="diag-builds-table"><div class="empty">Laden...</div></div>
+      </div>
+      <div>
+        <div style="font-size:12px; font-weight:600; margin-bottom:6px;">Onopgeloste CANCELED-meldingen per dag (landelijk, per vervoerdercode)</div>
+        <div style="color:var(--muted); font-size:11px; margin-bottom:6px;">CXX = Transdev, KEOLIS = Keolis. Meeste treffers horen bij ritten buiten Utrecht — een piek t.o.v. andere dagen is het signaal, niet de absolute waarde.</div>
+        <div class="table-scroll" id="diag-unresolved-table"><div class="empty">Laden...</div></div>
+      </div>
     </div>
   </div>
 
@@ -255,6 +273,60 @@ async function loadHealth() {
   } catch (e) {
     document.getElementById('healthDot').className = 'status-dot no_data';
     document.getElementById('healthBody').innerHTML = '<div class="empty">Kan status niet ophalen.</div>';
+  }
+}
+
+// Vaste kolommen voor de onopgeloste-cancellations-tabel: Transdev/Keolis
+// expliciet, de rest samengevoegd tot "overig" (zie /api/diagnostics/feed).
+const DIAG_PREFIXES = ['CXX', 'KEOLIS'];
+// Boven deze waarde is een dagtotaal duidelijk geen normale landelijke
+// achtergrondruis meer (baseline ligt doorgaans in de honderdduizenden),
+// zie de CXX-piek van 8-9 sep 2026 (~16 miljoen) t.o.v. ervoor/erna
+// (~30k-140k) die aanleiding gaf voor dit paneel.
+const DIAG_SPIKE_THRESHOLD = 2_000_000;
+
+async function loadDiagnostics() {
+  try {
+    const res = await fetch('/api/diagnostics/feed');
+    const data = await res.json();
+
+    const builds = data.route_index_builds.slice(0, 6);
+    document.getElementById('diag-builds-table').innerHTML = builds.length === 0
+      ? '<div class="empty">Nog geen builds gelogd</div>'
+      : '<table><tr><th>Build</th><th>Transdev</th><th>Keolis</th><th>+/-</th></tr>' +
+        builds.map(b => {
+          const churn = b.routes_added.length + b.routes_removed.length;
+          const dt = new Date(b.built_at * 1000);
+          return `<tr>
+            <td>${dt.toLocaleDateString('nl-NL')}</td>
+            <td>${b.transdev_count}${b.transdev_tram_count ? ' + ' + b.transdev_tram_count + ' tram' : ''}</td>
+            <td>${b.keolis_count}</td>
+            <td>${churn ? `<span class="pill warn" title="${[...b.routes_added.map(r=>'+'+r), ...b.routes_removed.map(r=>'-'+r)].join(', ')}">${churn}</span>` : '–'}</td>
+          </tr>`;
+        }).join('') + '</table>';
+
+    const byDate = {};
+    for (const r of data.unresolved) {
+      (byDate[r.service_date] ??= {})[r.prefix] = r.unresolved_count;
+    }
+    const dates = Object.keys(byDate).sort().reverse().slice(0, 10);
+    const cell = v => {
+      if (!v) return '–';
+      const cls = v > DIAG_SPIKE_THRESHOLD ? 'bad' : 'muted';
+      return `<span class="pill ${cls}">${v.toLocaleString('nl-NL')}</span>`;
+    };
+    document.getElementById('diag-unresolved-table').innerHTML = dates.length === 0
+      ? '<div class="empty">Geen data</div>'
+      : '<table><tr><th>Datum</th>' + DIAG_PREFIXES.map(p => `<th>${p}</th>`).join('') + '<th>Overig</th></tr>' +
+        dates.map(d => {
+          const row = byDate[d];
+          const overig = Object.entries(row).filter(([p]) => !DIAG_PREFIXES.includes(p))
+            .reduce((s, [, v]) => s + v, 0);
+          return `<tr><td>${d}</td>${DIAG_PREFIXES.map(p => `<td>${cell(row[p])}</td>`).join('')}<td>${cell(overig)}</td></tr>`;
+        }).join('') + '</table>';
+  } catch (e) {
+    document.getElementById('diag-builds-table').innerHTML = '<div class="empty">Kan niet laden.</div>';
+    document.getElementById('diag-unresolved-table').innerHTML = '<div class="empty">Kan niet laden.</div>';
   }
 }
 
@@ -383,10 +455,20 @@ function renderKpis() {
     const prevPct = prev && prev.per_operator[operatorName] ? prev.per_operator[operatorName].cancellation_pct : null;
     return `<div class="kpi-box"><div class="num ${pct !== null ? pillClass(pct) : ''}">${pct !== null ? pct + '%' : '–'}</div><div class="label">${label}</div>${pct !== null ? deltaHtml(pct, prevPct, true) : ''}</div>`;
   };
+  let noDataBox = '';
+  if (d.schedule_gap_covered) {
+    const totals = (d.per_operator || []).reduce((acc, a) => {
+      if (a.scheduled !== null) { acc.scheduled += a.scheduled; acc.no_data += a.no_data; }
+      return acc;
+    }, { scheduled: 0, no_data: 0 });
+    const pct = totals.scheduled ? Math.round(1000.0 * totals.no_data / totals.scheduled) / 10 : 0;
+    noDataBox = `<div class="kpi-box"><div class="num ${pillClass(pct)}">${pct}%</div><div class="label">Geen data (gepland, niets gezien)</div></div>`;
+  }
   document.getElementById('kpis').innerHTML = `
     <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div>${deltaHtml(d.total_canceled, prev ? prev.total_canceled : null, false)}</div>
     <div class="kpi-box"><div class="num">${d.total_ran}</div><div class="label">Ritten gereden</div></div>
     <div class="kpi-box"><div class="num ${pillClass(d.cancellation_pct)}">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div>${deltaHtml(d.cancellation_pct, prev ? prev.cancellation_pct : null, true)}</div>
+    ${noDataBox}
     ${operatorKpiBox('Transdev', 'Uitval Transdev')}
     ${operatorKpiBox('Keolis', 'Uitval Keolis')}
     <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
@@ -520,12 +602,19 @@ function renderAgencyTable() {
     container.innerHTML = '<div class="empty">Geen resultaten</div>';
     return;
   }
-  container.innerHTML = '<table><tr><th>Operator</th><th>Uitgevallen</th><th>Gereden</th><th>%</th></tr>' +
+  const showGap = cancellationData.schedule_gap_covered;
+  const gapHeader = showGap ? '<th>Geen data</th><th title="Gepland volgens dienstregeling, maar geen enkele melding (niet gereden, niet uitgevallen) gezien. Vraagafhankelijke lijnen (U-flex/A/B/M) tellen hier niet mee. Alleen afgesloten dagen.">Geen data %</th>' : '';
+  const gapCell = a => {
+    if (!showGap || a.no_data_pct === null) return showGap ? '<td>–</td><td>–</td>' : '';
+    return `<td>${a.no_data}</td><td><span class="pill ${pillClass(a.no_data_pct)}">${a.no_data_pct}%</span></td>`;
+  };
+  container.innerHTML = `<table><tr><th>Operator</th><th>Uitgevallen</th><th>Gereden</th><th>%</th>${gapHeader}</tr>` +
     rows.map(a => `<tr>
       <td>${a.operator}</td>
       <td>${a.canceled}</td>
       <td>${a.ran}</td>
       <td><span class="pill ${pillClass(a.cancellation_pct)}">${a.cancellation_pct}%</span></td>
+      ${gapCell(a)}
     </tr>`).join('') + '</table>';
 }
 
@@ -826,8 +915,10 @@ populateMonthSelect().then(() => {
 });
 renderScheduleBanner();
 loadHealth().catch(console.error);
+loadDiagnostics().catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
 setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);
+setInterval(() => { if (!document.hidden) loadDiagnostics().catch(console.error); }, 300000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     loadAll().catch(console.error);
