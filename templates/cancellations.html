@@ -306,7 +306,7 @@ async function loadDiagnostics() {
         }).join('') + '</table>';
 
     const byDate = {};
-    for (const r of data.unresolved) {
+    for (const r of data.unresolved_cancellations_daily) {
       (byDate[r.service_date] ??= {})[r.prefix] = r.unresolved_count;
     }
     const dates = Object.keys(byDate).sort().reverse().slice(0, 10);
