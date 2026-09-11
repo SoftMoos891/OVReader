@@ -152,24 +152,6 @@
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Databetrouwbaarheid</h2>
-    <div style="color:var(--muted); font-size:11px; margin:-8px 0 10px;">
-      Vangnet tegen stilzwijgend gemiste uitval, sinds de uitval-vergelijking met de provincie van 7 sep 2026 die liet zien dat het Transdev-cijfer structureel lager lag dan gemeld. Los van de periodekeuze hierboven.
-    </div>
-    <div class="grid2" style="margin-bottom:0;">
-      <div>
-        <div style="font-size:12px; font-weight:600; margin-bottom:6px;">Lijnen per index-build</div>
-        <div class="table-scroll" id="diag-builds-table"><div class="empty">Laden...</div></div>
-      </div>
-      <div>
-        <div style="font-size:12px; font-weight:600; margin-bottom:6px;">Onopgeloste CANCELED-meldingen per dag (landelijk, per vervoerdercode)</div>
-        <div style="color:var(--muted); font-size:11px; margin-bottom:6px;">CXX = Transdev, KEOLIS = Keolis. Meeste treffers horen bij ritten buiten Utrecht — een piek t.o.v. andere dagen is het signaal, niet de absolute waarde.</div>
-        <div class="table-scroll" id="diag-unresolved-table"><div class="empty">Laden...</div></div>
-      </div>
-    </div>
-  </div>
-
   <div class="grid2">
     <div class="panel">
       <div class="panel-header">
@@ -273,60 +255,6 @@ async function loadHealth() {
   } catch (e) {
     document.getElementById('healthDot').className = 'status-dot no_data';
     document.getElementById('healthBody').innerHTML = '<div class="empty">Kan status niet ophalen.</div>';
-  }
-}
-
-// Vaste kolommen voor de onopgeloste-cancellations-tabel: Transdev/Keolis
-// expliciet, de rest samengevoegd tot "overig" (zie /api/diagnostics/feed).
-const DIAG_PREFIXES = ['CXX', 'KEOLIS'];
-// Boven deze waarde is een dagtotaal duidelijk geen normale landelijke
-// achtergrondruis meer (baseline ligt doorgaans in de honderdduizenden),
-// zie de CXX-piek van 8-9 sep 2026 (~16 miljoen) t.o.v. ervoor/erna
-// (~30k-140k) die aanleiding gaf voor dit paneel.
-const DIAG_SPIKE_THRESHOLD = 2_000_000;
-
-async function loadDiagnostics() {
-  try {
-    const res = await fetch('/api/diagnostics/feed');
-    const data = await res.json();
-
-    const builds = data.route_index_builds.slice(0, 6);
-    document.getElementById('diag-builds-table').innerHTML = builds.length === 0
-      ? '<div class="empty">Nog geen builds gelogd</div>'
-      : '<table><tr><th>Build</th><th>Transdev</th><th>Keolis</th><th>+/-</th></tr>' +
-        builds.map(b => {
-          const churn = b.routes_added.length + b.routes_removed.length;
-          const dt = new Date(b.built_at * 1000);
-          return `<tr>
-            <td>${dt.toLocaleDateString('nl-NL')}</td>
-            <td>${b.transdev_count}${b.transdev_tram_count ? ' + ' + b.transdev_tram_count + ' tram' : ''}</td>
-            <td>${b.keolis_count}</td>
-            <td>${churn ? `<span class="pill warn" title="${[...b.routes_added.map(r=>'+'+r), ...b.routes_removed.map(r=>'-'+r)].join(', ')}">${churn}</span>` : '–'}</td>
-          </tr>`;
-        }).join('') + '</table>';
-
-    const byDate = {};
-    for (const r of data.unresolved_cancellations_daily) {
-      (byDate[r.service_date] ??= {})[r.prefix] = r.unresolved_count;
-    }
-    const dates = Object.keys(byDate).sort().reverse().slice(0, 10);
-    const cell = v => {
-      if (!v) return '–';
-      const cls = v > DIAG_SPIKE_THRESHOLD ? 'bad' : 'muted';
-      return `<span class="pill ${cls}">${v.toLocaleString('nl-NL')}</span>`;
-    };
-    document.getElementById('diag-unresolved-table').innerHTML = dates.length === 0
-      ? '<div class="empty">Geen data</div>'
-      : '<table><tr><th>Datum</th>' + DIAG_PREFIXES.map(p => `<th>${p}</th>`).join('') + '<th>Overig</th></tr>' +
-        dates.map(d => {
-          const row = byDate[d];
-          const overig = Object.entries(row).filter(([p]) => !DIAG_PREFIXES.includes(p))
-            .reduce((s, [, v]) => s + v, 0);
-          return `<tr><td>${d}</td>${DIAG_PREFIXES.map(p => `<td>${cell(row[p])}</td>`).join('')}<td>${cell(overig)}</td></tr>`;
-        }).join('') + '</table>';
-  } catch (e) {
-    document.getElementById('diag-builds-table').innerHTML = '<div class="empty">Kan niet laden.</div>';
-    document.getElementById('diag-unresolved-table').innerHTML = '<div class="empty">Kan niet laden.</div>';
   }
 }
 
@@ -925,10 +853,8 @@ populateMonthSelect().then(() => {
 });
 renderScheduleBanner();
 loadHealth().catch(console.error);
-loadDiagnostics().catch(console.error);
 setInterval(() => { if (!document.hidden) loadAll().catch(console.error); }, 60000);
 setInterval(() => { if (!document.hidden) loadHealth().catch(console.error); }, 30000);
-setInterval(() => { if (!document.hidden) loadDiagnostics().catch(console.error); }, 300000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     loadAll().catch(console.error);
