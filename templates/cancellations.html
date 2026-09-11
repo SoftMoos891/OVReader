@@ -27,9 +27,9 @@
                border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all .15s; }
   .range-btn:hover { background: var(--panel2); border-color: var(--border2); color: var(--text); }
   .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
-  .kpi-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 24px; }
   .kpi-box { background: var(--panel2); border-radius: var(--radius);
-             padding: 14px 18px; min-width: 150px; }
+             padding: 14px 18px; }
   .kpi-box .num { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 700; }
   .kpi-box .num.good { color: var(--good); }
   .kpi-box .num.bad { color: var(--bad); }
@@ -403,9 +403,9 @@ function renderKpis() {
     <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div>${deltaHtml(d.total_canceled, prev ? prev.total_canceled : null, false)}</div>
     <div class="kpi-box"><div class="num">${d.total_ran}</div><div class="label">Ritten gereden</div></div>
     <div class="kpi-box"><div class="num ${pillClass(d.cancellation_pct)}">${d.cancellation_pct}%</div><div class="label">Uitvalpercentage</div>${deltaHtml(d.cancellation_pct, prev ? prev.cancellation_pct : null, true)}</div>
-    ${noDataBox}
     ${operatorKpiBox('Transdev', 'Uitval Transdev')}
     ${operatorKpiBox('Keolis', 'Uitval Keolis')}
+    ${noDataBox}
     <div class="kpi-box"><div class="num">${d.daily.length}</div><div class="label">Dagen met data</div></div>
   `;
 }
