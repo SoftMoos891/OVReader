@@ -462,7 +462,14 @@ function renderKpis() {
       return acc;
     }, { scheduled: 0, no_data: 0 });
     const pct = totals.scheduled ? Math.round(1000.0 * totals.no_data / totals.scheduled) / 10 : 0;
-    noDataBox = `<div class="kpi-box"><div class="num ${pillClass(pct)}">${pct}%</div><div class="label">Geen data (gepland, niets gezien)</div></div>`;
+    // Bij een periode zonder afgesloten dagen (bv. de standaard 'vandaag')
+    // valt de server terug op de laatst afgesloten dag -- dat hoort hier
+    // duidelijk bij te staan, anders lijkt het cijfer over de gekozen
+    // periode te gaan terwijl het dat niet is.
+    const label = d.schedule_gap_fallback_date
+      ? `Geen data (laatst afgesloten dag: ${new Date(d.schedule_gap_fallback_date).toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'})})`
+      : 'Geen data (gepland, niets gezien)';
+    noDataBox = `<div class="kpi-box"><div class="num ${pillClass(pct)}">${pct}%</div><div class="label">${label}</div></div>`;
   }
   document.getElementById('kpis').innerHTML = `
     <div class="kpi-box"><div class="num bad">${d.total_canceled}</div><div class="label">Ritten uitgevallen</div>${deltaHtml(d.total_canceled, prev ? prev.total_canceled : null, false)}</div>
@@ -603,7 +610,10 @@ function renderAgencyTable() {
     return;
   }
   const showGap = cancellationData.schedule_gap_covered;
-  const gapHeader = showGap ? '<th>Geen data</th><th title="Gepland volgens dienstregeling, maar geen enkele melding (niet gereden, niet uitgevallen) gezien. Vraagafhankelijke lijnen (U-flex/A/B/M) tellen hier niet mee. Alleen afgesloten dagen.">Geen data %</th>' : '';
+  const fallbackDate = cancellationData.schedule_gap_fallback_date;
+  const gapTitle = 'Gepland volgens dienstregeling, maar geen enkele melding (niet gereden, niet uitgevallen) gezien. Vraagafhankelijke lijnen (U-flex/A/B/M) tellen hier niet mee. Alleen afgesloten dagen.'
+    + (fallbackDate ? ` Gekozen periode heeft nog geen afgesloten dag; dit zijn de cijfers van ${fallbackDate}.` : '');
+  const gapHeader = showGap ? `<th>Geen data</th><th title="${gapTitle}">Geen data %${fallbackDate ? ' *' : ''}</th>` : '';
   const gapCell = a => {
     if (!showGap || a.no_data_pct === null) return showGap ? '<td>–</td><td>–</td>' : '';
     return `<td>${a.no_data}</td><td><span class="pill ${pillClass(a.no_data_pct)}">${a.no_data_pct}%</span></td>`;

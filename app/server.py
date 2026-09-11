@@ -1634,6 +1634,22 @@ def api_cancellations():
                GROUP BY operator""",
             (since_date, until_date),
         ).fetchall()
+        # De standaardweergave is 'today', en die dag is per definitie nooit
+        # afgesloten -- zonder fallback zou het "geen data"-cijfer dus bij elk
+        # bezoek aan /uitval onzichtbaar zijn totdat iemand zelf een andere
+        # periode kiest. Val daarom terug op de laatst afgesloten dag die
+        # schedule_gap_daily al heeft verwerkt, duidelijk gelabeld als zodanig.
+        schedule_gap_fallback_date = None
+        if not schedule_gap_rows:
+            latest_row = conn.execute("SELECT MAX(service_date) AS d FROM schedule_gap_daily").fetchone()
+            if latest_row and latest_row["d"]:
+                schedule_gap_fallback_date = latest_row["d"]
+                schedule_gap_rows = conn.execute(
+                    """SELECT operator, SUM(scheduled_count) AS scheduled, SUM(seen_count) AS seen
+                       FROM schedule_gap_daily WHERE service_date = ?
+                       GROUP BY operator""",
+                    (schedule_gap_fallback_date,),
+                ).fetchall()
     finally:
         conn.close()
 
@@ -1642,7 +1658,8 @@ def api_cancellations():
     # opgeleverd -- niet gereden, niet als uitgevallen gezien. Alleen gevuld
     # voor dagen die schedule_gap_daily al heeft verwerkt (afgesloten dagen
     # binnen het dekkingsvenster van de huidige statische calendar); een
-    # gekozen periode zonder zulke dagen levert hier gewoon niets op.
+    # gekozen periode zonder zulke dagen valt terug op de laatste afgesloten
+    # dag (zie schedule_gap_fallback_date hierboven).
     schedule_gap_by_op = {
         r["operator"]: {"scheduled": r["scheduled"], "seen": r["seen"], "no_data": r["scheduled"] - r["seen"]}
         for r in schedule_gap_rows
@@ -1850,6 +1867,7 @@ def api_cancellations():
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
         "schedule_gap_covered": bool(schedule_gap_by_op),
+        "schedule_gap_fallback_date": schedule_gap_fallback_date,
         "daily": daily_list,
         "daily_by_operator": daily_by_operator,
         "per_route": per_route,
