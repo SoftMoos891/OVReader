@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
 </script>
@@ -121,6 +121,26 @@
     </div>
     <div class="modal-body map-body"><div id="mapFrame"></div></div>
     <div class="modal-footer"><a id="mapModalLink" href="#" target="_blank" rel="noopener noreferrer">Openen op openstreetmap.org &rarr;</a></div>
+  </div>
+</div>
+
+<!-- Melding-pop-up. Wordt geopend als de pagina met een #<guid> in de URL
+     wordt geladen, wat gebeurt zodra iemand in zijn RSS-lezer op een item
+     klikt: de <link> van elk item is LITE_BASE_URL#<guid> (zie
+     lite_rss_uitval() in lite_server.py). Voorheen wees dat fragment nergens
+     naar en kwam je op de kale homepage terecht. -->
+<div class="modal-overlay" id="meldingModal" onclick="if(event.target===this)closeMeldingModal()">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span id="meldingModalTitle">Melding</span>
+      <button class="modal-close" onclick="closeMeldingModal()">&#10005;</button>
+    </div>
+    <div class="modal-body" id="meldingModalBody"><div class="empty">Laden...</div></div>
+    <div id="meldingMap" hidden></div>
+    <div class="modal-footer">
+      <a id="meldingModalKaartLink" href="#" target="_blank" rel="noopener noreferrer" hidden>Openen op openstreetmap.org &rarr;</a>
+      <span id="meldingModalGeenKaart" hidden>Deze soort melding heeft geen vaste locatie op de kaart.</span>
+    </div>
   </div>
 </div>
 
@@ -862,6 +882,131 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { refreshAll(); refreshDailyChart().then(syncAlertsCardHeight).catch(console.error); }
 });
 window.addEventListener('resize', syncAlertsCardHeight);
+
+// ── MELDING-POP-UP VANUIT DE RSS-FEED ────────────────────────────────────────
+// Elk item in /lite/rss.xml heeft als <link> deze pagina met #<guid> erachter.
+// Dat fragment wees nergens naar: wie in zijn RSS-lezer op bijvoorbeeld een
+// ongeval klikte, kwam op de kale homepage en moest de melding zelf
+// terugzoeken. Nu lezen we het fragment uit, halen we de melding op bij
+// /lite/api/melding en tonen we hem in een venster -- met kaart als de melding
+// een plek heeft. Alleen wegsituaties hebben coördinaten; een spoorstoring
+// beschrijft een traject en uitval een hele vervoerder, dus daar zou een
+// speldenprik meer suggereren dan we weten.
+let meldingMap = null;
+let meldingMapMarker = null;
+
+function closeMeldingModal() {
+  document.getElementById('meldingModal').classList.remove('open');
+  // Het fragment weghalen zodat een verversing niet meteen weer opent, maar
+  // zonder de pagina te laten springen of een geschiedenisstap toe te voegen.
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
+
+function meldingFeitRij(label, waarde) {
+  if (!waarde) return null;
+  const rij = document.createElement('div');
+  rij.className = 'melding-feit';
+  const l = document.createElement('span'); l.textContent = label;
+  const w = document.createElement('span'); w.textContent = waarde;
+  rij.append(l, w);
+  return rij;
+}
+
+async function toonMelding(m) {
+  document.getElementById('meldingModalTitle').textContent = m.title || 'Melding';
+
+  const body = document.getElementById('meldingModalBody');
+  body.textContent = '';
+
+  const soort = document.createElement('div');
+  soort.className = 'melding-soort' + (m.resolved_at ? ' voorbij' : '');
+  soort.textContent = m.kind_label + (m.resolved_at ? ' — voorbij' : '');
+  body.appendChild(soort);
+
+  const tijd = document.createElement('div');
+  tijd.className = 'melding-tijd';
+  tijd.textContent = 'Gemeld ' + fmtAlertTime(m.pub_date) +
+    (m.resolved_at ? ' · voorbij sinds ' + fmtAlertTime(m.resolved_at) : '');
+  body.appendChild(tijd);
+
+  // textContent, geen innerHTML: de omschrijving komt uit externe feeds (NDW,
+  // NS, U-OV) en mag nooit als HTML worden uitgevoerd.
+  const tekst = document.createElement('div');
+  tekst.className = 'melding-tekst';
+  tekst.textContent = m.description || '';
+  body.appendChild(tekst);
+
+  const feiten = [
+    meldingFeitRij('Weg', [m.road_number, m.road_location].filter(Boolean).join(' — ')),
+    meldingFeitRij('Soort', m.type_label),
+    meldingFeitRij('Oorzaak', m.cause),
+    meldingFeitRij('Begin', m.start_time ? fmtRoadTime(m.start_time) : ''),
+    meldingFeitRij('Tot', m.end_time ? fmtRoadTime(m.end_time) : ''),
+    meldingFeitRij('Status', m.nog_actief === false ? 'Niet meer actief' : ''),
+  ].filter(Boolean);
+  if (feiten.length) {
+    const blok = document.createElement('div');
+    blok.className = 'melding-feiten';
+    feiten.forEach(f => blok.appendChild(f));
+    body.appendChild(blok);
+  }
+
+  const kaart = document.getElementById('meldingMap');
+  const kaartLink = document.getElementById('meldingModalKaartLink');
+  const geenKaart = document.getElementById('meldingModalGeenKaart');
+  const heeftPunt = typeof m.lat === 'number' && typeof m.lon === 'number';
+
+  kaart.hidden = !heeftPunt;
+  kaartLink.hidden = !heeftPunt;
+  geenKaart.hidden = heeftPunt;
+
+  document.getElementById('meldingModal').classList.add('open');
+
+  if (!heeftPunt) return;
+  kaartLink.href = `https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=15/${m.lat}/${m.lon}`;
+  try {
+    await loadLeaflet();
+    if (!meldingMap) {
+      meldingMap = L.map('meldingMap').setView([m.lat, m.lon], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+      }).addTo(meldingMap);
+      meldingMapMarker = L.marker([m.lat, m.lon]).addTo(meldingMap);
+    } else {
+      meldingMap.setView([m.lat, m.lon], 14);
+      meldingMapMarker.setLatLng([m.lat, m.lon]);
+    }
+    // De kaart stond tot net verborgen, dus Leaflet kent de afmeting nog niet.
+    setTimeout(() => meldingMap.invalidateSize(), 0);
+  } catch (e) {
+    // Zonder kaart is de melding zelf nog steeds bruikbaar; niet de hele
+    // pop-up laten sneuvelen omdat Leaflet niet laadt.
+    kaart.hidden = true;
+    geenKaart.hidden = false;
+    geenKaart.textContent = 'De kaart kon niet geladen worden.';
+  }
+}
+
+async function openMeldingUitHash() {
+  const ruw = location.hash.slice(1);
+  if (!ruw) return;
+  let guid;
+  try { guid = decodeURIComponent(ruw); } catch (e) { guid = ruw; }
+  if (!guid) return;
+  try {
+    const res = await fetch('/lite/api/melding?guid=' + encodeURIComponent(guid));
+    if (!res.ok) return;   // onbekend fragment: gewoon de pagina tonen
+    await toonMelding(await res.json());
+  } catch (e) { /* stil: de pagina zelf werkt gewoon */ }
+}
+
+openMeldingUitHash();
+window.addEventListener('hashchange', openMeldingUitHash);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('meldingModal').classList.contains('open')) {
+    closeMeldingModal();
+  }
+});
 </script>
 </body>
 </html>

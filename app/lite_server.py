@@ -15,6 +15,7 @@ nooit nodig heeft. Deze module leest daarom alleen het kleine
 utrecht_routes.json (~23 KB) in, zodat het hele proces met een fractie van
 het geheugen van de hoofd-webservice kan draaien."""
 import json
+import os
 import time
 from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -106,6 +107,24 @@ def route_meta(route_id):
 def stop_meta(stop_id):
     s = _index.stops.get(stop_id, {})
     return {"stop_id": stop_id, "name": s.get("name", "?")}
+
+
+# De stylesheet wordt door nginx met max-age=604800 geserveerd (zeven dagen).
+# Bij een CSS-wijziging zou een terugkerende bezoeker dus tot een week lang de
+# oude versie houden -- bij de melding-pop-up van 13 sep 2026 betekende dat een
+# kaart zonder hoogte, oftewel geen kaart. Daarom de wijzigingstijd van het
+# bestand als ?v= erachter: verandert het bestand, dan verandert de URL en haalt
+# de browser hem opnieuw op. Blijft het gelijk, dan blijft de cache gewoon staan.
+def _static_versie(pad):
+    try:
+        return str(int(os.path.getmtime(os.path.join(app.static_folder, pad))))
+    except OSError:
+        return "0"
+
+
+@app.context_processor
+def _versies():
+    return {"css_versie": _static_versie("css/theme.css")}
 
 
 @app.route("/lite")
@@ -547,6 +566,74 @@ def lite_api_uitval():
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,
         "per_operator": per_operator_list,
     })
+
+
+@app.route("/lite/api/melding")
+def lite_api_melding():
+    """Eén melding uit de RSS-feed opzoeken op guid, met -- waar beschikbaar --
+    de locatie erbij.
+
+    Toegevoegd 13 sep 2026. De <link> van elk RSS-item is LITE_BASE_URL#<guid>;
+    dat fragment wees nergens naar, dus wie in zijn RSS-lezer op een ongeval
+    klikte belandde op de kale homepage van /lite en moest de melding daar zelf
+    terugzoeken. De pagina leest dat fragment nu uit en haalt hier de melding
+    op om hem in een venster te tonen, met kaart als er coördinaten zijn.
+
+    Alleen wegsituaties hebben een punt op de kaart: die worden door NDW met
+    coördinaten geleverd (zie road_situations.lat/lon). Spoorstoringen en
+    U-OV-meldingen beschrijven een traject in plaats van een plek, uitval gaat
+    over een hele vervoerder en een weerwaarschuwing over de hele provincie --
+    daar zou een speldenprik op de kaart meer suggereren dan we weten."""
+    guid = (request.args.get("guid") or "").strip()
+    if not guid or len(guid) > 200:
+        return jsonify({"error": "guid ontbreekt of is te lang"}), 400
+
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM rss_feed_items WHERE guid = ?", (guid,)
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "melding niet gevonden"}), 404
+
+        melding = {
+            "guid": row["guid"],
+            "kind": row["kind"],
+            "kind_label": _HISTORY_KIND_LABELS.get(row["kind"], row["kind"]),
+            "title": row["title"],
+            "description": row["description"],
+            "pub_date": row["pub_date"],
+            "resolved_at": row["resolved_at"],
+            "category": row["category"],
+        }
+
+        # Wegsituatie: het situation_id zit in de guid, dus de bijbehorende rij
+        # is direct op te zoeken. Die kan intussen zijn opgeruimd (active=0 of
+        # weg) -- dan tonen we de melding gewoon zonder kaart.
+        if row["kind"] == "road_situation" and row["guid"].startswith("road-situation-"):
+            sid = row["guid"][len("road-situation-"):]
+            s = conn.execute(
+                "SELECT lat, lon, road_number, road_location, type_label, cause, "
+                "severity, start_time, end_time, active FROM road_situations "
+                "WHERE situation_id = ?",
+                (sid,),
+            ).fetchone()
+            if s is not None:
+                if s["lat"] is not None and s["lon"] is not None:
+                    melding["lat"] = s["lat"]
+                    melding["lon"] = s["lon"]
+                melding["road_number"] = s["road_number"]
+                melding["road_location"] = s["road_location"]
+                melding["type_label"] = s["type_label"]
+                melding["cause"] = s["cause"]
+                melding["severity"] = s["severity"]
+                melding["start_time"] = s["start_time"]
+                melding["end_time"] = s["end_time"]
+                melding["nog_actief"] = bool(s["active"])
+    finally:
+        conn.close()
+
+    return jsonify(melding)
 
 
 # Aantal items dat de RSS-feed maximaal toont -- rss_feed_items zelf wordt
