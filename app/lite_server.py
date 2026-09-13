@@ -568,6 +568,26 @@ def lite_api_uitval():
     })
 
 
+# De omschrijvingen in rss_feed_items eindigen op een oproep die alleen in een
+# RSS-lezer zin heeft ("Klik hier voor meer data.") -- in de pop-up op de pagina
+# zelf sta je er al. Die zin gaat er hier uit, en alleen die: bij uitval volgt na
+# "Klik hier voor meer." nog een disclaimer over de precisie van de cijfers, en
+# die hoort de lezer juist wel te zien. De feed en de geschiedenispagina blijven
+# ongemoeid -- daar is de oproep op zijn plek.
+_KLIK_HIER_ZINNEN = (
+    "Klik hier voor meer data.",
+    "Klik hier voor meer.",
+)
+
+
+def _zonder_klik_hier(tekst):
+    for zin in _KLIK_HIER_ZINNEN:
+        tekst = tekst.replace(zin, "")
+    # Twee spaties of een spatie vlak voor het einde opruimen die door het
+    # weghalen kunnen ontstaan.
+    return " ".join(tekst.split()).strip()
+
+
 @app.route("/lite/api/melding")
 def lite_api_melding():
     """Eén melding uit de RSS-feed opzoeken op guid, met -- waar beschikbaar --
@@ -601,7 +621,7 @@ def lite_api_melding():
             "kind": row["kind"],
             "kind_label": _HISTORY_KIND_LABELS.get(row["kind"], row["kind"]),
             "title": row["title"],
-            "description": row["description"],
+            "description": _zonder_klik_hier(row["description"] or ""),
             "pub_date": row["pub_date"],
             "resolved_at": row["resolved_at"],
             "category": row["category"],
