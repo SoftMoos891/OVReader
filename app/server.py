@@ -165,12 +165,24 @@ AUTH_PASSWORD = os.environ.get("BUS_MONITOR_PASSWORD")
 AUTH_USER2 = os.environ.get("BUS_MONITOR_USER2")
 AUTH_PASSWORD2 = os.environ.get("BUS_MONITOR_PASSWORD2")
 
-# Sessie-secret voor de inlogpagina (zie login()/logout() hieronder). Afgeleid
-# van BUS_MONITOR_PASSWORD i.p.v. een losse env-var: zo blijven ingelogde
-# sessies geldig over een herstart/redeploy heen (de deploy-webhook herstart
-# de service bij elke push) zonder een tweede geheim te hoeven beheren. Zonder
-# BUS_MONITOR_PASSWORD is er sowieso geen auth actief.
-app.secret_key = hashlib.sha256(f"ovreader-session:{AUTH_PASSWORD or 'dev'}".encode()).hexdigest()
+# Sessie-secret voor de inlogpagina (zie login()/logout() hieronder). Staat als
+# BUS_MONITOR_SECRET_KEY in .env (32 random bytes), zodat ingelogde sessies een
+# herstart/redeploy overleven -- de deploy-webhook herstart de service bij elke
+# push.
+#
+# Was tot 14 sep 2026 afgeleid van BUS_MONITOR_PASSWORD. Dat is bewust
+# losgekoppeld: met een wachtwoord-afgeleide sleutel is elk sessiecookie een
+# offline orakel op dat wachtwoord (het cookie is ondertekend met sha256 ervan,
+# dus kraken kan op de machine van de aanvaller, buiten bereik van rate limiting
+# of CrowdSec) -- en BUS_MONITOR_PASSWORD is kort. Nu levert een buitgemaakt
+# cookie niets meer op dan dat ene cookie.
+#
+# De oude afleiding blijft als terugval staan voor een .env zonder
+# BUS_MONITOR_SECRET_KEY (verse kloon, oude kopie): de app start dan gewoon
+# door i.p.v. te vallen over een ontbrekende sleutel.
+app.secret_key = os.environ.get("BUS_MONITOR_SECRET_KEY") or hashlib.sha256(
+    f"ovreader-session:{AUTH_PASSWORD or 'dev'}".encode()
+).hexdigest()
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True
 
