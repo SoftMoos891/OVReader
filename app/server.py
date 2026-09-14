@@ -185,6 +185,10 @@ app.secret_key = os.environ.get("BUS_MONITOR_SECRET_KEY") or hashlib.sha256(
 ).hexdigest()
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True
+# login() zet session.permanent, en zonder deze regel is dat Flasks standaard
+# van 31 dagen -- onnodig lang voor een cookie dat toegang tot de hele app
+# geeft. Een week betekent in de praktijk ~1x per week opnieuw inloggen.
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 
 def _valid_credentials(username, password):
