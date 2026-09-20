@@ -99,6 +99,40 @@ def test_find_records_splits_by_operator(client, temp_db, monkeypatch):
     assert result["cancellations_by_operator"]["Transdev"]["worst_all_time"] is None
 
 
+def test_find_records_excludes_known_service_event(client, temp_db, monkeypatch):
+    """Een bekende stakingsdag (zie app/service_events.py) mag geen record
+    claimen, netwerkbreed noch per operator -- anders blijft een eenmalige
+    staking blijvend de 'slechtste dag ooit' op /trends."""
+    from app import server
+
+    monkeypatch.setitem(server._index.routes, "ROUTE_K", {"short_name": "1", "operator": "Keolis"})
+    today = date.today().isoformat()
+    monkeypatch.setattr(records, "excluded_operator_dates", lambda: {(today, "Keolis")})
+
+    conn = temp_db.get_conn()
+    for i in range(60):
+        conn.execute(
+            "INSERT INTO trips_ran_daily (service_date, trip_id, route_id) VALUES (?, ?, 'ROUTE_K')",
+            (today, f"ran{i}"),
+        )
+    for i in range(40):
+        conn.execute(
+            """INSERT INTO trip_cancellations
+               (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+               VALUES (?, ?, 'ROUTE_K', '08:00:00', 0, 0)""",
+            (f"canceled{i}", today),
+        )
+    conn.commit()
+    conn.close()
+
+    conn = temp_db.get_conn()
+    result, _ = records.find_records(conn, server._index)
+    conn.close()
+
+    assert result["cancellations"]["worst_all_time"] is None
+    assert result["cancellations_by_operator"] == {}
+
+
 def test_collector_outage_day_is_not_a_record(client, temp_db):
     """Een dag waarop de collector plat lag registreert wel de vooraf
     aangekondigde uitval maar nauwelijks gereden ritten -- die dag lijkt op

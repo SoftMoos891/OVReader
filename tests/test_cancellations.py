@@ -50,6 +50,47 @@ def test_cancellation_percentage_zero_when_none_canceled(client, temp_db):
     assert all(r["route_id"] != "TESTROUTE" for r in data["per_route"])
 
 
+def test_exclude_events_drops_known_service_event(client, temp_db, monkeypatch):
+    """Met ?exclude_events=1 (alleen gebruikt door /trends) telt een bekende
+    stakingsdag (zie app/service_events.py) niet mee; zonder die vlag
+    (/uitval) blijft de dag gewoon meegeteld."""
+    from app import server
+
+    monkeypatch.setitem(server._index.routes, "ROUTE_K", {"short_name": "1", "operator": "Keolis"})
+    today = date.today().isoformat()
+    monkeypatch.setattr(server, "excluded_operator_dates", lambda: {(today, "Keolis")})
+    monkeypatch.setattr(
+        server, "events_in_range",
+        lambda since, until: [{"date": today, "operators": ["Keolis"], "label": "Staking", "description": "x"}],
+    )
+
+    conn = temp_db.get_conn()
+    conn.execute(
+        "INSERT INTO trips_ran_daily (service_date, trip_id, route_id) VALUES (?, 't1', 'ROUTE_K')",
+        (today,),
+    )
+    conn.execute(
+        """INSERT INTO trip_cancellations
+           (trip_id, service_date, route_id, start_time, first_seen, last_seen)
+           VALUES ('t2', ?, 'ROUTE_K', '08:00:00', 0, 0)""",
+        (today,),
+    )
+    conn.commit()
+    conn.close()
+
+    plain = client.get("/api/cancellations?range=all").get_json()
+    assert plain["total_canceled"] == 1
+    assert plain["total_ran"] == 1
+    assert len(plain["events"]) == 1
+
+    excluded = client.get("/api/cancellations?range=all&exclude_events=1").get_json()
+    assert excluded["total_canceled"] == 0
+    assert excluded["total_ran"] == 0
+    # De evenementenlijst blijft ook hier gevuld, zodat /trends een duidingsregel
+    # kan tonen ("staking op deze dag buiten trends gehouden").
+    assert len(excluded["events"]) == 1
+
+
 def test_cancellations_split_by_operator(client, temp_db, monkeypatch):
     from app import server
 

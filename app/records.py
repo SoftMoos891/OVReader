@@ -10,6 +10,8 @@ zijn intrinsiek compact (hoogstens 1 rij per rit per dag), dus deze module
 blijft ook op grote installaties goedkoop."""
 from datetime import date, timedelta
 
+from .service_events import excluded_operator_dates
+
 # Drempel om te voorkomen dat een dag met nauwelijks ritten (bv. de eerste
 # dag dat de collector draaide, of een feed-storing) een "record" lijkt
 # terwijl het gewoon te weinig data is.
@@ -95,6 +97,12 @@ def find_records(conn, index):
 
     cancel_by_route = _cancellation_daily(conn, index)
 
+    # Bekende stakingsdagen (zie app/service_events.py) tellen bewust niet mee
+    # als record: die dagen zijn geen representatieve meting van hoe de
+    # concessiehouder normaal presteert, en zouden anders blijvend de
+    # "slechtste dag ooit" claimen.
+    excluded = excluded_operator_dates()
+
     cancel_network_by_day = {}
     cancel_operator_by_key = {}
     for (day, route_id), e in cancel_by_route.items():
@@ -102,6 +110,8 @@ def find_records(conn, index):
         if total == 0:
             continue
         operator = index.routes.get(route_id, {}).get("operator", "Onbekend")
+        if (day, operator) in excluded:
+            continue
         nd = cancel_network_by_day.setdefault(day, {"canceled": 0, "ran": 0})
         nd["canceled"] += e["canceled"]
         nd["ran"] += e["ran"]

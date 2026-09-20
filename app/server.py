@@ -17,6 +17,7 @@ from flask import (
 )
 
 from . import db, records, tram_disruptions
+from .service_events import events_in_range, excluded_operator_dates
 from .collector import DELAY_RETENTION_DAYS, FETCH_INTERVAL_SECONDS, RETENTION_DAYS
 from .gtfs_rt import UtrechtIndex
 from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
@@ -1617,6 +1618,13 @@ def api_cancellations():
     periode zijn hoe dan ook al compleet en blijven ongewijzigd."""
     range_key = request.args.get("range", "today")
     up_to_now = request.args.get("up_to_now") in ("1", "true", "yes")
+    # Alleen /trends stuurt dit mee: bekende stakingsdagen (zie
+    # app/service_events.py) tellen dan niet mee, zodat zo'n eenmalige dag
+    # niet blijvend het langjarige gemiddelde en de records vertekent.
+    # /uitval laat 'm bewust weg -- daar wil je juist zien wat er die dag
+    # daadwerkelijk gebeurde.
+    exclude_events = request.args.get("exclude_events") in ("1", "true", "yes")
+    excluded = excluded_operator_dates() if exclude_events else set()
     # Bovengrens is niet per se vandaag (bv. 'last_month' is een afgesloten,
     # volledig verleden periode) -- today_str blijft apart nodig voor de
     # up_to_now-vergelijking hieronder, die altijd de daadwerkelijke datum
@@ -1701,6 +1709,8 @@ def api_cancellations():
                 and r["start_time"] and r["start_time"] > now_time_str):
             continue  # vooraf aangekondigde uitval voor een vertrektijd die nog moet komen
         operator = route_meta(r["route_id"])["operator"]
+        if (r["service_date"], operator) in excluded:
+            continue
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["canceled"] += r["cnt"]
         daily_by_op[operator][r["service_date"]]["canceled"] += r["cnt"]
@@ -1722,6 +1732,8 @@ def api_cancellations():
         if not _index.is_bus_route(r["route_id"]):
             continue  # historische rij van een lijn die niet meer in de huidige index zit
         operator = route_meta(r["route_id"])["operator"]
+        if (r["service_date"], operator) in excluded:
+            continue
         d = daily.setdefault(r["service_date"], {"canceled": 0, "ran": 0})
         d["ran"] += r["cnt"]
         daily_by_op[operator][r["service_date"]]["ran"] += r["cnt"]
@@ -1879,6 +1891,8 @@ def api_cancellations():
         "since_date": since_date,
         "until_date": until_date,
         "up_to_now": up_to_now,
+        "exclude_events": exclude_events,
+        "events": events_in_range(since_date, until_date),
         "total_canceled": total_canceled,
         "total_ran": total_ran,
         "cancellation_pct": round(100.0 * total_canceled / total, 1) if total else 0.0,

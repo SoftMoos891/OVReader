@@ -113,6 +113,10 @@
     Tot nu toe (i.p.v. hele dag) — telt voor vandaag alleen ritten mee waarvan de vertrektijd al is verstreken
   </label>
 
+  <div class="panel" id="events-note-panel" style="display:none; padding:10px 18px; margin-bottom:16px;">
+    <span style="font-size:12.5px; color:var(--muted);" id="events-note"></span>
+  </div>
+
   <div class="kpi-row" id="kpis"></div>
 
   <div class="grid2">
@@ -347,6 +351,7 @@ async function loadAll() {
   if (upToNow) params.set('up_to_now', '1');
   const res = await fetch(`/api/cancellations?${params}`);
   cancellationData = await res.json();
+  renderEventsNote();
   renderKpis();
   renderDailyPctChart();
   renderDailyCountChart();
@@ -359,6 +364,20 @@ async function loadAll() {
   populateAgencyFilter();
   tripPage = 0;
   loadTrips();
+}
+
+// Bekende, niet-representatieve dagen (stakingen e.d., zie
+// app/service_events.py) die binnen de gekozen periode vallen. Deze cijfers
+// blijven hier gewoon meegeteld -- /uitval toont wat er die dag daadwerkelijk
+// gebeurde -- maar /trends sluit ze uit, dus hier alleen een duiding.
+function renderEventsNote() {
+  const notePanel = document.getElementById('events-note-panel');
+  const events = cancellationData.events || [];
+  if (!events.length) { notePanel.style.display = 'none'; return; }
+  document.getElementById('events-note').textContent = events
+    .map(e => `⚡ ${fmtDateShort(e.date)}: ${e.label} bij ${e.operators.join(' en ')} — telt hier mee, maar niet in de trends`)
+    .join(' · ');
+  notePanel.style.display = '';
 }
 
 // Klein delta-regeltje onder een KPI-waarde: verschil t.o.v. de vorige
