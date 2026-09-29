@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import os
+import re
 import time
 import traceback
 
@@ -91,6 +92,15 @@ SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMO
 SEVERE_ALERT_MIN_STOPS = 6
 
 
+def _bevat_trefwoord(text, kw):
+    """Trefwoord aan het begin of het eind van een woord ("brandweer",
+    "verkeersongeval"), niet ergens middenin ("Rembrandtlaan" gaf op 29 sep
+    2026 een valse "Brand"-melding). Zelfde regel als bevatTrefwoord() in
+    static/js/severity.js. In de regex betekent [^\\W\\d_] "een letter"."""
+    kw = re.escape(kw)
+    return re.search(rf"(?<![^\W\d_]){kw}|{kw}(?![^\W\d_])", text) is not None
+
+
 def _is_severe_alert(header, description, cause, valid_from=None, now=None,
                      stop_count=0, route_count=0):
     """Nog te beginnen meldingen (valid_from ligt in de toekomst) tellen niet
@@ -106,7 +116,7 @@ def _is_severe_alert(header, description, cause, valid_from=None, now=None,
     if not route_count and stop_count < SEVERE_ALERT_MIN_STOPS:
         return False
     text = f"{header or ''} {description or ''}".lower()
-    if any(kw in text for kw in SEVERE_ALERT_KEYWORDS):
+    if any(_bevat_trefwoord(text, kw) for kw in SEVERE_ALERT_KEYWORDS):
         return True
     return cause in SEVERE_ALERT_CAUSES
 

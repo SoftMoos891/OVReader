@@ -73,6 +73,20 @@ function severeAlertIsLargeEnough(a) {
   return (a.stops || []).length >= SEVERE_ALERT_MIN_STOPS;
 }
 
+// Een trefwoord telt alleen aan het begin of het eind van een woord: zo
+// tellen samenstellingen als "brandweer" en "verkeersongeval" nog mee, maar
+// niet een woord waar het trefwoord toevallig middenin zit. Aanleiding (29 sep
+// 2026): "halte Veenendaal Station Centrum/Rembrandtlaan" kreeg een rode
+// "Brand"-badge. Zelfde regel als _bevat_trefwoord() in app/collector.py.
+function bevatTrefwoord(text, kw) {
+  const letter = /\p{L}/u;
+  for (let i = text.indexOf(kw); i >= 0; i = text.indexOf(kw, i + 1)) {
+    const voor = text[i - 1] || ' ', na = text[i + kw.length] || ' ';
+    if (!letter.test(voor) || !letter.test(na)) return true;
+  }
+  return false;
+}
+
 // Geeft een label ('Ongeval') als de melding urgent is, anders null.
 // Nog te beginnen meldingen (valid_from in de toekomst) tellen niet als
 // urgent -- dat is dan een aankondiging van gepland werk, geen actuele
@@ -81,7 +95,7 @@ function severeAlertLabel(a) {
   if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
   if (!severeAlertIsLargeEnough(a)) return null;
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
-  const kw = SEVERE_ALERT_KEYWORDS.find(k => text.includes(k));
+  const kw = SEVERE_ALERT_KEYWORDS.find(k => bevatTrefwoord(text, k));
   if (kw) return kw.charAt(0).toUpperCase() + kw.slice(1);
   return SEVERE_CAUSE_LABELS[a.cause] || null;
 }

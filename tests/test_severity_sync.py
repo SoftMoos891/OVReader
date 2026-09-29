@@ -20,6 +20,7 @@ from app.collector import (
     SEVERE_ALERT_CAUSES,
     SEVERE_ALERT_KEYWORDS,
     SEVERE_ALERT_MIN_STOPS,
+    _bevat_trefwoord,
     _is_severe_alert,
 )
 
@@ -95,6 +96,12 @@ def test_python_and_js_agree_on_a_set_of_example_alerts(js_source):
           "cause": "OTHER_CAUSE"}, False),
         ({"header": "melding", "description": "", "cause": "POLICE_ACTIVITY"}, True),
         ({"header": "melding", "description": "", "cause": "MAINTENANCE"}, False),
+        # Trefwoord middenin een woord telt niet (29 sep 2026, Rembrandtlaan).
+        ({"header": "Op 30 september vervalt de halte: Veenendaal Station Centrum/Rembrandtlaan.",
+          "description": "Omleiding lijn 83 i.v.m. kabel en leidingwerkzaamheden", "cause": "UNKNOWN_CAUSE"}, False),
+        # Samenstellingen met het trefwoord aan het begin of eind tellen wel.
+        ({"header": "halte vervalt i.v.m. brandweerinzet", "description": "", "cause": "OTHER_CAUSE"}, True),
+        ({"header": "omleiding door een verkeersongeval", "description": "", "cause": "OTHER_CAUSE"}, True),
     ]
 
     keywords = _js_array(js_source, "SEVERE_ALERT_KEYWORDS")
@@ -107,7 +114,7 @@ def test_python_and_js_agree_on_a_set_of_example_alerts(js_source):
             alert["header"], alert["description"], alert["cause"], stop_count=groot
         )
         tekst = f"{alert['header']} {alert['description']}".lower()
-        js_oordeel = any(k in tekst for k in keywords) or alert["cause"] in causes
+        js_oordeel = any(_bevat_trefwoord(tekst, k) for k in keywords) or alert["cause"] in causes
 
         assert python_oordeel == verwacht_ernstig, alert
         assert js_oordeel == verwacht_ernstig, alert
@@ -161,3 +168,12 @@ def test_magnitude_alone_is_not_enough():
         "OTHER_CAUSE",
         stop_count=20,
     )
+
+
+def test_js_uses_the_same_word_boundary_rule(js_source):
+    """De voorbeelden hierboven simuleren de JS-kant met de Python-functie;
+    dit controleert dat severity.js die regel ook echt gebruikt in plaats van
+    een kale includes() (die "brand" in "Rembrandtlaan" vond)."""
+    assert "function bevatTrefwoord(" in js_source
+    assert "bevatTrefwoord(text, k)" in js_source
+    assert "text.includes(k)" not in js_source
