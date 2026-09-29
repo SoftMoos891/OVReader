@@ -29,6 +29,21 @@ app = Flask(
     template_folder=str(PROJECT_ROOT / "templates"),
     static_folder=str(PROJECT_ROOT / "static"),
 )
+
+
+# Zelfde cache-busting als in lite_server.py (zie de uitleg daar): nginx
+# serveert theme.css zeven dagen uit de cache, dus zonder ?v=<mtime> zag een
+# terugkerende bezoeker een CSS-wijziging pas na een week. Sinds 29 sep 2026
+# (nieuw logo) ook voor de pagina's van deze app.
+@app.context_processor
+def _versies():
+    try:
+        versie = str(int(os.path.getmtime(os.path.join(app.static_folder, "css/theme.css"))))
+    except OSError:
+        versie = "0"
+    return {"css_versie": versie}
+
+
 _index = UtrechtIndex()
 _timetable = Timetable()
 

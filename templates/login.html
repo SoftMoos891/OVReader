@@ -2,12 +2,12 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+<link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}?v=2">
 <title>Inloggen — DVZ OV-Monitor</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
 </script>
@@ -26,7 +26,7 @@
     padding: 32px 30px; width: 100%; max-width: 340px;
     box-shadow: var(--shadow-md);
   }
-  .login-card .dvz-logo-badge { width: 44px; height: 44px; font-size: 13px; margin: 0 auto 14px; }
+  .login-card .dvz-logo-badge { width: 44px; height: 44px; font-size: 16px; margin: 0 auto 14px; }
   .login-card h1 { font-size: 17px; margin: 0 0 4px; text-align: center; }
   .login-card .sub { color: var(--muted); font-size: 13px; text-align: center; margin-bottom: 22px; }
   .field { margin-bottom: 14px; }
@@ -54,7 +54,7 @@
 <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
 
 <div class="login-card">
-  <div class="dvz-logo-badge" title="DVZ Reader">DVZ</div>
+  <div class="dvz-logo-badge" title="DVZ Reader">dvz</div>
   <h1>OV-Monitor Utrecht</h1>
   <div class="sub">Log in om verder te gaan</div>
 

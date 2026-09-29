@@ -83,17 +83,19 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
 
 .dvz-logo-badge {
   width: 34px; height: 34px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 1px solid var(--border);
+  /* = het app-icoon van de DVZ Reader: navy afgerond vierkant met witte
+     "dvz" (29 sep 2026, voorheen een witte schijf met DVZ). */
+  border-radius: 22%;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   display: flex; align-items: center; justify-content: center;
   align-self: center;
   flex-shrink: 0;
   font-family: 'Inter', sans-serif;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.06em;
-  color: #14182b;
+  letter-spacing: 0.02em;
+  color: #ffffff;
   text-decoration: none;
   user-select: none;
   box-shadow: var(--shadow-sm);
