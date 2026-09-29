@@ -42,6 +42,10 @@ CHART_DAYS = 30
 # hieronder een melding opneemt.
 CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
 LITE_BASE_URL = "https://ovreader.dvznet.nl/lite"
+# Wegsituaties in de RSS-feed linken sinds 29 sep 2026 naar de verkeerspagina
+# van de DVZ Reader, die ze in een pop-up met kaart toont (ook als ze al voorbij
+# zijn, via /lite/api/melding). Alle andere soorten blijven naar LITE_BASE_URL gaan.
+VERKEER_URL = "https://reader.dvznet.nl/verkeer"
 
 # Zelfde definitie als app/server.py's /api/health.
 VEHICLE_FRESHNESS_SECONDS = 90
@@ -731,10 +735,15 @@ def lite_rss_uitval():
     # (nu: KNMI-weerwaarschuwingen, zie collector.py) -- zo kan een RSS-lezer
     # die kleur tonen zonder de titel te moeten parsen, en blijft dit veld
     # afwezig (i.p.v. leeg) voor soorten zonder kleur.
+    def item_link(r):
+        if r["kind"] == "road_situation":
+            return f"{VERKEER_URL}#melding={url_quote(r['guid'], safe='')}"
+        return f"{LITE_BASE_URL}#{url_quote(r['guid'], safe='')}"
+
     items = [f"""
     <item>
       <title>{xml_escape(r['title'])}</title>
-      <link>{xml_escape(LITE_BASE_URL)}#{xml_escape(url_quote(r['guid'], safe=''))}</link>
+      <link>{xml_escape(item_link(r))}</link>
       <guid isPermaLink="false">{xml_escape(r['guid'])}</guid>
       <pubDate>{format_datetime(datetime.fromtimestamp(r['pub_date'], tz=timezone.utc))}</pubDate>
       <description>{xml_escape(r['description'])}</description>{f"""

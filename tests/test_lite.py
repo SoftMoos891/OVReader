@@ -201,3 +201,19 @@ def test_melding_voorbije_wegsituatie_niet_meer_in_de_feed(lite_client, temp_db)
 def test_melding_onbekend_geeft_404(lite_client, temp_db):
     assert lite_client.get("/lite/api/melding?guid=road-situation-bestaat-niet").status_code == 404
     assert lite_client.get("/lite/api/melding?guid=bus-alert-bestaat-niet").status_code == 404
+
+
+def test_rss_wegsituatie_linkt_naar_verkeerspagina_rest_naar_lite(lite_client, temp_db):
+    """Sinds 29 sep 2026: wegsituaties openen op reader.dvznet.nl/verkeer in een
+    pop-up; U-OV-, NS-, uitval- en KNMI-meldingen blijven naar OV Lite gaan."""
+    _wegsituatie(temp_db, "NDW01_c")
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at)
+           VALUES ('bus-alert-KV15:KEOLIS:1', 'bus_alert', 'Melding U-OV: storing', 'x', 900, 900)"""
+    )
+    conn.commit()
+    conn.close()
+    xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
+    assert "<link>https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_c</link>" in xml
+    assert "<link>https://ovreader.dvznet.nl/lite#bus-alert-KV15%3AKEOLIS%3A1</link>" in xml
