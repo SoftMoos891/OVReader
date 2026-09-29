@@ -613,32 +613,66 @@ def lite_api_melding():
         row = conn.execute(
             "SELECT * FROM rss_feed_items WHERE guid = ?", (guid,)
         ).fetchone()
-        if row is None:
+        wegsituatie = guid.startswith("road-situation-")
+        if row is None and not wegsituatie:
             return jsonify({"error": "melding niet gevonden"}), 404
 
-        melding = {
-            "guid": row["guid"],
-            "kind": row["kind"],
-            "kind_label": _HISTORY_KIND_LABELS.get(row["kind"], row["kind"]),
-            "title": row["title"],
-            "description": _zonder_klik_hier(row["description"] or ""),
-            "pub_date": row["pub_date"],
-            "resolved_at": row["resolved_at"],
-            "category": row["category"],
-        }
+        if row is not None:
+            melding = {
+                "guid": row["guid"],
+                "kind": row["kind"],
+                "kind_label": _HISTORY_KIND_LABELS.get(row["kind"], row["kind"]),
+                "title": row["title"],
+                "description": _zonder_klik_hier(row["description"] or ""),
+                "pub_date": row["pub_date"],
+                "resolved_at": row["resolved_at"],
+                "category": row["category"],
+            }
+        else:
+            # Een wegsituatie verdwijnt uit rss_feed_items zodra hij voorbij is
+            # (_remove_resolved_rss_item() in collector.py), maar de link in een
+            # RSS-lezer blijft bestaan. Sinds 29 sep 2026 wijzen die links naar
+            # reader.dvznet.nl/verkeer, die de melding hier ophaalt -- dan vullen
+            # we hem uit road_situations, die rij blijft wel bewaard.
+            melding = {
+                "guid": guid,
+                "kind": "road_situation",
+                "kind_label": _HISTORY_KIND_LABELS["road_situation"],
+                "title": None,
+                "description": "",
+                "pub_date": None,
+                "resolved_at": None,
+                "category": None,
+            }
 
         # Wegsituatie: het situation_id zit in de guid, dus de bijbehorende rij
         # is direct op te zoeken. Die kan intussen zijn opgeruimd (active=0 of
         # weg) -- dan tonen we de melding gewoon zonder kaart.
-        if row["kind"] == "road_situation" and row["guid"].startswith("road-situation-"):
-            sid = row["guid"][len("road-situation-"):]
+        if wegsituatie and melding["kind"] == "road_situation":
+            sid = guid[len("road-situation-"):]
             s = conn.execute(
-                "SELECT lat, lon, road_number, road_location, type_label, cause, "
-                "severity, start_time, end_time, active FROM road_situations "
+                "SELECT lat, lon, road_number, road_location, type_label, cause, comment, "
+                "severity, start_time, end_time, active, first_seen, last_seen FROM road_situations "
                 "WHERE situation_id = ?",
                 (sid,),
             ).fetchone()
+            if s is None and row is None:
+                return jsonify({"error": "melding niet gevonden"}), 404
+            if s is not None and row is None:
+                # Zelfde titel en tekst als de collector voor de feed maakt.
+                where = " ".join(p for p in (s["road_number"], s["road_location"]) if p)
+                melding["title"] = f"Wegsituatie ({s['type_label']}): {where or s['comment'] or s['type_label']}"
+                delen = [f"{s['type_label']} op {where}." if where else f"{s['type_label']}."]
+                if s["cause"] and s["cause"] != s["type_label"]:
+                    delen.append(s["cause"])
+                if s["comment"] and s["comment"] != s["type_label"] and s["comment"] != s["cause"]:
+                    delen.append(s["comment"])
+                melding["description"] = " ".join(delen)
+                melding["pub_date"] = s["first_seen"]
+                if not s["active"]:
+                    melding["resolved_at"] = s["last_seen"]
             if s is not None:
+                melding["comment"] = s["comment"]
                 if s["lat"] is not None and s["lon"] is not None:
                     melding["lat"] = s["lat"]
                     melding["lon"] = s["lon"]

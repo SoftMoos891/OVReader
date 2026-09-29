@@ -151,3 +151,53 @@ def test_lite_uitval_daily_covers_last_14_days_and_splits_by_operator(lite_clien
 
     keolis_daily = {d["date"]: d for d in data["daily_by_operator"]["Keolis"]}
     assert keolis_daily[yesterday.isoformat()]["cancellation_pct"] == 100.0
+
+
+def _wegsituatie(temp_db, sid, active=1, in_feed=True):
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO road_situations (situation_id, first_seen, last_seen, record_type, type_label,
+               comment, cause, severity, start_time, end_time, active, lat, lon, road_number, road_location)
+           VALUES (?, 1000, 2000, 'Accident', 'Ongeval', NULL, NULL, 'unknown',
+                   '2026-09-29T16:15:00Z', NULL, ?, 52.2, 4.98, 'N201', 'Vinkeveen - A2')""",
+        (sid, active),
+    )
+    if in_feed:
+        conn.execute(
+            """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at)
+               VALUES (?, 'road_situation', 'Wegsituatie (Ongeval): N201 Vinkeveen - A2',
+                       'Ongeval op N201 Vinkeveen - A2. Klik hier voor meer data.', 1000, 1000)""",
+            (f"road-situation-{sid}",),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_melding_wegsituatie_uit_de_feed(lite_client, temp_db):
+    _wegsituatie(temp_db, "NDW01_a")
+    data = lite_client.get("/lite/api/melding?guid=road-situation-NDW01_a").get_json()
+    assert data["kind"] == "road_situation"
+    assert data["title"] == "Wegsituatie (Ongeval): N201 Vinkeveen - A2"
+    assert data["lat"] == 52.2 and data["road_number"] == "N201"
+    assert data["nog_actief"] is True
+    assert data["resolved_at"] is None
+
+
+def test_melding_voorbije_wegsituatie_niet_meer_in_de_feed(lite_client, temp_db):
+    """Een wegsituatie wordt bij 'voorbij' uit rss_feed_items gewist; de link in
+    een RSS-lezer (naar /verkeer) moet dan nog steeds iets tonen."""
+    _wegsituatie(temp_db, "NDW01_b", active=0, in_feed=False)
+    res = lite_client.get("/lite/api/melding?guid=road-situation-NDW01_b")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["title"] == "Wegsituatie (Ongeval): N201 Vinkeveen - A2"
+    assert data["description"] == "Ongeval op N201 Vinkeveen - A2."
+    assert data["pub_date"] == 1000
+    assert data["resolved_at"] == 2000
+    assert data["nog_actief"] is False
+    assert data["lat"] == 52.2
+
+
+def test_melding_onbekend_geeft_404(lite_client, temp_db):
+    assert lite_client.get("/lite/api/melding?guid=road-situation-bestaat-niet").status_code == 404
+    assert lite_client.get("/lite/api/melding?guid=bus-alert-bestaat-niet").status_code == 404
