@@ -920,6 +920,20 @@ def fetch_road_situations_job():
                         "now": fetched_at,
                     },
                 )
+                # De oorzaak van de RWS-verkeerscentrale komt vaak een paar
+                # minuten na het (automatisch gedetecteerde) ongeval binnen en
+                # verandert dan het label (zie _borrow_cause in
+                # road_situations.py): titel en tekst bijwerken, pub_date laten.
+                conn.execute(
+                    """UPDATE rss_feed_items SET title=:title, description=:description
+                       WHERE guid=:guid AND resolved_at IS NULL
+                         AND (title != :title OR description != :description)""",
+                    {
+                        "guid": f"road-situation-{s['situation_id']}",
+                        "title": title,
+                        "description": description,
+                    },
+                )
         if seen_ids:
             placeholders = ",".join("?" * len(seen_ids))
             newly_inactive = conn.execute(

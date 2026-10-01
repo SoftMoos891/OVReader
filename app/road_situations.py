@@ -15,6 +15,8 @@ toegepast op de coordinaten die elke wegsituatie zelf al meelevert (punt of
 lijnstuk) -- geen handmatig samengestelde lijst met wegvakken nodig."""
 import gzip
 import json
+import math
+from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -80,6 +82,94 @@ DEMONSTRATION_CAUSE = "demonstratie"
 
 def is_demonstration(cause):
     return bool(cause) and DEMONSTRATION_CAUSE in cause.lower()
+
+
+# Oorzaak van de RWS-verkeerscentrale (1 okt 2026). Een ongeval dat NDW
+# automatisch detecteert (bron NDW06, "managedByAutomation") heeft zelf geen
+# oorzaak; de verkeerscentrale zet er vaak een eigen situatie naast (bron
+# NLRWS, bv. een rijstrookafsluiting) met causeDescription "Defecte
+# vrachtwagen", "Ongeval(len)", "Veiligheidsmaatregelen" ... Voorbeeld A12 bij
+# Nieuwerbrug: NDW06-ongeval en NLRWS-record "Defecte vrachtwagen" 114 m uit
+# elkaar, zelfde rijrichting, 8 minuten na elkaar. Zo'n oorzaak lenen we:
+# binnen CAUSE_RADIUS_M, rijrichting (als beide bekend) binnen
+# CAUSE_BEARING_MAX_DIFF graden, begin binnen CAUSE_MAX_TIME_DIFF_S. Werk
+# ("Wegwerkzaamheden") lenen we niet uit: een ongeluk in een werkvak is nog
+# steeds een ongeluk. Een file leent ook niets uit (zie parse_road_situations).
+CAUSE_RADIUS_M = 300
+CAUSE_BEARING_MAX_DIFF = 60
+CAUSE_MAX_TIME_DIFF_S = 2 * 3600
+_WORK_CAUSE_WORDS = ("werkzaamheden",)
+
+# Bij deze typen gaat de oorzaak voor op het generieke type-label (op verzoek:
+# "laat de RWS-oorzaak voorgaan"). Het automatische "Ongeval" wordt dan
+# bijvoorbeeld "Defecte vrachtwagen", een rijstrookafsluiting ("Wegwerkzaamheden")
+# door een demonstratie "Demonstratie". Bij een file (AbnormalTraffic) blijft
+# het label staan; de oorzaak komt er dan als los veld bij. record_type, en
+# daarmee de urgentie en de RSS-keuze, verandert nergens.
+_LABEL_FROM_CAUSE_TYPES = {"Accident", "GeneralObstruction", "VehicleObstruction", "RoadOrCarriagewayOrLaneManagement"}
+
+
+def clean_cause(text):
+    """RWS-schrijfwijze naar een label: "Ongeval(len)" -> "Ongeval"."""
+    if not text:
+        return None
+    text = text.replace("(len)", "").replace("(en)", "").strip()
+    return text[:1].upper() + text[1:] if text else None
+
+
+def _is_work_cause(cause):
+    return bool(cause) and any(w in cause.lower() for w in _WORK_CAUSE_WORDS)
+
+
+def _distance_m(a, b):
+    """Afstand in meters tussen twee (lng, lat)-punten (equirectangulair, ruim
+    nauwkeurig genoeg op een paar honderd meter)."""
+    kx = 111320 * math.cos(math.radians((a[1] + b[1]) / 2))
+    return math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * 110570)
+
+
+def _point_segment_m(p, a, b):
+    kx = 111320 * math.cos(math.radians(p[1]))
+    ax, ay = (a[0] - p[0]) * kx, (a[1] - p[1]) * 110570
+    bx, by = (b[0] - p[0]) * kx, (b[1] - p[1]) * 110570
+    vx, vy = bx - ax, by - ay
+    lengte2 = vx * vx + vy * vy
+    t = 0 if lengte2 == 0 else max(0.0, min(1.0, -(ax * vx + ay * vy) / lengte2))
+    return math.hypot(ax + t * vx, ay + t * vy)
+
+
+def _geometry_distance_m(lines_a, lines_b):
+    """Kleinste afstand tussen twee geometrieën, elk een lijst lijnen (een punt
+    is een lijn van één punt): elk hoekpunt tegen elk lijnstuk van de ander."""
+    best = math.inf
+    for la, lb in ((lines_a, lines_b), (lines_b, lines_a)):
+        for line in la:
+            for p in line:
+                for other in lb:
+                    if len(other) == 1:
+                        best = min(best, _distance_m(p, other[0]))
+                    for i in range(len(other) - 1):
+                        best = min(best, _point_segment_m(p, other[i], other[i + 1]))
+    return best
+
+
+def _bearing_between(a, b):
+    """Kompaskoers van punt a naar b (graden, 0 = noord)."""
+    dx = (b[0] - a[0]) * math.cos(math.radians((a[1] + b[1]) / 2))
+    dy = b[1] - a[1]
+    return (math.degrees(math.atan2(dx, dy)) + 360) % 360
+
+
+def _bearing_diff(a, b):
+    d = abs(a - b) % 360
+    return 360 - d if d > 180 else d
+
+
+def _parse_time(text):
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp() if text else None
+    except ValueError:
+        return None
 
 
 def _load_utrecht_rings():
@@ -172,6 +262,40 @@ def fetch_road_situations_feed():
     return ET.fromstring(xml_bytes)
 
 
+def _extract_lines(record_el):
+    """Zelfde punten als _extract_points, maar per posList een eigen lijn (en
+    elk los punt een lijn van één punt), voor de afstand tussen situaties."""
+    lines = []
+    for pt in record_el.findall(".//loc:pointCoordinates", _NS):
+        lat_el = pt.find("loc:latitude", _NS)
+        lon_el = pt.find("loc:longitude", _NS)
+        if lat_el is not None and lon_el is not None and lat_el.text and lon_el.text:
+            lines.append([(float(lon_el.text), float(lat_el.text))])
+    for poslist in record_el.findall(".//loc:posList", _NS):
+        if not poslist.text:
+            continue
+        coords = poslist.text.split()
+        line = [(float(coords[i + 1]), float(coords[i])) for i in range(0, len(coords) - 1, 2)]
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _record_bearing(record_el, lines):
+    """loc:bearing als die er is, anders de koers van begin naar eind van de
+    langste lijn (een file of afsluiting is over een paar km vrijwel recht)."""
+    b = record_el.find(".//loc:bearing", _NS)
+    if b is not None and b.text:
+        try:
+            return float(b.text)
+        except ValueError:
+            pass
+    longest = max(lines, key=len, default=[])
+    if len(longest) >= 2 and _distance_m(longest[0], longest[-1]) > 50:
+        return _bearing_between(longest[0], longest[-1])
+    return None
+
+
 def _extract_points(record_el):
     """Alle lat/lon-punten uit een situationRecord's locatiereferentie
     (puntlocatie of lijnstuk), voor de Utrecht-relevantiecheck."""
@@ -195,6 +319,10 @@ def parse_road_situations(root):
     minstens één punt binnen de provincie Utrecht hebben."""
     _warn_on_table_version(root)
     results = []
+    # Alle situaties in heel Nederland met een oorzaak: een melding net over
+    # de provinciegrens kan een Utrechtse melding verklaren.
+    donors = []
+    geometries = {}
     for situation in root.findall(".//sit:situation", _NS):
         records = situation.findall("sit:situationRecord", _NS)
         if not records:
@@ -218,14 +346,24 @@ def parse_road_situations(root):
                 c = rec.find(".//sit:generalPublicComment/sit:comment/com:values/com:value", _NS)
                 if c is not None and c.text:
                     comment = c.text
-            if cause is None:
-                # bv. "Demonstratie"/"Wegwerkzaamheden"/"Door grenscontrole" --
-                # los van generalPublicComment, dat vaak leeg is terwijl dit
-                # veld wel gevuld is (zie ovreader_road_situations_cause_gap
-                # memory: dit veld werd voorheen helemaal niet geparsed).
-                ca = rec.find(".//sit:cause/sit:causeDescription/com:values/com:value", _NS)
-                if ca is not None and ca.text:
+            # bv. "Demonstratie"/"Wegwerkzaamheden"/"Door grenscontrole" --
+            # los van generalPublicComment, dat vaak leeg is terwijl dit
+            # veld wel gevuld is (zie ovreader_road_situations_cause_gap
+            # memory: dit veld werd voorheen helemaal niet geparsed).
+            ca = rec.find(".//sit:cause/sit:causeDescription/com:values/com:value", _NS)
+            if ca is not None and ca.text:
+                if cause is None:
                     cause = ca.text
+                # Een file (AbnormalTraffic) leent niets uit: zijn lijn is de hele
+                # staart, kilometers terug, en een voertuig aan het eind daarvan
+                # (vaak een pijlwagen) zou dan "Defecte vrachtwagen" heten.
+                lines = _extract_lines(rec) if rtype != "AbnormalTraffic" else []
+                if lines:
+                    st = rec.find(".//com:overallStartTime", _NS)
+                    donors.append({
+                        "situation_id": situation.get("id"), "cause": clean_cause(ca.text), "lines": lines,
+                        "bearing": _record_bearing(rec, lines), "start": _parse_time(st.text if st is not None else None),
+                    })
             if start_time is None:
                 s = rec.find(".//com:overallStartTime", _NS)
                 if s is not None and s.text:
@@ -247,6 +385,9 @@ def parse_road_situations(root):
 
         record_type = next((t for t in _TYPE_PRIORITY if t in record_types), record_types[0])
         road_number, road_location = _road_label(records)
+        main_rec = next(r for r, t in zip(records, record_types) if t == record_type)
+        main_lines = _extract_lines(main_rec)
+        geometries[situation.get("id")] = (main_lines, _record_bearing(main_rec, main_lines))
         results.append({
             "situation_id": situation.get("id"),
             "record_type": record_type,
@@ -261,7 +402,36 @@ def parse_road_situations(root):
             "road_number": road_number,
             "road_location": road_location,
         })
+
+    for r in results:
+        if r["cause"] is None:
+            lines, bearing = geometries.get(r["situation_id"], ([], None))
+            r["cause"] = _borrow_cause(r, lines, bearing, donors)
+        else:
+            r["cause"] = clean_cause(r["cause"])
+        if r["cause"] and r["record_type"] in _LABEL_FROM_CAUSE_TYPES:
+            r["type_label"] = r["cause"]
     return results
+
+
+def _borrow_cause(result, lines, bearing, donors):
+    """Oorzaak van de dichtstbijzijnde andere situatie die past (zie
+    CAUSE_RADIUS_M e.v.), of None."""
+    if not lines:
+        return None
+    start = _parse_time(result["start_time"])
+    best = None
+    for d in donors:
+        if d["situation_id"] == result["situation_id"] or _is_work_cause(d["cause"]):
+            continue
+        if bearing is not None and d["bearing"] is not None and _bearing_diff(bearing, d["bearing"]) > CAUSE_BEARING_MAX_DIFF:
+            continue
+        if start is not None and d["start"] is not None and abs(start - d["start"]) > CAUSE_MAX_TIME_DIFF_S:
+            continue
+        afstand = _geometry_distance_m(lines, d["lines"])
+        if afstand <= CAUSE_RADIUS_M and (best is None or afstand < best[0]):
+            best = (afstand, d["cause"])
+    return best[1] if best else None
 
 
 def fetch_utrecht_road_situations():
