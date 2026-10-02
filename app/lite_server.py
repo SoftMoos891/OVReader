@@ -698,6 +698,52 @@ def lite_api_melding():
 # nooit opgeschoond (log, geen live-status), maar zonder limiet zou de feed
 # na maanden/jaren onbeperkt blijven groeien.
 RSS_FEED_ITEM_LIMIT = 100
+RSS_FEED_TITLE = "OV Utrecht - Storingen en uitval-signalering"
+
+
+# Wegsituaties (sinds 29 sep 2026) en KNMI-weerwaarschuwingen (sinds 2 okt 2026)
+# openen op reader.dvznet.nl/verkeer in een pop-up; de rest gaat naar OV Lite.
+# Gedeeld door /lite/rss.xml en /lite/api/feed-items.
+def _rss_item_link(r):
+    if r["kind"] in ("road_situation", "knmi_warning"):
+        return f"{VERKEER_URL}#melding={url_quote(r['guid'], safe='')}"
+    return f"{LITE_BASE_URL}#{url_quote(r['guid'], safe='')}"
+
+
+def _rss_rows():
+    conn = db.get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM rss_feed_items ORDER BY pub_date DESC LIMIT ?",
+            (RSS_FEED_ITEM_LIMIT,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+@app.route("/lite/api/feed-items")
+def lite_api_feed_items():
+    """Dezelfde meldingen als /lite/rss.xml, als JSON en met de soort (kind)
+    erbij. Toegevoegd 2 okt 2026 voor de RSS-bridge van de DVZ Reader: die las
+    de RSS-feed en moest de soort dan uit link of titel raden, wat twee keer
+    misging toen het linkformaat veranderde. kind is road_situation,
+    knmi_warning, bus_alert, rail_alert of cancellation."""
+    return jsonify({
+        "feed_title": RSS_FEED_TITLE,
+        "items": [
+            {
+                "guid": r["guid"],
+                "kind": r["kind"],
+                "title": r["title"],
+                "link": _rss_item_link(r),
+                "pub_date": r["pub_date"],
+                "description": r["description"],
+                "category": r["category"],
+                "resolved_at": r["resolved_at"],
+            }
+            for r in _rss_rows()
+        ],
+    })
 
 
 @app.route("/lite/rss.xml")
@@ -716,14 +762,7 @@ def lite_rss_uitval():
     LOG van gebeurtenissen, geen weerspiegeling van de actuele live-status.
     Een melding verdwijnt dus niet vanzelf zodra de situatie weer normaal
     is."""
-    conn = db.get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM rss_feed_items ORDER BY pub_date DESC LIMIT ?",
-            (RSS_FEED_ITEM_LIMIT,),
-        ).fetchall()
-    finally:
-        conn.close()
+    rows = _rss_rows()
 
     # <link> kreeg vroeger voor elk item dezelfde LITE_BASE_URL -- <guid> was
     # dan wel al uniek, maar sommige RSS-lezers gebruiken (mede) de link om
@@ -735,17 +774,11 @@ def lite_rss_uitval():
     # (nu: KNMI-weerwaarschuwingen, zie collector.py) -- zo kan een RSS-lezer
     # die kleur tonen zonder de titel te moeten parsen, en blijft dit veld
     # afwezig (i.p.v. leeg) voor soorten zonder kleur.
-    # Wegsituaties (sinds 29 sep 2026) en KNMI-weerwaarschuwingen (sinds 2 okt 2026)
-    # openen op reader.dvznet.nl/verkeer in een pop-up; de rest blijft naar OV Lite gaan.
-    def item_link(r):
-        if r["kind"] in ("road_situation", "knmi_warning"):
-            return f"{VERKEER_URL}#melding={url_quote(r['guid'], safe='')}"
-        return f"{LITE_BASE_URL}#{url_quote(r['guid'], safe='')}"
-
+    # De link: zie _rss_item_link() bovenaan.
     items = [f"""
     <item>
       <title>{xml_escape(r['title'])}</title>
-      <link>{xml_escape(item_link(r))}</link>
+      <link>{xml_escape(_rss_item_link(r))}</link>
       <guid isPermaLink="false">{xml_escape(r['guid'])}</guid>
       <pubDate>{format_datetime(datetime.fromtimestamp(r['pub_date'], tz=timezone.utc))}</pubDate>
       <description>{xml_escape(r['description'])}</description>{f"""
@@ -755,7 +788,7 @@ def lite_rss_uitval():
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>OV Utrecht - Storingen en uitval-signalering</title>
+    <title>{xml_escape(RSS_FEED_TITLE)}</title>
     <link>{xml_escape(LITE_BASE_URL)}</link>
     <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, bij nieuwe NS-storingen op het spoor in de provincie Utrecht, bij ernstige U-OV-meldingen (bus/tram), bij urgente wegsituaties, en bij KNMI-weerwaarschuwingen (code geel/oranje/rood) voor de provincie Utrecht.</description>
     <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}

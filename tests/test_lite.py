@@ -237,3 +237,29 @@ def test_rss_knmi_waarschuwing_linkt_naar_verkeerspagina(lite_client, temp_db):
     assert "<link>https://reader.dvznet.nl/verkeer#melding=knmi-warning-VV-YELLOW</link>" in xml
     assert "<category>geel</category>" in xml
     assert "<link>https://ovreader.dvznet.nl/lite#rail-alert-1</link>" in xml
+
+
+def test_feed_items_json_zelfde_als_rss_met_soort(lite_client, temp_db):
+    """Sinds 2 okt 2026: /lite/api/feed-items geeft dezelfde meldingen als de RSS-feed,
+    met kind erbij, voor de RSS-bridge van de DVZ Reader."""
+    _wegsituatie(temp_db, "NDW01_j")
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at, category)
+           VALUES ('knmi-warning-VV-YELLOW', 'knmi_warning', 'Weerwaarschuwing: code geel (Mist)', 'Mist.', 950, 950, 'geel')"""
+    )
+    conn.execute(
+        """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at)
+           VALUES ('bus-alert-KV15:QBUZZ:9', 'bus_alert', 'Melding U-OV: storing', 'x', 900, 900)"""
+    )
+    conn.commit()
+    conn.close()
+    data = lite_client.get("/lite/api/feed-items").get_json()
+    assert data["feed_title"] == "OV Utrecht - Storingen en uitval-signalering"
+    per_guid = {i["guid"]: i for i in data["items"]}
+    assert per_guid["knmi-warning-VV-YELLOW"]["kind"] == "knmi_warning"
+    assert per_guid["knmi-warning-VV-YELLOW"]["category"] == "geel"
+    assert per_guid["bus-alert-KV15:QBUZZ:9"]["link"] == "https://ovreader.dvznet.nl/lite#bus-alert-KV15%3AQBUZZ%3A9"
+    assert per_guid["road-situation-NDW01_j"]["link"] == "https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_j"
+    xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
+    assert all(f"<guid isPermaLink=\"false\">{g}</guid>" in xml for g in per_guid)
