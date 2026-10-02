@@ -29,6 +29,11 @@ from .road_situations import (
 )
 
 FETCH_INTERVAL_SECONDS = 30
+# Na een (her)start wacht de eerste OVapi-ronde zo lang (2 okt 2026). Eerst haalde
+# de nieuwe collector meteen alles op, vlak na de laatste ronde van de oude, en
+# een halve minuut later de eerste vaste ronde: OVapi gaf dan 429 Too Many Requests
+# (vandaag 5 keer bij herstarts). Iets langer dan één ronde = gegarandeerd ruimte.
+COLLECT_STARTUP_DELAY_SECONDS = FETCH_INTERVAL_SECONDS + 5
 # Hoe lang vehicle_positions als RUWE rijen bewaard blijft (zie
 # cleanup_old_data()). Bepaalt hoever /busnummers terug kan kijken: zodra
 # deze rijen weg zijn, is niet meer te herleiden welk voertuig welke rit
@@ -1295,7 +1300,8 @@ def check_cancellation_alerts_job():
 def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
-    scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1)
+    scheduler.add_job(collect_once, "interval", seconds=FETCH_INTERVAL_SECONDS, id="collect", max_instances=1,
+                      next_run_time=dt.datetime.now().astimezone() + dt.timedelta(seconds=COLLECT_STARTUP_DELAY_SECONDS))
     scheduler.add_job(rollup_completed_days, "interval", hours=1, id="rollup", max_instances=1)
     scheduler.add_job(rollup_schedule_gap, "interval", hours=1, id="schedule_gap_rollup", max_instances=1)
     scheduler.add_job(cleanup_old_data, "interval", hours=6, id="cleanup", max_instances=1)
@@ -1316,8 +1322,8 @@ def start_scheduler():
     scheduler.add_job(fetch_knmi_weather_job, "interval", minutes=5, id="knmi_weather", max_instances=1)
     scheduler.add_job(fetch_air_quality_job, "interval", minutes=10, id="air_quality", max_instances=1)
     scheduler.start()
-    # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
-    collect_once()
+    # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten -- behalve
+    # OVapi (collect_once): die wacht COLLECT_STARTUP_DELAY_SECONDS, zie aldaar.
     fetch_rail_alerts_job()
     check_cancellation_alerts_job()
     fetch_road_situations_job()
