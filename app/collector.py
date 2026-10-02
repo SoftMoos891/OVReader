@@ -19,10 +19,12 @@ from .knmi_warnings import format_active_from
 # Sinds 2 okt 2026 via de DVZ RSS-bridge i.p.v. zelf bij KNMI/Luchtmeetnet, zie bridge_weer.py.
 from .bridge_weer import fetch_air_quality, fetch_de_bilt_weather, fetch_utrecht_warnings
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
+# Sinds 2 okt 2026 maakt de DVZ RSS-bridge de wegsituaties (zie bridge_wegen.py); de
+# regels (welke situaties een melding geven) staan nog steeds in road_situations.py.
+from .bridge_wegen import fetch_utrecht_road_situations
 from .road_situations import (
     NEGLIGIBLE_SEVERITY,
     RSS_ROAD_TYPES,
-    fetch_utrecht_road_situations,
     is_demonstration,
 )
 
@@ -841,11 +843,12 @@ def fetch_rail_alerts_job():
 
 def fetch_road_situations_job():
     """Haalt actuele wegsituaties op (NDW open data -- RWS-snelwegen,
-    provinciale en lokale wegen, zie road_situations.py) binnen de provincie Utrecht en
+    provinciale en lokale wegen) binnen de provincie Utrecht en
     synchroniseert ze naar road_situations, met dezelfde first_seen/
-    last_seen/active-boekhouding als rail_alerts. Publieke, sleutelloze bron
-    (geen abonnementslimiet zoals bij NS) -- elke 5 minuten is ruim actueel
-    genoeg voor vooral wegwerkzaamheden/langlopende situaties."""
+    last_seen/active-boekhouding als rail_alerts. Sinds 2 okt 2026 komt de
+    lijst van de DVZ RSS-bridge (bridge_wegen.py), die NDW elke 2 minuten
+    ophaalt en parset met een kopie van road_situations.py; elke 5 minuten
+    vragen is ruim actueel genoeg."""
     fetched_at = _now()
     conn = db.get_conn()
     try:
