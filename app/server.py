@@ -335,9 +335,8 @@ RAIL_ALERTS_STALE_AFTER_SECONDS = 600
 # voor een paar gemiste cycli. Publieke, sleutelloze bron (geen
 # 'not_configured' zoals bij NS_API_KEY) -- hoort altijd te draaien.
 ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200
-# fetch_knmi_warnings_job() draait elke 30 minuten; 90 minuten geeft ruimte
-# voor een paar gemiste cycli. Zonder KNMI_API_KEY 'not_configured', net als
-# bij NS_API_KEY.
+# fetch_knmi_warnings_job() draait elke 5 minuten (via de DVZ RSS-bridge, zie
+# bridge_weer.py); 90 minuten geeft ruim de tijd voordat 'verouderd' aanslaat.
 KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400
 # fetch_knmi_weather_job() draait elke 15 minuten; 45 minuten geeft ruimte
 # voor een paar gemiste cycli.
@@ -852,9 +851,9 @@ def api_road_situations():
 
 @app.route("/api/weather-warnings")
 def api_weather_warnings():
-    """Actuele KNMI-weerwaarschuwingen voor provincie Utrecht (zie
-    app/knmi_warnings.py). Leeg (niet een fout) als KNMI_API_KEY niet is
-    ingesteld: de collector slaat die bron dan stilzwijgend over."""
+    """Actuele KNMI-weerwaarschuwingen voor provincie Utrecht (sinds 2 okt 2026
+    via de DVZ RSS-bridge, zie app/bridge_weer.py). Leeg (niet een fout) als er
+    nog niets binnen is."""
     conn = db.get_conn()
     try:
         rows = conn.execute(
@@ -888,9 +887,9 @@ def api_weather_warnings():
 
 @app.route("/api/weather")
 def api_weather():
-    """Actuele weerwaarneming (De Bilt, provincie Utrecht) via KNMI (zie
-    app/knmi_weather.py). Leeg object (niet een fout) als KNMI_API_KEY niet
-    is ingesteld of er nog geen waarneming binnen is."""
+    """Actuele weerwaarneming (De Bilt, provincie Utrecht) van het KNMI, sinds
+    2 okt 2026 via de DVZ RSS-bridge (zie app/bridge_weer.py). Leeg object
+    (niet een fout) als er nog geen waarneming binnen is."""
     conn = db.get_conn()
     try:
         row = conn.execute("SELECT * FROM knmi_weather WHERE id = 1").fetchone()
@@ -917,8 +916,8 @@ def api_weather():
 @app.route("/api/air-quality")
 def api_air_quality():
     """Actuele luchtkwaliteit (Utrecht-Griftpark) via het RIVM Luchtmeetnet
-    (zie app/luchtkwaliteit.py). Leeg object (niet een fout) als er nog geen
-    meting binnen is. Geen key-check nodig, publieke bron."""
+    (sinds 2 okt 2026 via de DVZ RSS-bridge, zie app/bridge_weer.py). Leeg
+    object (niet een fout) als er nog geen meting binnen is."""
     conn = db.get_conn()
     try:
         row = conn.execute("SELECT * FROM air_quality WHERE id = 1").fetchone()

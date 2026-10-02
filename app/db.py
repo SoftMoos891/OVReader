@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS ns_fetch_status (
 );
 
 -- Actuele wegsituaties (NDW open data -- RWS-snelwegen, provinciale en
--- lokale wegen) binnen de provincie Utrecht -- zie app/road_situations.py.
+-- lokale wegen) binnen de provincie Utrecht -- via de DVZ RSS-bridge, zie app/bridge_wegen.py.
 -- Zelfde active-boekhouding als rail_alerts.
 CREATE TABLE IF NOT EXISTS road_situations (
     situation_id TEXT PRIMARY KEY,
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS road_fetch_status (
     last_error TEXT
 );
 
--- Weerwaarschuwingen (KNMI) voor provincie Utrecht -- zie app/knmi_warnings.py.
+-- Weerwaarschuwingen (KNMI) voor provincie Utrecht -- via de DVZ RSS-bridge, zie app/bridge_weer.py.
 -- In tegenstelling tot rail_alerts/road_situations geen active-boekhouding
 -- met eigen id's: dit is een compacte huidige-status-snapshot (max 7 rijen,
 -- één per fenomeen), die de collector bij elke fetch volledig vervangt
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS knmi_fetch_status (
     last_error TEXT
 );
 
--- Actueel weer (De Bilt) -- zie app/knmi_weather.py. Zelfde opzet als
+-- Actueel weer (De Bilt) -- via de DVZ RSS-bridge, zie app/bridge_weer.py. Zelfde opzet als
 -- knmi_warnings: één rij, volledig vervangen bij elke fetch, geen log.
 CREATE TABLE IF NOT EXISTS knmi_weather (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -215,7 +215,7 @@ CREATE TABLE IF NOT EXISTS knmi_weather_fetch_status (
 );
 
 -- Actuele luchtkwaliteit (Utrecht-Griftpark, RIVM Luchtmeetnet) -- zie
--- app/luchtkwaliteit.py. Zelfde opzet als knmi_weather: één rij, volledig
+-- de DVZ RSS-bridge (app/bridge_weer.py). Zelfde opzet als knmi_weather: één rij, volledig
 -- vervangen bij elke fetch, geen log. concentrations is een JSON-blob
 -- (variabele set stoffen per station, alleen voor weergave, niet bevraagd).
 CREATE TABLE IF NOT EXISTS air_quality (

@@ -2,58 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.knmi_warnings import format_active_from, parse_utrecht_warnings
+from app.knmi_warnings import format_active_from
 
-
-def _make_root(ts_id, phen_id, location_id, color):
-    from xml.etree import ElementTree as ET
-
-    root = ET.Element("product")
-    timeslice = ET.SubElement(root, "timeslice")
-    ET.SubElement(timeslice, "timeslice_id").text = ts_id
-    phenomenon = ET.SubElement(timeslice, "phenomenon")
-    ET.SubElement(phenomenon, "phenomenon_id").text = phen_id
-    location = ET.SubElement(phenomenon, "location")
-    ET.SubElement(location, "location_id").text = location_id
-    ET.SubElement(location, "color_id").text = color
-    text = ET.SubElement(location, "text")
-    ET.SubElement(text, "text_header").text = "Test header"
-    ET.SubElement(text, "text_data").text = "Test omschrijving."
-    return root
-
-
-def test_is_current_false_for_warning_that_only_starts_tomorrow():
-    tomorrow_9am = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
-        hour=9, minute=0, second=0, microsecond=0
-    ).isoformat()
-    root = _make_root(tomorrow_9am, "TX", "UT", "YELLOW")
-
-    results = parse_utrecht_warnings(root)
-
-    assert len(results) == 1
-    assert results[0]["is_current"] is False
-    assert results[0]["active_from"] == tomorrow_9am
-
-
-def test_is_current_true_for_warning_active_in_the_current_hour():
-    # timeslices dekken een heel uur -- het blokje dat 20 minuten geleden
-    # begon loopt nog, dus de waarschuwing is nu actief ondanks dat
-    # ts_time zelf in het verleden ligt.
-    current_hour_start = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
-    root = _make_root(current_hour_start, "TX", "UT", "YELLOW")
-
-    results = parse_utrecht_warnings(root)
-
-    assert results[0]["is_current"] is True
-
-
-def test_warning_fully_in_the_past_is_dropped_entirely():
-    two_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
-    root = _make_root(two_hours_ago, "TX", "UT", "YELLOW")
-
-    results = parse_utrecht_warnings(root)
-
-    assert results == []
+# De tests van het lezen van de waarschuwingen staan sinds 2 okt 2026 in de bridge
+# (rssbridge/tests/test_knmi_ophalen.py).
 
 
 def test_format_active_from_today_tomorrow_and_later():

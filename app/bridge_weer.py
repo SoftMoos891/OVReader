@@ -4,8 +4,9 @@ Sinds 2 okt 2026 haalt de bridge van de DVZ Reader (dvz-rss-server.js, poort
 3001, module knmi.js) het KNMI en RIVM Luchtmeetnet op, en deze collector vraagt
 het daar op in plaats van zelf. Zo gebruikt nog maar één partij de KNMI-sleutel
 (de limiet werd gedeeld; op 3 aug 2026 knapte die af na een reeks herstarts).
-knmi_warnings.py, knmi_weather.py en luchtkwaliteit.py hielden de oude eigen
-ophaalcode; de collector gebruikt daarvan alleen nog format_active_from.
+De oude eigen ophaalcode (knmi_weather.py, luchtkwaliteit.py en het leesdeel van
+knmi_warnings.py) is op 2 okt 2026 verwijderd; de tests ervan staan nu in de
+bridge (rssbridge/tests).
 
 Het endpoint /v1/knmi-ruw is alleen intern (de bridge weigert alles wat via
 nginx binnenkomt) en geeft de velden in dezelfde vorm als de oude functies

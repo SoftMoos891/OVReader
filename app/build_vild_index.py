@@ -1,5 +1,9 @@
 """Bouwt een compacte opzoektabel van AlertC-locatiecodes naar wegnummer en
-plaatsnaam, voor de wegsituatie-meldingen (zie app/road_situations.py).
+plaatsnaam, voor de wegsituatie-meldingen.
+
+Sinds 2 okt 2026 maakt de DVZ RSS-bridge de wegsituaties; die leest dit bestand
+uit rssbridge/wegdata/vild_locations.json. Na een nieuwe build dus daarheen
+kopiëren (als dvz100), anders verandert er niets.
 
 De NDW-wegsituatiefeed benoemt locaties niet met een leesbare wegnaam, maar
 met een AlertC-locatiecode (<specificLocation>) die verwijst naar de VILD-
@@ -9,8 +13,8 @@ daar de vier relevante velden uit en schrijft ze weg als een compacte JSON
 van ~470 KB.
 
 Draai dit eenmalig (en opnieuw zodra NDW een nieuwe VILD-versie uitbrengt,
-zie VILD_TABLE_VERSION hieronder -- road_situations.py waarschuwt in het
-collector-log zodra de feed naar een andere versie verwijst dan deze).
+zie VILD_TABLE_VERSION hieronder -- de parser in de bridge waarschuwt in het
+log van dvz-rssbridge zodra de feed naar een andere versie verwijst dan deze).
 
 Zonder dit bestand blijft alles gewoon werken: de wegsituatie-meldingen
 tonen dan alleen geen wegnummer, precies zoals voorheen.

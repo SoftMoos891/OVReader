@@ -925,8 +925,8 @@ def fetch_road_situations_job():
                 )
                 # De oorzaak van de RWS-verkeerscentrale komt vaak een paar
                 # minuten na het (automatisch gedetecteerde) ongeval binnen en
-                # verandert dan het label (zie _borrow_cause in
-                # road_situations.py): titel en tekst bijwerken, pub_date laten.
+                # verandert dan het label (de bridge leent die oorzaak, zie
+                # wegsituaties_ophalen.py daar): titel en tekst bijwerken, pub_date laten.
                 conn.execute(
                     """UPDATE rss_feed_items SET title=:title, description=:description
                        WHERE guid=:guid AND resolved_at IS NULL
@@ -983,7 +983,7 @@ def fetch_road_situations_job():
 
 def fetch_knmi_warnings_job():
     """Haalt de actuele KNMI-weerwaarschuwingen op voor provincie Utrecht
-    (zie knmi_warnings.py) en vervangt de knmi_warnings-tabel volledig --
+    (via de DVZ RSS-bridge, zie bridge_weer.py) en vervangt de knmi_warnings-tabel volledig --
     dit is een huidige-status-snapshot (max 7 fenomenen), geen groeiende
     log zoals rail_alerts/road_situations, dus geen active/inactive-
     boekhouding nodig: gewoon DELETE + INSERT. Code geel/oranje/rood komt
@@ -1124,7 +1124,7 @@ def fetch_knmi_warnings_job():
 
 def fetch_knmi_weather_job():
     """Haalt de actuele weerwaarneming op voor De Bilt (provincie Utrecht,
-    zie knmi_weather.py) en vervangt de knmi_weather-tabel volledig (één
+    via de DVZ RSS-bridge) en vervangt de knmi_weather-tabel volledig (één
     rij, zelfde opzet als knmi_warnings). Sinds 2 okt 2026 via de DVZ
     RSS-bridge (zie bridge_weer.py), die het KNMI elke 10 minuten ophaalt;
     hier elke 5 minuten vragen houdt de vertraging klein."""
@@ -1169,7 +1169,7 @@ def fetch_knmi_weather_job():
 
 def fetch_air_quality_job():
     """Haalt de actuele luchtkwaliteit op (Utrecht-Griftpark, zie
-    luchtkwaliteit.py) en vervangt de air_quality-tabel volledig (één rij,
+    via de DVZ RSS-bridge) en vervangt de air_quality-tabel volledig (één rij,
     zelfde opzet als knmi_weather). Sinds 2 okt 2026 via de DVZ RSS-bridge
     (zie bridge_weer.py), die RIVM Luchtmeetnet elke 30 minuten ophaalt; RIVM
     levert zelf eens per uur een nieuwe waarde."""
