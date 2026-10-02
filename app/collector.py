@@ -15,9 +15,9 @@ from .gtfs_rt import (
     parse_trip_delays, parse_cancellations, fetch_alerts,
     count_unresolved_cancellations_by_prefix,
 )
-from .knmi_warnings import fetch_utrecht_warnings, format_active_from
-from .knmi_weather import fetch_de_bilt_weather
-from .luchtkwaliteit import fetch_air_quality
+from .knmi_warnings import format_active_from
+# Sinds 2 okt 2026 via de DVZ RSS-bridge i.p.v. zelf bij KNMI/Luchtmeetnet, zie bridge_weer.py.
+from .bridge_weer import fetch_air_quality, fetch_de_bilt_weather, fetch_utrecht_warnings
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
 from .road_situations import (
     NEGLIGIBLE_SEVERITY,
@@ -987,20 +987,14 @@ def fetch_knmi_warnings_job():
     daarnaast ook in de RSS-feed terecht (rss_feed_items, kind='knmi_warning'),
     zie de logica hieronder vóór de DELETE.
 
-    Het bronbestand is ~2-3 MB en verandert maar een paar keer per dag, dus
-    inhoudelijk is elke 10 minuten ruim vaak genoeg -- die cadans staat vooral
-    om de "is begonnen"-melding (zie hieronder) niet te lang te laten hangen
-    na de daadwerkelijke ingangstijd van een waarschuwing.
-
-    Zonder KNMI_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen
-    -- de rest van de app blijft gewoon werken."""
-    api_key = os.environ.get("KNMI_API_KEY")
-    if not api_key:
-        return
+    Sinds 2 okt 2026 komen de waarschuwingen van de DVZ RSS-bridge (zie
+    bridge_weer.py), die het KNMI elke 10 minuten ophaalt; geen KNMI_API_KEY
+    meer nodig. Elke 5 minuten vragen is lokaal en kost het KNMI niets, en
+    houdt de "is begonnen"-melding (zie hieronder) dicht op de ingangstijd."""
     fetched_at = _now()
     conn = db.get_conn()
     try:
-        warnings = fetch_utrecht_warnings(api_key)
+        warnings = fetch_utrecht_warnings()
 
         # Vorige snapshot (vóór de DELETE hieronder) bewaren om een 0->1-
         # overgang in is_current te kunnen zien: een waarschuwing die bij de
@@ -1128,20 +1122,13 @@ def fetch_knmi_warnings_job():
 def fetch_knmi_weather_job():
     """Haalt de actuele weerwaarneming op voor De Bilt (provincie Utrecht,
     zie knmi_weather.py) en vervangt de knmi_weather-tabel volledig (één
-    rij, zelfde opzet als knmi_warnings). Het bronbestand is klein
-    (~150-200 KB) en verschijnt elke 10 minuten, maar elke 15 minuten
-    ophalen is voor een dashboard ruim actueel genoeg en scheelt onnodige
-    downloads t.o.v. elke keer pollen op de bron-cadans.
-
-    Zonder KNMI_API_KEY (env var) wordt deze bron stilzwijgend overgeslagen
-    -- de rest van de app blijft gewoon werken."""
-    api_key = os.environ.get("KNMI_API_KEY")
-    if not api_key:
-        return
+    rij, zelfde opzet als knmi_warnings). Sinds 2 okt 2026 via de DVZ
+    RSS-bridge (zie bridge_weer.py), die het KNMI elke 10 minuten ophaalt;
+    hier elke 5 minuten vragen houdt de vertraging klein."""
     fetched_at = _now()
     conn = db.get_conn()
     try:
-        w = fetch_de_bilt_weather(api_key)
+        w = fetch_de_bilt_weather()
         conn.execute(
             """INSERT INTO knmi_weather
                (id, station, observed_at, temperature, dew_point, humidity,
@@ -1180,9 +1167,9 @@ def fetch_knmi_weather_job():
 def fetch_air_quality_job():
     """Haalt de actuele luchtkwaliteit op (Utrecht-Griftpark, zie
     luchtkwaliteit.py) en vervangt de air_quality-tabel volledig (één rij,
-    zelfde opzet als knmi_weather). Publieke, sleutelloze RIVM-bron -- geen
-    API-key-check nodig. RIVM levert zelf maar eens per uur een nieuwe
-    waarde; elke 30 minuten pollen is ruim actueel genoeg."""
+    zelfde opzet als knmi_weather). Sinds 2 okt 2026 via de DVZ RSS-bridge
+    (zie bridge_weer.py), die RIVM Luchtmeetnet elke 30 minuten ophaalt; RIVM
+    levert zelf eens per uur een nieuwe waarde."""
     fetched_at = _now()
     conn = db.get_conn()
     try:
@@ -1321,9 +1308,10 @@ def start_scheduler():
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
     scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
     scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
-    scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=10, id="knmi_warnings", max_instances=1)
-    scheduler.add_job(fetch_knmi_weather_job, "interval", minutes=15, id="knmi_weather", max_instances=1)
-    scheduler.add_job(fetch_air_quality_job, "interval", minutes=30, id="air_quality", max_instances=1)
+    # Weer, waarschuwingen en luchtkwaliteit komen sinds 2 okt 2026 lokaal van de DVZ RSS-bridge.
+    scheduler.add_job(fetch_knmi_warnings_job, "interval", minutes=5, id="knmi_warnings", max_instances=1)
+    scheduler.add_job(fetch_knmi_weather_job, "interval", minutes=5, id="knmi_weather", max_instances=1)
+    scheduler.add_job(fetch_air_quality_job, "interval", minutes=10, id="air_quality", max_instances=1)
     scheduler.start()
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten.
     collect_once()
