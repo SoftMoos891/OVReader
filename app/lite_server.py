@@ -735,8 +735,10 @@ def lite_rss_uitval():
     # (nu: KNMI-weerwaarschuwingen, zie collector.py) -- zo kan een RSS-lezer
     # die kleur tonen zonder de titel te moeten parsen, en blijft dit veld
     # afwezig (i.p.v. leeg) voor soorten zonder kleur.
+    # Wegsituaties (sinds 29 sep 2026) en KNMI-weerwaarschuwingen (sinds 2 okt 2026)
+    # openen op reader.dvznet.nl/verkeer in een pop-up; de rest blijft naar OV Lite gaan.
     def item_link(r):
-        if r["kind"] == "road_situation":
+        if r["kind"] in ("road_situation", "knmi_warning"):
             return f"{VERKEER_URL}#melding={url_quote(r['guid'], safe='')}"
         return f"{LITE_BASE_URL}#{url_quote(r['guid'], safe='')}"
 

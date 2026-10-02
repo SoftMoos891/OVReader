@@ -205,7 +205,8 @@ def test_melding_onbekend_geeft_404(lite_client, temp_db):
 
 def test_rss_wegsituatie_linkt_naar_verkeerspagina_rest_naar_lite(lite_client, temp_db):
     """Sinds 29 sep 2026: wegsituaties openen op reader.dvznet.nl/verkeer in een
-    pop-up; U-OV-, NS-, uitval- en KNMI-meldingen blijven naar OV Lite gaan."""
+    pop-up; U-OV-, NS- en uitvalmeldingen blijven naar OV Lite gaan (KNMI sinds 2 okt ook naar
+    /verkeer, zie hieronder)."""
     _wegsituatie(temp_db, "NDW01_c")
     conn = temp_db.get_conn()
     conn.execute(
@@ -217,3 +218,22 @@ def test_rss_wegsituatie_linkt_naar_verkeerspagina_rest_naar_lite(lite_client, t
     xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
     assert "<link>https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_c</link>" in xml
     assert "<link>https://ovreader.dvznet.nl/lite#bus-alert-KV15%3AKEOLIS%3A1</link>" in xml
+
+
+def test_rss_knmi_waarschuwing_linkt_naar_verkeerspagina(lite_client, temp_db):
+    """Sinds 2 okt 2026 openen ook KNMI-weerwaarschuwingen op reader.dvznet.nl/verkeer."""
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at, category)
+           VALUES ('knmi-warning-VV-YELLOW', 'knmi_warning', 'Weerwaarschuwing: code geel (Mist)', 'x', 900, 900, 'geel')"""
+    )
+    conn.execute(
+        """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at)
+           VALUES ('rail-alert-1', 'rail_alert', 'NS-storing: x', 'x', 800, 800)"""
+    )
+    conn.commit()
+    conn.close()
+    xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
+    assert "<link>https://reader.dvznet.nl/verkeer#melding=knmi-warning-VV-YELLOW</link>" in xml
+    assert "<category>geel</category>" in xml
+    assert "<link>https://ovreader.dvznet.nl/lite#rail-alert-1</link>" in xml
