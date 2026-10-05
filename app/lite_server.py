@@ -23,7 +23,7 @@ from urllib.parse import quote as url_quote
 from xml.sax.saxutils import escape as xml_escape
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request
 
 from . import db
 from .collector import FETCH_INTERVAL_SECONDS
@@ -42,9 +42,9 @@ CHART_DAYS = 30
 # hieronder een melding opneemt.
 CANCELLATION_ALERT_THRESHOLD_PCT = 6.0
 LITE_BASE_URL = "https://ovreader.dvznet.nl/lite"
-# Wegsituaties in de RSS-feed linken sinds 29 sep 2026 naar de verkeerspagina
-# van de DVZ Reader, die ze in een pop-up met kaart toont (ook als ze al voorbij
-# zijn, via /lite/api/melding). Alle andere soorten blijven naar LITE_BASE_URL gaan.
+# RSS-links gaan naar de verkeerspagina van de DVZ Reader, die de melding in een
+# pop-up toont (ook als hij al voorbij is, via /lite/api/melding): wegsituaties sinds
+# 29 sep 2026, alle soorten sinds 5 okt 2026 (OV Lite is daar in opgegaan).
 VERKEER_URL = "https://reader.dvznet.nl/verkeer"
 
 # Zelfde definitie als app/server.py's /api/health.
@@ -131,14 +131,19 @@ def _versies():
     return {"css_versie": _static_versie("css/theme.css")}
 
 
+# Sinds 5 okt 2026 (DVZ Reader v2.67) is OV Lite opgegaan in reader.dvznet.nl/verkeer. De
+# pagina's sturen daarheen door; de API (/lite/api/*) en de feed (/lite/rss.xml) blijven, de
+# bridge en /verkeer halen daar hun gegevens. Een oude link /lite#<guid> houdt zijn hash bij
+# de doorverwijzing (geen fragment in Location), en /verkeer opent dan de pop-up.
+# 302 i.p.v. 301: browsers onthouden een 301 voorgoed, dit blijft zo terug te draaien.
 @app.route("/lite")
 def lite_index():
-    return render_template("lite.html")
+    return redirect(VERKEER_URL, code=302)
 
 
 @app.route("/lite/geschiedenis")
 def lite_geschiedenis():
-    return render_template("lite_geschiedenis.html", limit=HISTORY_ITEM_LIMIT)
+    return redirect(VERKEER_URL + "#eerder", code=302)
 
 
 # Mensleesbare labels voor rss_feed_items.kind (zie collector.py:
@@ -705,9 +710,8 @@ RSS_FEED_TITLE = "OV Utrecht - Storingen en uitval-signalering"
 # openen op reader.dvznet.nl/verkeer in een pop-up; de rest gaat naar OV Lite.
 # Gedeeld door /lite/rss.xml en /lite/api/feed-items.
 def _rss_item_link(r):
-    if r["kind"] in ("road_situation", "knmi_warning"):
-        return f"{VERKEER_URL}#melding={url_quote(r['guid'], safe='')}"
-    return f"{LITE_BASE_URL}#{url_quote(r['guid'], safe='')}"
+    # Sinds 5 okt 2026 (v2.67) gaan alle soorten naar de pop-up op /verkeer.
+    return f"{VERKEER_URL}#melding={url_quote(r['guid'], safe='')}"
 
 
 def _rss_rows():
@@ -789,7 +793,7 @@ def lite_rss_uitval():
 <rss version="2.0">
   <channel>
     <title>{xml_escape(RSS_FEED_TITLE)}</title>
-    <link>{xml_escape(LITE_BASE_URL)}</link>
+    <link>{xml_escape(VERKEER_URL)}</link>
     <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, bij nieuwe NS-storingen op het spoor in de provincie Utrecht, bij ernstige U-OV-meldingen (bus/tram), bij urgente wegsituaties, en bij KNMI-weerwaarschuwingen (code geel/oranje/rood) voor de provincie Utrecht.</description>
     <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}
   </channel>
