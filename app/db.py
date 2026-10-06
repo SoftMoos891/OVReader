@@ -1,5 +1,6 @@
 """SQLite opslag voor realtime busdata van de provincie Utrecht."""
 import sqlite3
+import time
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "bus_monitor.db"
@@ -54,7 +55,11 @@ CREATE TABLE IF NOT EXISTS trip_delays (
 -- keer de tabel raadplegen voor de niet-geindexeerde kolommen -- bij
 -- miljoenen rijen trip_delays was dat het verschil tussen >20s en <2s voor
 -- bijvoorbeeld /api/stats.
-CREATE INDEX IF NOT EXISTS idx_td_route_covering ON trip_delays(route_id, arrival_delay, departure_delay);
+-- idx_td_route_covering (route_id, arrival_delay, departure_delay) is sinds 6 okt 2026
+-- weg: alleen /api/stats zonder periode gebruikte hem (hele tabel per lijn), en dat
+-- endpoint leest nu alleen ruwe rijen vanaf de rollup-watermark via de fetched_at-index.
+-- Elke nieuwe rij kwam in die index op een willekeurige plek, wat het grootste deel van
+-- het schrijfvolume van de collector veroorzaakte (~250 GB/dag). Zie _migrate().
 CREATE INDEX IF NOT EXISTS idx_td_fetched_route_covering ON trip_delays(fetched_at, route_id, arrival_delay, departure_delay);
 CREATE INDEX IF NOT EXISTS idx_td_trip_id ON trip_delays(trip_id, fetched_at);
 
@@ -405,6 +410,9 @@ CREATE INDEX IF NOT EXISTS idx_schedule_gap_date ON schedule_gap_daily(service_d
 def get_conn():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
+    # In WAL-modus veilig (de database raakt nooit beschadigd); alleen bij stroomuitval kan
+    # de laatste commit verloren gaan. Scheelt een fsync per commit (6 okt 2026).
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -487,6 +495,16 @@ def _migrate(conn):
     # meegesleept bij elke INSERT/DELETE op trip_delays.
     conn.execute("DROP INDEX IF EXISTS idx_td_fetched_at")
     conn.execute("DROP INDEX IF EXISTS idx_td_route")
+    # idx_td_route_covering (zie SCHEMA) is overbodig geworden. Weggooien houdt de
+    # schrijflock vast zolang SQLite de ~1 GB aan indexpagina's vrijgeeft, dus alleen
+    # 's nachts (02:00-05:00): dan valt het op de nachtelijke herbouw-herstart (~03:15),
+    # als er geen bussen rijden. Overdag blijft hij nog even staan (niemand gebruikt hem).
+    if _nachtvenster():
+        conn.execute("DROP INDEX IF EXISTS idx_td_route_covering")
+
+
+def _nachtvenster():
+    return 2 <= time.localtime().tm_hour < 5
 
 
 def init_db():

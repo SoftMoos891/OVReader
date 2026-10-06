@@ -960,13 +960,21 @@ def _compute_stats(range_key):
 
     conn = db.get_conn()
     try:
+        # Ruwe rijen alleen vanaf de rollup-watermark: alles daarvoor staat al opgeteld in
+        # route_stats_daily (collector.rollup_completed_days), maar blijft nog
+        # DELAY_RETENTION_DAYS als ruwe rij bestaan. Tot 6 okt 2026 telde dit endpoint beide,
+        # dus de laatste ~2 dagen dubbel (~1,8% van de samples), en scande het daarvoor de
+        # hele tabel (32 s). De trend-endpoints splitsten al zo (raw_since_ts). Zonder
+        # watermark-rij (verse database) alles ruw, zoals voorheen.
+        wm_row = conn.execute("SELECT rolled_through_epoch FROM rollup_watermark WHERE id = 1").fetchone()
+        raw_vanaf = wm_row["rolled_through_epoch"] if wm_row else 0
         raw_sql = """
             SELECT route_id,
                    COUNT(*) AS sample_count,
                    SUM(CASE WHEN COALESCE(arrival_delay, departure_delay, 0) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS on_time_count,
                    AVG(COALESCE(arrival_delay, departure_delay, 0)) AS avg_delay_seconds,
                    MAX(COALESCE(arrival_delay, departure_delay, 0)) AS max_delay_seconds
-            FROM trip_delays
+            FROM trip_delays INDEXED BY idx_td_fetched_route_covering
             {where}
             GROUP BY route_id
         """
@@ -983,14 +991,14 @@ def _compute_stats(range_key):
         if range_key:
             raw = conn.execute(
                 raw_sql.format(where="WHERE fetched_at >= ? AND fetched_at <= ?"),
-                (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since_ts, until_ts),
+                (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, max(since_ts, raw_vanaf), until_ts),
             ).fetchall()
             rolled = conn.execute(
                 rolled_sql.format(where="WHERE day >= ? AND day <= ?"), (since_date, until_date)
             ).fetchall()
         else:
             raw = conn.execute(
-                raw_sql.format(where=""), (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY)
+                raw_sql.format(where="WHERE fetched_at >= ?"), (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, raw_vanaf)
             ).fetchall()
             rolled = conn.execute(rolled_sql.format(where="")).fetchall()
     finally:

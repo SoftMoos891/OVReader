@@ -50,3 +50,45 @@ def test_stats_aggregates_per_operator(client, temp_db):
     operator = next(o for o in data["per_operator"] if o["operator"] == route["operator"])
 
     assert operator["sample_count"] >= route["sample_count"]
+
+
+def test_stats_telt_opgerolde_dagen_niet_dubbel(client, temp_db):
+    """6 okt 2026: ruwe rijen van een dag die al in route_stats_daily staat (vóór de
+    rollup-watermark) tellen niet nog eens mee; alleen ruwe rijen vanaf de watermark."""
+    import datetime
+    vandaag = int(datetime.datetime.combine(datetime.date.today(), datetime.time.min).timestamp())
+    gisteren = vandaag - 86400
+    conn = temp_db.get_conn()
+    for i in range(3):   # gisteren, al opgerold
+        _insert_delay(conn, gisteren + 3600 + i, f"g{i}", "TESTROUTE", 0)
+    for i in range(2):   # vandaag, nog ruw
+        _insert_delay(conn, vandaag + 60 + i, f"v{i}", "TESTROUTE", 0)
+    conn.execute(
+        "INSERT INTO route_stats_daily (day, route_id, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds) "
+        "VALUES (?, 'TESTROUTE', 3, 3, 0, 0)",
+        (time.strftime("%Y-%m-%d", time.localtime(gisteren)),),
+    )
+    conn.execute("INSERT INTO rollup_watermark (id, rolled_through_epoch) VALUES (1, ?)", (vandaag,))
+    conn.commit()
+    conn.close()
+
+    data = client.get("/api/stats").get_json()
+    route = next(r for r in data["per_route"] if r["route_id"] == "TESTROUTE")
+    assert route["sample_count"] == 5, route   # 3 opgerold + 2 ruw, niet 3 + 5
+
+
+def test_route_covering_index_alleen_s_nachts_weg(temp_db, monkeypatch):
+    """De dure index staat niet meer in het schema en verdwijnt alleen in het nachtvenster."""
+    from app import db
+    assert "CREATE INDEX IF NOT EXISTS idx_td_route_covering" not in db.SCHEMA
+    conn = db.get_conn()
+    conn.execute("CREATE INDEX idx_td_route_covering ON trip_delays(route_id, arrival_delay, departure_delay)")
+    namen = lambda: {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    monkeypatch.setattr(db, "_nachtvenster", lambda: False)
+    db._migrate(conn)
+    assert "idx_td_route_covering" in namen(), "overdag niet weggooien"
+    monkeypatch.setattr(db, "_nachtvenster", lambda: True)
+    db._migrate(conn)
+    assert "idx_td_route_covering" not in namen()
+    assert conn.execute("PRAGMA synchronous").fetchone()[0] == 1   # NORMAL
+    conn.close()
