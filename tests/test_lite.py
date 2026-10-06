@@ -11,9 +11,15 @@ def lite_client(temp_db):
     return lite_server.app.test_client()
 
 
-def test_lite_page_returns_200(lite_client):
+def test_lite_stuurt_door_naar_verkeerspagina(lite_client):
+    """Sinds 5 okt 2026 (v2.67) is OV Lite opgegaan in reader.dvznet.nl/verkeer: de pagina's
+    sturen door (302, bewust nog terug te draaien); de API en de RSS-feed blijven werken."""
     res = lite_client.get("/lite")
-    assert res.status_code == 200
+    assert res.status_code == 302
+    assert res.headers["Location"] == "https://reader.dvznet.nl/verkeer"
+    res = lite_client.get("/lite/geschiedenis")
+    assert res.status_code == 302
+    assert res.headers["Location"] == "https://reader.dvznet.nl/verkeer#eerder"
 
 
 def test_lite_alerts_returns_active_alerts_with_route_meta(lite_client, temp_db, monkeypatch):
@@ -203,10 +209,9 @@ def test_melding_onbekend_geeft_404(lite_client, temp_db):
     assert lite_client.get("/lite/api/melding?guid=bus-alert-bestaat-niet").status_code == 404
 
 
-def test_rss_wegsituatie_linkt_naar_verkeerspagina_rest_naar_lite(lite_client, temp_db):
-    """Sinds 29 sep 2026: wegsituaties openen op reader.dvznet.nl/verkeer in een
-    pop-up; U-OV-, NS- en uitvalmeldingen blijven naar OV Lite gaan (KNMI sinds 2 okt ook naar
-    /verkeer, zie hieronder)."""
+def test_rss_wegsituatie_en_bus_linken_naar_verkeerspagina(lite_client, temp_db):
+    """Sinds 29 sep 2026 openen wegsituaties op reader.dvznet.nl/verkeer in een pop-up,
+    sinds 5 okt 2026 (OV Lite opgegaan in /verkeer) ook U-OV-, NS- en uitvalmeldingen."""
     _wegsituatie(temp_db, "NDW01_c")
     conn = temp_db.get_conn()
     conn.execute(
@@ -217,7 +222,8 @@ def test_rss_wegsituatie_linkt_naar_verkeerspagina_rest_naar_lite(lite_client, t
     conn.close()
     xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
     assert "<link>https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_c</link>" in xml
-    assert "<link>https://ovreader.dvznet.nl/lite#bus-alert-KV15%3AKEOLIS%3A1</link>" in xml
+    assert "<link>https://reader.dvznet.nl/verkeer#melding=bus-alert-KV15%3AKEOLIS%3A1</link>" in xml
+    assert "ovreader.dvznet.nl/lite" not in xml
 
 
 def test_rss_knmi_waarschuwing_linkt_naar_verkeerspagina(lite_client, temp_db):
@@ -236,7 +242,7 @@ def test_rss_knmi_waarschuwing_linkt_naar_verkeerspagina(lite_client, temp_db):
     xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
     assert "<link>https://reader.dvznet.nl/verkeer#melding=knmi-warning-VV-YELLOW</link>" in xml
     assert "<category>geel</category>" in xml
-    assert "<link>https://ovreader.dvznet.nl/lite#rail-alert-1</link>" in xml
+    assert "<link>https://reader.dvznet.nl/verkeer#melding=rail-alert-1</link>" in xml
 
 
 def test_feed_items_json_zelfde_als_rss_met_soort(lite_client, temp_db):
@@ -259,7 +265,7 @@ def test_feed_items_json_zelfde_als_rss_met_soort(lite_client, temp_db):
     per_guid = {i["guid"]: i for i in data["items"]}
     assert per_guid["knmi-warning-VV-YELLOW"]["kind"] == "knmi_warning"
     assert per_guid["knmi-warning-VV-YELLOW"]["category"] == "geel"
-    assert per_guid["bus-alert-KV15:QBUZZ:9"]["link"] == "https://ovreader.dvznet.nl/lite#bus-alert-KV15%3AQBUZZ%3A9"
+    assert per_guid["bus-alert-KV15:QBUZZ:9"]["link"] == "https://reader.dvznet.nl/verkeer#melding=bus-alert-KV15%3AQBUZZ%3A9"
     assert per_guid["road-situation-NDW01_j"]["link"] == "https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_j"
     xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
     assert all(f"<guid isPermaLink=\"false\">{g}</guid>" in xml for g in per_guid)
