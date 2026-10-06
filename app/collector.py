@@ -98,6 +98,16 @@ SEVERE_ALERT_CAUSES = {"ACCIDENT", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY", "DEMO
 # tests/test_severity_sync.py bewaakt dat de twee hetzelfde blijven.
 SEVERE_ALERT_MIN_STOPS = 6
 
+# Extra dienst (GTFS-RT effect ADDITIONAL_SERVICE) die MEER DAN 40 haltes raakt, telt
+# altijd als urgent, ook zonder trefwoord of ernstige oorzaak (Danny, 6 okt 2026, n.a.v.
+# "Houdt rekening met vertraging of uitval vanwege werkzaamheden Utrecht Centrum":
+# MAINTENANCE, 338 haltes). De oude blanket-regel (elke ADDITIONAL_SERVICE urgent) was te
+# breed -- meestal is het een routine "halte vervalt" -- maar bij deze omvang is het een
+# stadsbrede verstoring. Zulke meldingen gaan als category 'kritiek' de RSS-feed in, zodat
+# de DVZ Reader ze ook als kritiek (knipperende kaart + push) behandelt.
+# Zelfde getal als EXTRA_DIENST_KRITIEK_MIN_STOPS in static/js/severity.js.
+EXTRA_DIENST_KRITIEK_MIN_STOPS = 41
+
 
 def _bevat_trefwoord(text, kw):
     """Trefwoord aan het begin of het eind van een woord ("brandweer",
@@ -108,8 +118,16 @@ def _bevat_trefwoord(text, kw):
     return re.search(rf"(?<![^\W\d_]){kw}|{kw}(?![^\W\d_])", text) is not None
 
 
+def _is_extra_dienst_kritiek(effect, stop_count, valid_from=None, now=None):
+    """Extra dienst met meer dan 40 haltes (zie EXTRA_DIENST_KRITIEK_MIN_STOPS).
+    Een nog te beginnen melding telt (net als hieronder) niet."""
+    if valid_from and now and valid_from > now:
+        return False
+    return effect == "ADDITIONAL_SERVICE" and stop_count >= EXTRA_DIENST_KRITIEK_MIN_STOPS
+
+
 def _is_severe_alert(header, description, cause, valid_from=None, now=None,
-                     stop_count=0, route_count=0):
+                     stop_count=0, route_count=0, effect=None):
     """Nog te beginnen meldingen (valid_from ligt in de toekomst) tellen niet
     als ernstig/urgent, ook niet bij een woord als "stremming" in de tekst --
     dat is dan een aankondiging van gepland werk, geen actuele situatie.
@@ -120,6 +138,8 @@ def _is_severe_alert(header, description, cause, valid_from=None, now=None,
     Zelfde regel als severeAlertIsLargeEnough() in static/js/severity.js."""
     if valid_from and now and valid_from > now:
         return False
+    if _is_extra_dienst_kritiek(effect, stop_count):
+        return True
     if not route_count and stop_count < SEVERE_ALERT_MIN_STOPS:
         return False
     text = f"{header or ''} {description or ''}".lower()
@@ -292,21 +312,23 @@ def collect_once():
                 # (INSERT OR IGNORE op alert_id), blijft staan ook nadat de
                 # melding zelf weer inactief wordt.
                 if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at,
-                                    len(a["stop_ids"]), len(a["route_ids"])):
+                                    len(a["stop_ids"]), len(a["route_ids"]), a["effect"]):
                     title = f"Melding U-OV: {a['header'] or (a['description'] or '')[:80] or 'zie details'}"
                     description = f"{a['description'] or a['header'] or ''}".strip()
                     if a["stop_ids"]:
                         description += f" Aantal betrokken haltes: {len(a['stop_ids'])}."
                     description += " Klik hier voor meer data."
+                    kritiek = _is_extra_dienst_kritiek(a["effect"], len(a["stop_ids"]), a["valid_from"], fetched_at)
                     conn.execute(
                         """INSERT OR IGNORE INTO rss_feed_items
-                           (guid, kind, title, description, pub_date, created_at)
-                           VALUES (:guid, 'bus_alert', :title, :description, :now, :now)""",
+                           (guid, kind, title, description, pub_date, created_at, category)
+                           VALUES (:guid, 'bus_alert', :title, :description, :now, :now, :category)""",
                         {
                             "guid": f"bus-alert-{a['alert_id']}",
                             "title": title,
                             "description": description,
                             "now": fetched_at,
+                            "category": "kritiek" if kritiek else None,
                         },
                     )
             if seen_ids:

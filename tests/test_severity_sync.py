@@ -17,10 +17,12 @@ from pathlib import Path
 import pytest
 
 from app.collector import (
+    EXTRA_DIENST_KRITIEK_MIN_STOPS,
     SEVERE_ALERT_CAUSES,
     SEVERE_ALERT_KEYWORDS,
     SEVERE_ALERT_MIN_STOPS,
     _bevat_trefwoord,
+    _is_extra_dienst_kritiek,
     _is_severe_alert,
 )
 
@@ -177,3 +179,50 @@ def test_js_uses_the_same_word_boundary_rule(js_source):
     assert "function bevatTrefwoord(" in js_source
     assert "bevatTrefwoord(text, k)" in js_source
     assert "text.includes(k)" not in js_source
+
+
+# ── Extra dienst met meer dan 40 haltes (6 okt 2026) ─────────────────────────
+WERKZAAMHEDEN_CENTRUM = (
+    "Houdt rekening met vertraging of uitval vanwege werkzaamheden Utrecht Centrum. Plan je reis in de U-OV app. ",
+    "Oorzaak : Werkzaamheden \nEffect : Omleiding \nMaatregelen : Vervallen halte(n) \n"
+    "Houdt rekening met vertraging of uitval vanwege werkzaamheden Utrecht Centrum. Plan je reis in de U-OV app. \n",
+    "MAINTENANCE",
+)
+
+
+def test_extra_dienst_drempel_is_identiek(js_source):
+    assert EXTRA_DIENST_KRITIEK_MIN_STOPS == 41  # "meer dan 40 haltes"
+    assert _js_number(js_source, "EXTRA_DIENST_KRITIEK_MIN_STOPS") == EXTRA_DIENST_KRITIEK_MIN_STOPS
+
+
+def test_js_kent_de_extra_dienst_regel(js_source):
+    assert "a.effect === 'ADDITIONAL_SERVICE' && (a.stops || []).length >= EXTRA_DIENST_KRITIEK_MIN_STOPS" in js_source
+
+
+def test_werkzaamheden_centrum_is_urgent_en_kritiek():
+    """De aanleiding: MAINTENANCE, geen trefwoord, 338 haltes, geen lijnen."""
+    h, d, c = WERKZAAMHEDEN_CENTRUM
+    assert _is_severe_alert(h, d, c, stop_count=338, route_count=0, effect="ADDITIONAL_SERVICE")
+    assert _is_extra_dienst_kritiek("ADDITIONAL_SERVICE", 338)
+
+
+def test_extra_dienst_grens_ligt_boven_40():
+    h, d, c = WERKZAAMHEDEN_CENTRUM
+    assert not _is_severe_alert(h, d, c, stop_count=40, effect="ADDITIONAL_SERVICE")
+    assert not _is_extra_dienst_kritiek("ADDITIONAL_SERVICE", 40)
+    assert _is_severe_alert(h, d, c, stop_count=41, effect="ADDITIONAL_SERVICE")
+    assert _is_extra_dienst_kritiek("ADDITIONAL_SERVICE", 41)
+
+
+def test_ander_effect_met_veel_haltes_blijft_routine():
+    """Alleen extra dienst: een gewone omleiding (DETOUR) met 338 haltes zonder
+    trefwoord blijft routine (zie test_magnitude_alone_is_not_enough)."""
+    h, d, c = WERKZAAMHEDEN_CENTRUM
+    assert not _is_severe_alert(h, d, c, stop_count=338, effect="DETOUR")
+    assert not _is_extra_dienst_kritiek("DETOUR", 338)
+
+
+def test_extra_dienst_in_de_toekomst_telt_niet():
+    h, d, c = WERKZAAMHEDEN_CENTRUM
+    assert not _is_severe_alert(h, d, c, valid_from=2000, now=1000, stop_count=338, effect="ADDITIONAL_SERVICE")
+    assert not _is_extra_dienst_kritiek("ADDITIONAL_SERVICE", 338, valid_from=2000, now=1000)

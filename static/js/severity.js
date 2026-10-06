@@ -26,6 +26,8 @@
 // ADDITIONAL_SERVICE-melding gewoon een routine "halte vervalt i.v.m.
 // Werkzaamheden/Optocht" -- geen incident. De écht urgente gevallen (bv.
 // "i.v.m. een ongeval") worden al door de keywords hieronder gedekt.
+// Sinds 6 okt 2026 wél: een extra dienst die MEER DAN 40 haltes raakt (zie
+// EXTRA_DIENST_KRITIEK_MIN_STOPS hieronder).
 //
 // "stremming" is bewust geen keyword: de description van KV15-afkomstige
 // meldingen bevat standaard "Oorzaak : Stremming Effect : Omleiding
@@ -65,6 +67,13 @@ const SEVERE_CAUSE_LABELS = {
 // alleen "staat het woord er".
 const SEVERE_ALERT_MIN_STOPS = 6;
 
+// Extra dienst (ADDITIONAL_SERVICE) die meer dan 40 haltes raakt, is altijd urgent,
+// ook zonder trefwoord of ernstige oorzaak (Danny, 6 okt 2026: "werkzaamheden Utrecht
+// Centrum", 338 haltes). Bij die omvang is het een stadsbrede verstoring, geen routine
+// "halte vervalt". Zelfde getal als EXTRA_DIENST_KRITIEK_MIN_STOPS in app/collector.py;
+// in de RSS-feed krijgt zo'n melding category 'kritiek' (DVZ Reader: kritiek + push).
+const EXTRA_DIENST_KRITIEK_MIN_STOPS = 41;
+
 // Een melding die een hele lijn raakt (routes gevuld) telt sowieso als groot
 // genoeg: dan heeft de vervoerder de storing op lijnniveau aangemeld, wat
 // per definitie breder is dan een paar losse haltes.
@@ -93,6 +102,7 @@ function bevatTrefwoord(text, kw) {
 // situatie. Zelfde regel als _is_severe_alert() in app/collector.py.
 function severeAlertLabel(a) {
   if (a.valid_from && a.valid_from > Date.now() / 1000) return null;
+  if (a.effect === 'ADDITIONAL_SERVICE' && (a.stops || []).length >= EXTRA_DIENST_KRITIEK_MIN_STOPS) return 'Extra dienst';
   if (!severeAlertIsLargeEnough(a)) return null;
   const text = `${a.header || ''} ${a.description || ''}`.toLowerCase();
   const kw = SEVERE_ALERT_KEYWORDS.find(k => bevatTrefwoord(text, k));
