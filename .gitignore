@@ -15,6 +15,9 @@ data/utrecht_trip_meta.json
 data/utrecht_stop_times.json
 data/utrecht_shapes.json
 data/utrecht_realtime_trips.json
+data/utrecht_tram_stops.json
+# Los overblijfsel van een regiovergelijking (juli 2026), door geen enkele code gebruikt.
+data/regio_vergelijking_routes.json
 data/gtfs_feed_info.json
 data/vild_locations.json
 data/bus_types.json
