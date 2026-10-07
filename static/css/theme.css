@@ -102,6 +102,18 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   transition: filter .15s, box-shadow .15s;
 }
 .dvz-logo-badge:hover { filter: brightness(0.96); box-shadow: var(--shadow-md); }
+/* Label op het logo, net als READER/VERKEER/FOTOTOOL op reader.dvznet.nl
+   (7 okt 2026). De rand in de kleur van de kopbalk geeft hetzelfde
+   'uitgesneden' effect als daar op de donkere balk. */
+.dvz-logo-badge { position: relative; }
+.dvz-logo-badge::after {
+  content: 'OV';
+  position: absolute; bottom: -5px; right: -8px;
+  background: #cbd5e1; color: #0f172a;
+  font-family: 'Inter', sans-serif; font-size: 7px; font-weight: 800; letter-spacing: 0.03em;
+  padding: 1.5px 4px; border-radius: 6px; border: 1.5px solid var(--panel, #ffffff);
+  line-height: 1.3; pointer-events: none;
+}
 
 /* Officiële lijnkleur (GTFS route_color) als badge om het lijnnummer in
    tabellen -- los van de vertragingskleur op de kaart, die functioneel
