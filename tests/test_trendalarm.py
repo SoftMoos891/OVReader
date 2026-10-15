@@ -55,3 +55,15 @@ def test_api(temp_db, monkeypatch):
     lite_server.app.testing = True
     d = lite_server.app.test_client().get("/lite/api/trendalarm").get_json()
     assert [l["route_id"] for l in d["lijnen"]] == ["R1"] and d["lijnen"][0]["redenen"] == ["uitval"]
+
+
+def test_netwerkbrede_rare_dag_telt_nergens_mee(temp_db):
+    # Alle lijnen op dezelfde dag massaal "uitgevallen": een datahapering, geen nieuws.
+    conn = temp_db.get_conn()
+    for n in range(1, 36):
+        dag = VANDAAG - timedelta(days=n)
+        for r in ("R1", "R2", "R3"):
+            _vul(conn, r, dag, 40, 30 if n == 2 else 1)
+    conn.commit()
+    d = ta.trendalarm(conn, VANDAAG)
+    assert d["uitgesloten_dagen"] == [(VANDAAG - timedelta(days=2)).isoformat()] and d["lijnen"] == []

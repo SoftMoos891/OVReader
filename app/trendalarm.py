@@ -24,6 +24,8 @@ STIPT_MIN_DALING = 10.0
 STIPT_MIN_METINGEN_WEEK = 1000
 STIPT_MIN_METINGEN_BASIS = 3000
 MIN_SLECHTE_DAGEN = 3
+RARE_DAG_MIN_PCT = 20.0
+RARE_DAG_FACTOR = 4.0
 DAG_MIN_UITVAL = 3
 DAG_MIN_METINGEN = 150
 
@@ -70,11 +72,32 @@ def _stiptheid(conn, van, tot, is_lijn):
             for k, x in uit.items()}
 
 
+def rare_dagen(*per_route):
+    """Dagen waarop het hele netwerk ineens extreem veel uitval had (> RARE_DAG_MIN_PCT procent én
+    RARE_DAG_FACTOR keer de mediaan): vrijwel altijd een hapering in de data, zoals 14 okt 2026
+    22-24u. Die dagen tellen nergens mee."""
+    tot = {}
+    for pr in per_route:
+        for dagen in pr.values():
+            for d, (c, g) in dagen.items():
+                t = tot.setdefault(d, [0, 0]); t[0] += c; t[1] += g
+    p = {d: 100.0 * c / (c + g) for d, (c, g) in tot.items() if c + g}
+    if not p:
+        return set()
+    mediaan = sorted(p.values())[len(p) // 2]
+    return {d for d, x in p.items() if x > RARE_DAG_MIN_PCT and x > RARE_DAG_FACTOR * mediaan}
+
+
 def trendalarm(conn, vandaag=None, is_lijn=lambda r: True, meta=lambda r: {"route_id": r}):
     vandaag = vandaag or date.today()
     (wb, we), (bb, be) = perioden(vandaag)
     uw, ub = _uitval(conn, wb, we, is_lijn), _uitval(conn, bb, be, is_lijn)
     sw, sb = _stiptheid(conn, wb, we, is_lijn), _stiptheid(conn, bb, be, is_lijn)
+    raar = rare_dagen(uw, ub)
+    for pr in (uw, ub):
+        for dagen in pr.values():
+            for d in raar & set(dagen):
+                del dagen[d]
     lijnen = []
     for route in sorted(set(uw) | set(sw)):
         redenen, cijfers = [], {}
@@ -102,4 +125,5 @@ def trendalarm(conn, vandaag=None, is_lijn=lambda r: True, meta=lambda r: {"rout
     ernst = lambda l: (l.get("uitval", {}).get("week_pct", 0) - l.get("uitval", {}).get("normaal_pct", 0)) + \
                       (l.get("stiptheid", {}).get("normaal_pct", 0) - l.get("stiptheid", {}).get("week_pct", 0))
     lijnen.sort(key=ernst, reverse=True)
-    return {"week": [wb.isoformat(), we.isoformat()], "normaal": [bb.isoformat(), be.isoformat()], "lijnen": lijnen}
+    return {"week": [wb.isoformat(), we.isoformat()], "normaal": [bb.isoformat(), be.isoformat()],
+            "uitgesloten_dagen": sorted(raar), "lijnen": lijnen}
