@@ -373,6 +373,9 @@ def api_health():
     try:
         vp_last = conn.execute("SELECT MAX(fetched_at) AS t FROM vehicle_positions").fetchone()["t"]
         td_last = conn.execute("SELECT MAX(fetched_at) AS t FROM trip_delays").fetchone()["t"]
+        rt_status = conn.execute(
+            "SELECT last_success_at, last_error_at FROM realtime_fetch_status WHERE id = 1"
+        ).fetchone()
         cancel_last = conn.execute("SELECT MAX(last_seen) AS t FROM trip_cancellations").fetchone()["t"]
         ns_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM ns_fetch_status WHERE id = 1"
@@ -391,6 +394,8 @@ def api_health():
         ).fetchone()
     finally:
         conn.close()
+
+    rt_last = rt_status["last_success_at"] if rt_status else None
 
     def component(last_fetched_at, stale_after=VEHICLE_FRESHNESS_SECONDS):
         if last_fetched_at is None:
@@ -423,6 +428,7 @@ def api_health():
     components = {
         "vehicle_positions": component(vp_last),
         "trip_delays": component(td_last),
+        "realtime_fetch": component(rt_last),
         "cancellations": component(cancel_last, stale_after=CANCELLATION_STALE_AFTER_SECONDS),
         "rail_alerts": rail_alerts_component,
         "road_situations": road_situations_component,
@@ -433,7 +439,9 @@ def api_health():
     # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
     # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
     # over deze aanvullende, onafhankelijke bronnen.
-    latest = max((t for t in (vp_last, td_last) if t is not None), default=None)
+    # Ook de laatste geslaagde fetch telt mee: 's nachts kan de feed een uur leeg
+    # zijn (geen bussen) terwijl de collector gewoon draait (15 okt 2026).
+    latest = max((t for t in (vp_last, td_last, rt_last) if t is not None), default=None)
     overall_status = component(latest)["status"] if latest is not None else "no_data"
 
     return jsonify({

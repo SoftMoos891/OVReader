@@ -205,9 +205,11 @@ def collect_once():
 
         trip_updates_feed = None
         trip_updates_ext = {}
+        realtime_fout = None
         try:
             trip_updates_feed, trip_updates_ext = fetch_trip_updates_feed()
-        except Exception:
+        except Exception as e:
+            realtime_fout = f"trip-updates feed: {e}"
             print("[collector] fout bij ophalen trip-updates feed:")
             traceback.print_exc()
 
@@ -224,8 +226,28 @@ def collect_once():
                 "INSERT OR IGNORE INTO trips_ran_daily (service_date, trip_id, route_id) VALUES (?, ?, ?)",
                 {(today, d["trip_id"], d["route_id"]) for d in delays},
             )
-        except Exception:
+        except Exception as e:
+            realtime_fout = realtime_fout or f"trip updates verwerken: {e}"
             print("[collector] fout bij verwerken trip updates:")
+            traceback.print_exc()
+
+        # Lukte het ophalen en verwerken van de trip-updates, dan is de realtime-
+        # verzameling in orde, ook als de feed (midden in de nacht) leeg was.
+        try:
+            if realtime_fout is None:
+                conn.execute(
+                    """INSERT INTO realtime_fetch_status (id, last_success_at) VALUES (1, :now)
+                       ON CONFLICT(id) DO UPDATE SET last_success_at=:now""",
+                    {"now": fetched_at},
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO realtime_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
+                       ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
+                    {"now": fetched_at, "err": realtime_fout[:500]},
+                )
+        except Exception:
+            print("[collector] fout bij bijwerken realtime_fetch_status:")
             traceback.print_exc()
 
         try:

@@ -122,6 +122,17 @@ CREATE TABLE IF NOT EXISTS ns_fetch_status (
     last_error TEXT
 );
 
+-- Zelfde idee voor de bus/tram-realtimefeed (15 okt 2026): 's nachts kan de
+-- feed een uur lang geen enkele rit bevatten (geen bussen), waardoor
+-- MAX(fetched_at) van vehicle_positions/trip_delays veroudert terwijl de
+-- collector gewoon elke 30 s ophaalt. Deze rij zegt of het ophalen zelf lukte.
+CREATE TABLE IF NOT EXISTS realtime_fetch_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_success_at INTEGER,
+    last_error_at INTEGER,
+    last_error TEXT
+);
+
 -- Actuele wegsituaties (NDW open data -- RWS-snelwegen, provinciale en
 -- lokale wegen) binnen de provincie Utrecht -- via de DVZ RSS-bridge, zie app/bridge_wegen.py.
 -- Zelfde active-boekhouding als rail_alerts.

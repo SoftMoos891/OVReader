@@ -110,3 +110,89 @@ def test_feed_info_survives_a_corrupt_file(monkeypatch, tmp_path):
     monkeypatch.setattr(_server, "_GTFS_FEED_INFO_PATH", path)
 
     assert _server._gtfs_feed_info() is None
+
+
+# ── Lege feed 's nachts (15 okt 2026) ─────────────────────────────────────
+#
+# Van 02:05 tot 03:05 bevatte de OVapi-feed geen enkele rit; de collector haalde
+# gewoon elke 30 s op, maar health meldde "stale" omdat er geen nieuwe rijen
+# kwamen. realtime_fetch_status zegt of het ophalen zelf lukte.
+
+def _oude_positie_en_fetchstatus(temp_db, success_ago):
+    now = int(time.time())
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO vehicle_positions (fetched_at, vehicle_id, trip_id, route_id, lat, lon)
+           VALUES (?, 'v1', 't1', 'TESTROUTE', 52.0, 5.0)""",
+        (now - 3600,),
+    )
+    conn.execute("INSERT INTO realtime_fetch_status (id, last_success_at) VALUES (1, ?)", (now - success_ago,))
+    conn.commit()
+    conn.close()
+
+
+def test_health_ok_when_feed_empty_but_fetch_succeeds(client, temp_db):
+    _oude_positie_en_fetchstatus(temp_db, 10)
+
+    data = client.get("/api/health").get_json()
+    assert data["status"] == "ok"
+    assert data["components"]["realtime_fetch"]["status"] == "ok"
+    assert data["components"]["vehicle_positions"]["status"] == "stale"
+
+
+def test_health_stale_when_fetch_itself_is_old(client, temp_db):
+    _oude_positie_en_fetchstatus(temp_db, 3600)
+
+    data = client.get("/api/health").get_json()
+    assert data["status"] == "stale"
+    assert data["components"]["realtime_fetch"]["status"] == "stale"
+
+
+def test_lite_health_ok_when_feed_empty_but_fetch_succeeds(temp_db):
+    from app import lite_server
+    lite_server.app.testing = True
+    _oude_positie_en_fetchstatus(temp_db, 10)
+
+    data = lite_server.app.test_client().get("/lite/api/health").get_json()
+    assert data["status"] == "ok"
+    assert data["components"]["realtime_fetch"]["status"] == "ok"
+
+
+def _collect_met(monkeypatch, feed_fout=None):
+    from app import collector
+    monkeypatch.setattr(collector, "_index", object())
+    monkeypatch.setattr(collector, "fetch_vehicle_positions", lambda index: [])
+    def feed():
+        if feed_fout:
+            raise feed_fout
+        return object(), {}
+    monkeypatch.setattr(collector, "fetch_trip_updates_feed", feed)
+    monkeypatch.setattr(collector, "parse_trip_delays", lambda *a: [])
+    monkeypatch.setattr(collector, "parse_cancellations", lambda *a: [])
+    monkeypatch.setattr(collector, "count_unresolved_cancellations_by_prefix", lambda *a: {})
+    monkeypatch.setattr(collector, "fetch_alerts", lambda *a, **k: [])
+    collector.collect_once()
+
+
+def _fetchstatus(temp_db):
+    conn = temp_db.get_conn()
+    try:
+        return conn.execute("SELECT * FROM realtime_fetch_status WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+
+
+def test_collector_records_success_for_empty_feed(temp_db, monkeypatch):
+    _collect_met(monkeypatch)
+
+    rij = _fetchstatus(temp_db)
+    assert rij["last_success_at"] >= int(time.time()) - 5
+    assert rij["last_error_at"] is None
+
+
+def test_collector_records_error_when_feed_fails(temp_db, monkeypatch):
+    _collect_met(monkeypatch, feed_fout=RuntimeError("OVapi 503"))
+
+    rij = _fetchstatus(temp_db)
+    assert rij["last_success_at"] is None
+    assert "OVapi 503" in rij["last_error"]
