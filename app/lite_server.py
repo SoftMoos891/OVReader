@@ -25,7 +25,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, redirect, render_template, request
 
-from . import db
+from . import db, trendalarm
 from .collector import FETCH_INTERVAL_SECONDS
 from .concession_mapping import TRANSDEV_TRAM
 from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
@@ -886,6 +886,29 @@ def lite_api_uitval_daily():
         "daily": pct_list(daily),
         "daily_by_operator": {op: pct_list(d) for op, d in daily_by_op.items()},
     })
+
+
+_trendalarm_cache = {}
+
+
+@app.route("/lite/api/trendalarm")
+def lite_api_trendalarm():
+    """OV-trendalarm (15 okt 2026): lijnen die de laatste 7 afgesloten dagen duidelijk slechter
+    reden dan de 28 dagen daarvoor (uitval of stiptheid, op minstens een paar dagen afzonderlijk).
+    Zie app/trendalarm.py. De DVZ Reader maakt er elke maandag een feed van (beta). Een uur in
+    het geheugen: de berekening duurt ~0,6 s en de cijfers veranderen maar één keer per dag."""
+    vandaag = date.today()
+    v = _trendalarm_cache.get(vandaag)
+    if v is None or time.time() - v[0] > 3600:
+        conn = db.get_conn()
+        try:
+            uit = trendalarm.trendalarm(conn, vandaag, is_lijn=_index.is_bus_route,
+                                        meta=lambda r: {k: route_meta(r)[k] for k in ("route_id", "short_name", "long_name", "operator")})
+        finally:
+            conn.close()
+        _trendalarm_cache.clear()
+        _trendalarm_cache[vandaag] = v = (time.time(), uit)
+    return jsonify(v[1])
 
 
 def create_app():
