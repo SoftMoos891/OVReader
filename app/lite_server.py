@@ -135,15 +135,16 @@ def _versies():
 # pagina's sturen daarheen door; de API (/lite/api/*) en de feed (/lite/rss.xml) blijven, de
 # bridge en /verkeer halen daar hun gegevens. Een oude link /lite#<guid> houdt zijn hash bij
 # de doorverwijzing (geen fragment in Location), en /verkeer opent dan de pop-up.
-# 302 i.p.v. 301: browsers onthouden een 301 voorgoed, dit blijft zo terug te draaien.
+# Sinds 15 okt 2026 een 301 (permanent): na tien dagen 302 bleek terugdraaien niet nodig.
+# De oude templates lite.html en lite_geschiedenis.html zijn toen ook weggehaald.
 @app.route("/lite")
 def lite_index():
-    return redirect(VERKEER_URL, code=302)
+    return redirect(VERKEER_URL, code=301)
 
 
 @app.route("/lite/geschiedenis")
 def lite_geschiedenis():
-    return redirect(VERKEER_URL + "#eerder", code=302)
+    return redirect(VERKEER_URL + "#eerder", code=301)
 
 
 # Mensleesbare labels voor rss_feed_items.kind (zie collector.py:

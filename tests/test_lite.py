@@ -13,12 +13,12 @@ def lite_client(temp_db):
 
 def test_lite_stuurt_door_naar_verkeerspagina(lite_client):
     """Sinds 5 okt 2026 (v2.67) is OV Lite opgegaan in reader.dvznet.nl/verkeer: de pagina's
-    sturen door (302, bewust nog terug te draaien); de API en de RSS-feed blijven werken."""
+    sturen permanent door (301, sinds 15 okt 2026); de API en de RSS-feed blijven werken."""
     res = lite_client.get("/lite")
-    assert res.status_code == 302
+    assert res.status_code == 301
     assert res.headers["Location"] == "https://reader.dvznet.nl/verkeer"
     res = lite_client.get("/lite/geschiedenis")
-    assert res.status_code == 302
+    assert res.status_code == 301
     assert res.headers["Location"] == "https://reader.dvznet.nl/verkeer#eerder"
 
 
