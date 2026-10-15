@@ -31,13 +31,18 @@ def _maak(temp_db, week_uitval, week_op_tijd, rare_dag=None):
     return conn
 
 
-def test_lijn_met_een_week_meer_uitval_en_slechtere_stiptheid(temp_db):
-    conn = _maak(temp_db, week_uitval=6, week_op_tijd=0.7)
+def test_lijn_met_een_week_meer_uitval(temp_db):
+    conn = _maak(temp_db, week_uitval=6, week_op_tijd=0.9)
     r = ta.trendalarm(conn, VANDAAG)
     assert r["week"] == ["2026-10-05", "2026-10-11"]
     assert [l["route_id"] for l in r["lijnen"]] == ["R1"]
     l = r["lijnen"][0]
-    assert l["redenen"] == ["uitval", "stiptheid"] and l["uitval"]["slechte_dagen"] == 7 and l["stiptheid"]["week_pct"] == 70.0
+    assert l["redenen"] == ["uitval"] and l["uitval"]["slechte_dagen"] == 7 and "stiptheid" not in l
+
+
+def test_alleen_slechtere_stiptheid_geeft_geen_alarm(temp_db):
+    conn = _maak(temp_db, week_uitval=1, week_op_tijd=0.5)
+    assert ta.trendalarm(conn, VANDAAG)["lijnen"] == []
 
 
 def test_een_rare_dag_geeft_geen_alarm(temp_db):
