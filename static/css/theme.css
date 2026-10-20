@@ -1,4 +1,6 @@
-/* Gedeeld thema voor alle OVReader-pagina's -- "Modern SaaS-dashboard"-
+/* [20 okt 2026: kleuren en kopbalk gelijk aan de rest van DVZ -- blauwgrijs i.p.v. indigo, donkere kopbalk met blauwe lijn.
+   Variabelenamen ongewijzigd.]
+   Gedeeld thema voor alle OVReader-pagina's -- "Modern SaaS-dashboard"-
    stijl: licht als standaard, donker via de .dark-klasse op <html>
    (toggle + localStorage-key 'ovreader_dark', zie de inline init-snippet
    in elke pagina). Bestaande variabelenamen (--bg/--panel/--border/--text/
@@ -9,22 +11,24 @@
    elevatie via zachte schaduw i.p.v. alleen harde 1px-randen. */
 
 :root {
-  --bg:        #f5f6fa;
+  --bg:        #f1f5f9;
   --panel:     #ffffff;
-  --panel2:    #f3f4f8;
-  --border:    #e6e8f0;
-  --border2:   #d3d7e3;
-  --text:      #14182b;
-  --muted:     #6b7290;
-  --accent:    #4f46e5;
-  --accent2:   #4338ca;
+  --panel2:    #f8fafc;
+  --border:    #e2e8f0;
+  --border2:   #cbd5e1;
+  --text:      #0f172a;
+  --muted:     #64748b;
+  --accent:    #2563eb;
+  --accent2:   #1d4ed8;
+  --kop:       #1e293b;
+  --link:      #2563eb;
   --good:      #10b981;
   --warn:      #f59e0b;
   --bad:       #ef4444;
   --good-bg:   rgba(16,185,129,.12);
   --warn-bg:   rgba(245,158,11,.12);
   --bad-bg:    rgba(239,68,68,.10);
-  --accent-bg: rgba(79,70,229,.10);
+  --accent-bg: rgba(37,99,235,.10);
   --critical:    #991b1b;
   --critical-bg: rgba(153,27,27,.12);
   /* Bus >2 min te vroeg: eigen, lichtere roodtint dan --bad (grote
@@ -33,28 +37,30 @@
   --early:     #fb7185;
   --early-bg:  rgba(251,113,133,.14);
 
-  --shadow-sm: 0 1px 2px rgba(20,24,43,.04), 0 1px 3px rgba(20,24,43,.06);
-  --shadow-md: 0 2px 6px rgba(20,24,43,.06), 0 8px 24px rgba(20,24,43,.08);
+  --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
+  --shadow-md: 0 2px 6px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.08);
   --radius: 12px;
 }
 
 html.dark {
-  --bg:        #0a0e1a;
-  --panel:     #121828;
-  --panel2:    #1a2136;
-  --border:    #242c47;
-  --border2:   #323c5e;
-  --text:      #eef1fa;
-  --muted:     #7c85a8;
-  --accent:    #6366f1;
-  --accent2:   #818cf8;
+  --bg:        #0b1120;
+  --panel:     #111827;
+  --panel2:    #0f172a;
+  --border:    #1f2937;
+  --border2:   #334155;
+  --text:      #e5e7eb;
+  --muted:     #94a3b8;
+  --accent:    #3b82f6;
+  --accent2:   #60a5fa;
+  --kop:       #0f172a;
+  --link:      #60a5fa;
   --good:      #34d399;
   --warn:      #fbbf24;
   --bad:       #f87171;
   --good-bg:   rgba(52,211,153,.14);
   --warn-bg:   rgba(251,191,36,.14);
   --bad-bg:    rgba(248,113,113,.14);
-  --accent-bg: rgba(99,102,241,.16);
+  --accent-bg: rgba(59,130,246,.16);
   --critical:    #f87171;
   --critical-bg: rgba(248,113,113,.18);
   --early:     #fda4af;
@@ -242,3 +248,18 @@ body { font-family: 'Inter', -apple-system, Segoe UI, Roboto, sans-serif; }
   color: var(--muted);
   border-top: 1px solid var(--border);
 }
+
+/* ── Kopbalk gelijk aan DVZ Reader/Verkeer/Fototool (20 okt 2026) ──
+   Donkere balk met een blauwe lijn eronder; knoppen in de balk als op reader.dvznet.nl.
+   body > header wint van de header-regel in de pagina zelf (0,0,2 tegen 0,0,1). */
+body > header { background: var(--kop); color: #fff; box-shadow: none; border-bottom: 2px solid var(--link); }
+body > header h1 { color: #fff; }
+body > header .sub, body > header #lastupdate { color: #94a3b8; }
+body > header a.back { color: #bfdbfe; }
+body > header .status-btn, body > header .theme-toggle-btn {
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #e2e8f0; box-shadow: none;
+}
+body > header .status-btn:hover, body > header .theme-toggle-btn:hover {
+  background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.22); color: #fff; box-shadow: none;
+}
+body > header .dvz-logo-badge::after { border-color: var(--kop); }
