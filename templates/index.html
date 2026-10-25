@@ -25,7 +25,7 @@
   header .sub { color: var(--muted); font-size: 12.5px; }
   #layout {
     display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 60vh auto;
-    gap: 16px; padding: 16px; height: calc(100vh - 130px);
+    gap: 16px; padding: 16px; height: calc(100vh - 82px);   /* kop 50 px (25 okt 2026) + 2x 16 px */
   }
   #map { grid-row: 1 / 2; grid-column: 1 / 2; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-md); }
   #side {
@@ -184,20 +184,16 @@
 <header>
   <div class="header-row">
     <a href="/" class="dvz-logo-badge" title="DVZ Reader">dvz</a>
-    <h1>OV-monitor</h1>
-    <span class="sub">Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis &amp; Transdev)</span>
-    <a href="/trends" class="nav-btn push-right">📈 Analyse</a>
-    <a href="/uitval" class="nav-btn">🚫 Uitval</a>
-    <a href="/busnummers" class="nav-btn">🚌 Nummers</a>
-    <a href="https://reader.dvznet.nl/verkeer" class="nav-btn">🚦 Verkeer &rarr;</a>
+    <div class="kop-titel"><h1 title="Live voertuigen, storingen &amp; punctualiteit — U-OV (Keolis &amp; Transdev)">OV-monitor</h1><span id="lastupdate">–</span></div>
+    <a href="/trends" class="nav-btn push-right">📈<span class="lbl"> Analyse</span></a>
+    <a href="/uitval" class="nav-btn">🚫<span class="lbl"> Uitval</span></a>
+    <a href="/busnummers" class="nav-btn">🚌<span class="lbl"> Nummers</span></a>
+    <a href="https://reader.dvznet.nl/verkeer" class="nav-btn">🚦<span class="lbl"> Verkeer</span></a>
     <button class="status-btn" id="weatherBtn" onclick="openWeatherModal()" title="Weer &amp; waarschuwingen (KNMI)">
       <span class="btn-icon" id="weatherIcon">🌡️</span><span id="weatherLabel">Weer</span><span class="lki-badge" id="knmiUpcomingDot" style="display:none;">⏳</span><span class="lki-badge" id="lkiDot" style="display:none;" title="Luchtkwaliteit">Lucht</span>
     </button>
     <a class="status-btn" href="/logout" title="Uitloggen">Log uit</a>
     <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
-  </div>
-  <div class="header-row">
-    <span id="lastupdate">–</span>
   </div>
 </header>
 

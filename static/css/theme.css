@@ -248,6 +248,26 @@ body > header { background: var(--kop); color: #fff; box-shadow: none; border-bo
 body > header { padding: calc(7px + env(safe-area-inset-top)) 16px 7px; gap: 10px; min-height: 0; }
 body > header h1 { font-size: 15px; line-height: 1.25; }
 body > header .sub, body > header #lastupdate { font-size: 11.5px; line-height: 1.3; }
+/* Titel met één regel eronder (zoals /verkeer), knoppen compact en op één rij; op de telefoon alleen icoontjes. */
+body > header, body > header .header-row { flex-wrap: nowrap; }
+body > header .kop-titel { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+body > header .kop-titel h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body > header .kop-titel .sub, body > header .kop-titel #lastupdate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body > header .nav-btn, body > header .status-btn { padding: 5px 10px; font-size: 12.5px; line-height: 1.3; white-space: nowrap; }
+body > header .theme-toggle-btn { padding: 5px 8px; font-size: 12.5px; line-height: 1.3; }
+body > header a.back { white-space: nowrap; }
+@media (max-width: 760px) {
+  body > header .lbl, body > header #weatherLabel { display: none; }
+  body > header .kop-titel .sub { display: none; }
+  body > header .nav-btn, body > header .status-btn { padding: 5px 8px; }
+}
+@media (max-width: 480px) {
+  /* Telefoon: alleen logo en knoppen; de titel staat al in het tabblad, Verkeer zit ook in het menu van de reader. */
+  body > header, body > header .header-row { gap: 6px; }
+  body > header .kop-titel { display: none; }
+  body > header .nav-btn[href*="/verkeer"] { display: none; }
+  body > header .nav-btn.push-right, body > header a.back { margin-left: auto; }
+}
 body > header h1 { color: #fff; }
 body > header .sub, body > header #lastupdate { color: #94a3b8; }
 body > header a.back { color: #bfdbfe; }
