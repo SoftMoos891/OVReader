@@ -277,3 +277,8 @@ body > header .status-btn, body > header .theme-toggle-btn {
 body > header .status-btn:hover, body > header .theme-toggle-btn:hover {
   background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.22); color: #fff; box-shadow: none;
 }
+
+/* Huisstijl 24 (26 okt 2026): één kaartstijl op alle DVZ-pagina's -- rand 1 px, 12 px rond, geen schaduw.
+   Wint van de .section/.panel-regels in de templates (0,1,1 tegen 0,1,0). */
+body .section, body .panel { border-radius: 12px; box-shadow: none; }
+body .section:hover, body .panel:hover { box-shadow: none; }

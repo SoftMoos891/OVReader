@@ -219,6 +219,31 @@ def _valid_credentials(username, password):
     )
 
 
+# Foutpagina's in DVZ-huisstijl (huisstijl-idee 28, 26 okt 2026): een gewone bezoeker krijgt templates/fout.html,
+# API-aanroepen houden een kort JSON-antwoord. De statuscode blijft gelijk (CrowdSec/bot-detectie kijkt naar 404).
+_FOUTEN = {
+    404: ("Deze pagina bestaat niet", "Het adres klopt niet, of de pagina is verplaatst."),
+    500: ("Er ging iets mis op de server", "Dat ligt niet aan jou. Probeer het over een minuut opnieuw."),
+}
+
+
+def _foutpagina(code):
+    if request.path.startswith(("/api/", "/lite/api/")) or "text/html" not in request.headers.get("Accept", ""):
+        return jsonify({"error": _FOUTEN[code][0]}), code
+    titel, uitleg = _FOUTEN[code]
+    return render_template("fout.html", code=code, titel=titel, uitleg=uitleg), code
+
+
+@app.errorhandler(404)
+def _niet_gevonden(_e):
+    return _foutpagina(404)
+
+
+@app.errorhandler(500)
+def _serverfout(_e):
+    return _foutpagina(500)
+
+
 @app.before_request
 def require_auth():
     if not AUTH_PASSWORD:
