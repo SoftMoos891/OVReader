@@ -439,9 +439,26 @@ _CAUSE_NAMES = {
 }
 
 
+# Telt hoeveel meldingen (heel NL) elk periodeveld vullen; communication_period en
+# impact_period kwamen erbij in gtfs-realtime-bindings 3.0. Logt alleen bij een wijziging.
+_periode_telling = None
+
+
+def _log_periode_telling(feed):
+    global _periode_telling
+    alerts = [e.alert for e in feed.entity if e.HasField("alert")]
+    telling = tuple(sum(1 for a in alerts if len(getattr(a, veld)))
+                    for veld in ("active_period", "communication_period", "impact_period"))
+    if telling != _periode_telling:
+        _periode_telling = telling
+        print(f"[alerts] perioden: {len(alerts)} meldingen, active {telling[0]}, "
+              f"communication {telling[1]}, impact {telling[2]}")
+
+
 def fetch_alerts(index: UtrechtIndex):
     """Geeft lijst van dicts terug met actuele storingen/meldingen binnen Utrecht."""
     feed, _raw = _fetch_feed(FEED_ALERTS)
+    _log_periode_telling(feed)
     results = []
     for entity in feed.entity:
         if not entity.HasField("alert"):
