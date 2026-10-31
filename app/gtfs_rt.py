@@ -439,8 +439,8 @@ _CAUSE_NAMES = {
 }
 
 
-# Telt hoeveel meldingen (heel NL) elk periodeveld vullen; communication_period en
-# impact_period kwamen erbij in gtfs-realtime-bindings 3.0. Logt alleen bij een wijziging.
+# Telt hoeveel meldingen (heel NL) elk periodeveld vullen, om te zien of OVapi
+# communication_period en impact_period gaat gebruiken. Logt alleen bij een wijziging.
 _periode_telling = None
 
 
