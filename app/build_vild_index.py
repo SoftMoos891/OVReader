@@ -31,8 +31,8 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OUT_PATH = DATA_DIR / "vild_locations.json"
 
 # De feed (actueel_beeld.xml) verwijst via alertCLocationTableNumber/Version
-# naar welke VILD-tabel geldt; op dit moment 6.13 versie A.
-VILD_TABLE_VERSION = "6.13.A"
+# naar welke VILD-tabel geldt; op dit moment 6.14 versie A.
+VILD_TABLE_VERSION = "6.14.A"
 VILD_ZIP_URL = f"https://opendata.ndw.nu/VILD{VILD_TABLE_VERSION}.zip"
 VILD_DBF_NAME = f"VILD{VILD_TABLE_VERSION}.dbf"
 
