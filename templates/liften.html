@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="nl" data-dvz-label="ovreader">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}?v=3">
+<title>Liften — NS-stations provincie Utrecht</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script>
+  if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); }
+  header { padding: 12px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+           background: var(--panel); box-shadow: var(--shadow-sm); position: relative; z-index: 1000; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a.back { margin-left: auto; color: var(--accent); font-size: 13px; text-decoration: none; }
+  main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 18px; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; font-weight: 700; }
+  .tegels { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tegel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-sm); }
+  .tegel .getal { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .tegel .wat { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .tegel.bad .getal { color: var(--bad); }
+  .tegel.warn .getal { color: var(--warn); }
+  .tegel.good .getal { color: var(--good); }
+  .meta { color: var(--muted); font-size: 12px; margin: -8px 0 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover td { background: var(--panel2); }
+  .tabelwrap { overflow-x: auto; }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.muted { background: var(--panel2); color: var(--muted); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  .klein { color: var(--muted); font-size: 12px; }
+  #kaart { height: 380px; border-radius: var(--radius); overflow: hidden; }
+  .leaflet-container { background: var(--panel2); }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .filters button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 20px;
+                    padding: 4px 12px; font-size: 12px; cursor: pointer; }
+  .filters button.aan { background: var(--accent); color: #fff; border-color: var(--accent); }
+  @media (max-width: 600px) { main { padding: 12px; } .panel { padding: 14px; } .verberg-mobiel { display: none; } }
+</style>
+  <script src="/dvz-logo.js?v=1" defer></script>
+</head>
+<body>
+<header>
+  <a href="/" class="dvz-logo-badge" title="DVZ Reader">dvz</a>
+  <div class="kop-titel"><h1>🛗 Liften</h1><span class="sub">Liften op NS-stations in de provincie Utrecht</span></div>
+  <a class="back" href="/">&larr;<span class="lbl"> Live overzicht</span></a>
+  <a class="status-btn" href="/logout" title="Uitloggen">Log uit</a>
+  <button class="theme-toggle-btn" onclick="toggleDarkMode()" title="Donkere modus">🌓</button>
+</header>
+
+<main>
+  <div class="tegels">
+    <div class="tegel bad"><div class="getal" id="tBuiten">–</div><div class="wat">buiten werking</div></div>
+    <div class="tegel warn"><div class="getal" id="tOnbekend">–</div><div class="wat">status onbekend</div></div>
+    <div class="tegel good"><div class="getal" id="tWel">–</div><div class="wat">beschikbaar</div></div>
+    <div class="tegel"><div class="getal" id="tTotaal">–</div><div class="wat">liften op <span id="tStations">–</span> stations</div></div>
+  </div>
+  <div class="meta" id="meta">Laden…</div>
+
+  <div class="panel">
+    <h2>🔴 Nu niet beschikbaar</h2>
+    <div class="tabelwrap" id="nuBody"><div class="empty">Laden…</div></div>
+    <div class="note">"Sinds" is het moment waarop wij de wissel zagen (elke 10 minuten gecontroleerd). Staat er "≥", dan was de lift al buiten werking toen de meting begon. NS geeft geen oorzaak of verwachte hersteltijd.</div>
+  </div>
+
+  <div class="panel">
+    <h2>🗺️ Kaart</h2>
+    <div id="kaart"></div>
+  </div>
+
+  <div class="panel">
+    <h2>🔁 Wijzigingen (laatste 14 dagen)</h2>
+    <div class="tabelwrap" id="wisselBody"><div class="empty">Laden…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>📋 Alle liften</h2>
+    <div class="filters" id="filters">
+      <button data-f="alle" class="aan">Alle</button>
+      <button data-f="buiten_werking">Buiten werking</button>
+      <button data-f="onbekend">Onbekend</button>
+      <button data-f="beschikbaar">Beschikbaar</button>
+    </div>
+    <div class="tabelwrap" id="alleBody"><div class="empty">Laden…</div></div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  Copyright (c) 2026 DVZNET - Alle rechten voorbehouden &bull; Liftstatus: NS Places-API
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('ovreader_dark', document.documentElement.classList.contains('dark'));
+}
+
+const LABEL = { buiten_werking: 'Buiten werking', onbekend: 'Status onbekend', beschikbaar: 'Beschikbaar' };
+const KLASSE = { buiten_werking: 'bad', onbekend: 'muted', beschikbaar: 'good' };
+const KLEUR = { buiten_werking: '#d64545', onbekend: '#9a9a9a', beschikbaar: '#2e9e5b' };
+let data = null, filter = 'alle', kaart = null, laag = null, eersteKeer = true;
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pill(st) { return `<span class="pill ${KLASSE[st] || 'muted'}">${LABEL[st] || esc(st)}</span>`; }
+function tijd(ts) {
+  if (!ts) return '–';
+  const d = new Date(ts * 1000), nu = new Date();
+  const hm = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === nu.toDateString()) return `vandaag ${hm}`;
+  return d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + hm;
+}
+function duur(ts) {
+  const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+  if (m < 60) return `${m} min`;
+  const u = Math.floor(m / 60);
+  if (u < 48) return `${u} u ${m % 60} min`;
+  return `${Math.floor(u / 24)} d ${u % 24} u`;
+}
+
+function tekenNu() {
+  const rijen = data.liften.filter(l => l.status !== 'beschikbaar')
+    .sort((a, b) => (a.status === b.status ? a.status_sinds - b.status_sinds : a.status === 'buiten_werking' ? -1 : 1));
+  if (!rijen.length) { document.getElementById('nuBody').innerHTML = '<div class="empty">Alle liften zijn beschikbaar.</div>'; return; }
+  document.getElementById('nuBody').innerHTML = `<table><thead><tr>
+      <th>Station</th><th>Lift</th><th>Status</th><th class="verberg-mobiel">Sinds</th><th class="num">Duur</th></tr></thead><tbody>${
+    rijen.map(l => `<tr><td>${esc(l.station)}</td><td>${esc(l.naam)}</td><td>${pill(l.status)}</td>
+      <td class="verberg-mobiel">${l.sinds_begin_meting ? '≥ ' : ''}${tijd(l.status_sinds)}</td>
+      <td class="num">${l.sinds_begin_meting ? '≥ ' : ''}${duur(l.status_sinds)}</td></tr>`).join('')
+  }</tbody></table>`;
+}
+
+function tekenWissels() {
+  const w = data.wissels;
+  if (!w.length) {
+    document.getElementById('wisselBody').innerHTML = '<div class="empty">Nog geen wijzigingen gezien sinds het begin van de meting.</div>';
+    return;
+  }
+  document.getElementById('wisselBody').innerHTML = `<table><thead><tr>
+      <th>Tijd</th><th>Station</th><th>Lift</th><th>Van</th><th>Naar</th></tr></thead><tbody>${
+    w.map(x => `<tr><td style="white-space:nowrap">${tijd(x.ts)}</td><td>${esc(x.station_naam)}</td><td>${esc(x.naam)}</td>
+      <td>${pill(x.oude_status)}</td><td>${pill(x.nieuwe_status)}</td></tr>`).join('')
+  }</tbody></table>`;
+}
+
+function tekenAlle() {
+  const rijen = data.liften.filter(l => filter === 'alle' || l.status === filter);
+  if (!rijen.length) { document.getElementById('alleBody').innerHTML = '<div class="empty">Geen liften in deze selectie.</div>'; return; }
+  document.getElementById('alleBody').innerHTML = `<table><thead><tr>
+      <th>Station</th><th>Lift</th><th>Status</th><th class="verberg-mobiel">Sinds</th>
+      <th class="num" title="Aantal keer buiten werking gegaan sinds het begin van de meting">Storingen</th></tr></thead><tbody>${
+    rijen.map(l => `<tr><td>${esc(l.station)}</td><td>${esc(l.naam)}</td><td>${pill(l.status)}</td>
+      <td class="verberg-mobiel">${l.sinds_begin_meting ? '<span class="klein">begin meting</span>' : tijd(l.status_sinds)}</td>
+      <td class="num">${l.storingen}</td></tr>`).join('')
+  }</tbody></table>`;
+}
+
+function tekenKaart() {
+  if (!kaart) {
+    kaart = L.map('kaart', { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(kaart);
+    laag = L.layerGroup().addTo(kaart);
+  }
+  laag.clearLayers();
+  const punten = [];
+  // Beschikbaar eerst tekenen, zodat rode stippen bovenop liggen.
+  const volgorde = { beschikbaar: 0, onbekend: 1, buiten_werking: 2 };
+  [...data.liften].sort((a, b) => volgorde[a.status] - volgorde[b.status]).forEach(l => {
+    if (l.lat == null) return;
+    punten.push([l.lat, l.lng]);
+    L.circleMarker([l.lat, l.lng], {
+      radius: l.status === 'beschikbaar' ? 5 : 8, color: '#fff', weight: 1.5,
+      fillColor: KLEUR[l.status] || '#999', fillOpacity: .95,
+    }).bindPopup(`<b>${esc(l.station)}</b><br>${esc(l.naam)}<br>${LABEL[l.status] || ''}${
+      l.status !== 'beschikbaar' ? `<br><small>${l.sinds_begin_meting ? 'al vóór ' : 'sinds '}${tijd(l.status_sinds)}</small>` : ''}`).addTo(laag);
+  });
+  if (eersteKeer && punten.length) { kaart.fitBounds(punten, { padding: [20, 20] }); eersteKeer = false; }
+}
+
+async function laad() {
+  try {
+    const r = await fetch('/api/liften', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(r.status);
+    data = await r.json();
+  } catch (e) {
+    document.getElementById('meta').textContent = 'Kon de liftgegevens niet laden.';
+    return;
+  }
+  const tel = st => data.liften.filter(l => l.status === st).length;
+  document.getElementById('tBuiten').textContent = tel('buiten_werking');
+  document.getElementById('tOnbekend').textContent = tel('onbekend');
+  document.getElementById('tWel').textContent = tel('beschikbaar');
+  document.getElementById('tTotaal').textContent = data.liften.length;
+  document.getElementById('tStations').textContent = new Set(data.liften.map(l => l.station_code)).size;
+  document.getElementById('meta').textContent = data.meting_sinds
+    ? `Meting sinds ${tijd(data.meting_sinds)} · laatst bijgewerkt ${tijd(data.laatst_opgehaald)}`
+    : 'Nog geen gegevens opgehaald.';
+  tekenNu(); tekenWissels(); tekenAlle(); tekenKaart();
+}
+
+document.getElementById('filters').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  filter = b.dataset.f;
+  document.querySelectorAll('#filters button').forEach(x => x.classList.toggle('aan', x === b));
+  if (data) tekenAlle();
+});
+
+laad();
+setInterval(() => { if (!document.hidden) laad(); }, 5 * 60 * 1000);
+</script>
+</body>
+</html>

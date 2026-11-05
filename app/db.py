@@ -415,6 +415,31 @@ CREATE TABLE IF NOT EXISTS schedule_gap_daily (
     PRIMARY KEY (service_date, operator)
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_gap_date ON schedule_gap_daily(service_date);
+
+-- Liften op NS-stations in de provincie Utrecht (zie ns_liften.py). NS geeft
+-- alleen de huidige status; status_sinds en lift_wissels houden we zelf bij.
+CREATE TABLE IF NOT EXISTS liften (
+    lift_id TEXT PRIMARY KEY,
+    station_code TEXT,
+    station_naam TEXT,
+    naam TEXT,
+    lat REAL,
+    lng REAL,
+    status TEXT,
+    status_sinds INTEGER,
+    first_seen INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    active INTEGER DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS lift_wissels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lift_id TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    oude_status TEXT,
+    nieuwe_status TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lift_wissels_ts ON lift_wissels(ts);
+CREATE INDEX IF NOT EXISTS idx_lift_wissels_lift ON lift_wissels(lift_id, ts);
 """
 
 

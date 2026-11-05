@@ -1122,6 +1122,63 @@ def busnummers_page():
     return render_template("busnummers.html")
 
 
+@app.route("/liften")
+def liften_page():
+    return render_template("liften.html")
+
+
+@app.route("/api/liften")
+def api_liften():
+    """Liften op NS-stations in de provincie Utrecht met hun huidige status,
+    hoe vaak ze sinds het begin van de meting zijn gewisseld en de wissels
+    van de laatste 14 dagen."""
+    conn = db.get_conn()
+    try:
+        liften = conn.execute(
+            "SELECT * FROM liften WHERE active=1 ORDER BY station_naam, naam"
+        ).fetchall()
+        start = conn.execute("SELECT MIN(first_seen) FROM liften").fetchone()[0]
+        tellingen = {
+            r["lift_id"]: r
+            for r in conn.execute(
+                """SELECT lift_id, COUNT(*) AS wissels,
+                          SUM(nieuwe_status='buiten_werking') AS storingen
+                   FROM lift_wissels GROUP BY lift_id"""
+            )
+        }
+        wissels = conn.execute(
+            """SELECT w.lift_id, w.ts, w.oude_status, w.nieuwe_status,
+                      l.station_naam, l.naam
+               FROM lift_wissels w LEFT JOIN liften l ON l.lift_id = w.lift_id
+               WHERE w.ts >= ? ORDER BY w.ts DESC LIMIT 500""",
+            (int(time.time()) - 14 * 86400,),
+        ).fetchall()
+        laatst = conn.execute("SELECT MAX(last_seen) FROM liften").fetchone()[0]
+    finally:
+        conn.close()
+    return jsonify({
+        "meting_sinds": start,
+        "laatst_opgehaald": laatst,
+        "liften": [
+            {
+                "lift_id": r["lift_id"],
+                "station_code": r["station_code"],
+                "station": r["station_naam"],
+                "naam": r["naam"],
+                "lat": r["lat"],
+                "lng": r["lng"],
+                "status": r["status"],
+                "status_sinds": r["status_sinds"],
+                "sinds_begin_meting": r["status_sinds"] == r["first_seen"],
+                "wissels": (tellingen.get(r["lift_id"]) or {"wissels": 0})["wissels"],
+                "storingen": (tellingen.get(r["lift_id"]) or {"storingen": 0})["storingen"] or 0,
+            }
+            for r in liften
+        ],
+        "wissels": [dict(r) for r in wissels],
+    })
+
+
 def _date_bounds_for_range(range_key):
     """Geeft (since_date, until_date) als ISO-datumstrings voor een range-key
     ('today'/'week'/'2weeks'/'30d'/'all'/'this_month'/'last_month'/

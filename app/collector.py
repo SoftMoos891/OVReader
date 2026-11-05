@@ -19,6 +19,7 @@ from .knmi_warnings import format_active_from
 # Sinds 2 okt 2026 via de DVZ RSS-bridge i.p.v. zelf bij KNMI/Luchtmeetnet, zie bridge_weer.py.
 from .bridge_weer import fetch_air_quality, fetch_de_bilt_weather, fetch_utrecht_warnings
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
+from .ns_liften import fetch_utrecht_liften
 # Sinds 2 okt 2026 maakt de DVZ RSS-bridge de wegsituaties (zie bridge_wegen.py); de
 # regels (welke situaties een melding geven) staan nog steeds in road_situations.py.
 from .bridge_wegen import fetch_utrecht_road_situations
@@ -1341,6 +1342,54 @@ def check_cancellation_alerts_job():
         conn.close()
 
 
+def fetch_liften_job():
+    """Status van de liften op NS-stations in de provincie Utrecht (zie
+    ns_liften.py). Alleen een wissel van status wordt in lift_wissels gezet,
+    zodat we kunnen zien hoe lang een lift al buiten werking is."""
+    api_key = os.environ.get("NS_API_KEY")
+    if not api_key:
+        return
+    now = _now()
+    conn = db.get_conn()
+    try:
+        liften = fetch_utrecht_liften(api_key)
+        bekend = {r["lift_id"]: r for r in conn.execute("SELECT lift_id, status, active FROM liften")}
+        for l in liften:
+            oud = bekend.get(l["lift_id"])
+            if oud is None:
+                # Eerste keer gezien: begin van de meting, geen wissel.
+                conn.execute(
+                    """INSERT INTO liften (lift_id, station_code, station_naam, naam, lat, lng,
+                                           status, status_sinds, first_seen, last_seen, active)
+                       VALUES (:lift_id, :station_code, :station_naam, :naam, :lat, :lng,
+                               :status, :now, :now, :now, 1)""",
+                    {**l, "now": now},
+                )
+                continue
+            if oud["status"] != l["status"]:
+                conn.execute(
+                    "INSERT INTO lift_wissels (lift_id, ts, oude_status, nieuwe_status) VALUES (?, ?, ?, ?)",
+                    (l["lift_id"], now, oud["status"], l["status"]),
+                )
+                conn.execute("UPDATE liften SET status=?, status_sinds=? WHERE lift_id=?",
+                             (l["status"], now, l["lift_id"]))
+            conn.execute(
+                """UPDATE liften SET station_code=:station_code, station_naam=:station_naam, naam=:naam,
+                       lat=:lat, lng=:lng, last_seen=:now, active=1 WHERE lift_id=:lift_id""",
+                {**l, "now": now},
+            )
+        gezien = {l["lift_id"] for l in liften}
+        for lift_id, r in bekend.items():
+            if lift_id not in gezien and r["active"]:
+                conn.execute("UPDATE liften SET active=0 WHERE lift_id=?", (lift_id,))
+        conn.commit()
+    except Exception:
+        print("[collector] fout bij ophalen liften:")
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+
 def start_scheduler():
     db.init_db()
     scheduler = BackgroundScheduler()
@@ -1359,6 +1408,7 @@ def start_scheduler():
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
+    scheduler.add_job(fetch_liften_job, "interval", minutes=10, id="liften", max_instances=1)
     scheduler.add_job(check_cancellation_alerts_job, "interval", minutes=5, id="cancellation_alerts", max_instances=1)
     scheduler.add_job(fetch_road_situations_job, "interval", minutes=5, id="road_situations", max_instances=1)
     # Weer, waarschuwingen en luchtkwaliteit komen sinds 2 okt 2026 lokaal van de DVZ RSS-bridge.
@@ -1369,6 +1419,7 @@ def start_scheduler():
     # Meteen een eerste keer ophalen bij opstarten, niet pas na 30s wachten -- behalve
     # OVapi (collect_once): die wacht COLLECT_STARTUP_DELAY_SECONDS, zie aldaar.
     fetch_rail_alerts_job()
+    fetch_liften_job()
     check_cancellation_alerts_job()
     fetch_road_situations_job()
     fetch_knmi_warnings_job()
