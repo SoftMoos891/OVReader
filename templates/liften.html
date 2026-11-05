@@ -87,6 +87,10 @@
 
   <div class="panel">
     <h2>📊 Vaak of zelden buiten werking</h2>
+    <div class="filters" id="weergave">
+      <button data-w="lift" class="aan">Per lift</button>
+      <button data-w="station">Per station</button>
+    </div>
     <div class="filters" id="sorteer">
       <button data-s="vaak" class="aan">Vaakst buiten werking</button>
       <button data-s="zelden">Minst vaak buiten werking</button>
@@ -132,7 +136,7 @@ function toggleDarkMode() {
 const LABEL = { buiten_werking: 'Buiten werking', onbekend: 'Status onbekend', beschikbaar: 'Beschikbaar' };
 const KLASSE = { buiten_werking: 'bad', onbekend: 'muted', beschikbaar: 'good' };
 const KLEUR = { buiten_werking: '#d64545', onbekend: '#9a9a9a', beschikbaar: '#2e9e5b' };
-let data = null, filter = 'alle', sortering = 'vaak', kaart = null, laag = null, eersteKeer = true;
+let data = null, filter = 'alle', sortering = 'vaak', weergave = 'lift', kaart = null, laag = null, eersteKeer = true;
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pill(st) { return `<span class="pill ${KLASSE[st] || 'muted'}">${LABEL[st] || esc(st)}</span>`; }
@@ -198,6 +202,10 @@ function kortDuur(sec) {
 }
 
 function tekenBetrouwbaarheid() {
+  const gem = data.meting_sinds ? Date.now() / 1000 - data.meting_sinds : 0;
+  document.getElementById('betrNote').dataset.basis = `Gemeten over ${kortDuur(gem)}.` +
+    (gem < 3 * 86400 ? ' Na een paar dagen meten zeggen deze cijfers pas echt iets.' : '');
+  if (weergave === 'station') return tekenPerStation();
   const r = [...data.liften].sort((a, b) =>
     (b.pct_buiten - a.pct_buiten) || (b.storingen - a.storingen) || a.station.localeCompare(b.station));
   if (sortering === 'zelden') r.reverse();
@@ -216,9 +224,37 @@ function tekenBetrouwbaarheid() {
       <td class="num verberg-mobiel">${l.storingen ? (l.sinds_begin_meting && l.status === 'buiten_werking' && l.storingen === 1 ? '≥ ' : '') + kortDuur(l.langste_storing) : '–'}</td></tr>`).join('')
   }</tbody></table>`;
   const gemeten = data.meting_sinds ? Date.now() / 1000 - data.meting_sinds : 0;
-  document.getElementById('betrNote').textContent =
+  const basis =
     `Gemeten over ${kortDuur(gemeten)}. Een storing die al liep bij de start telt mee, maar de echte duur ervan is langer. ` +
     (gemeten < 3 * 86400 ? 'Na een paar dagen meten zeggen deze cijfers pas echt iets.' : '');
+  document.getElementById('betrNote').textContent = basis;
+}
+
+function tekenPerStation() {
+  const st = {};
+  data.liften.forEach(l => {
+    const x = st[l.station_code] ||= { station: l.station, liften: 0, nu: 0, keer: 0, buiten: 0, onbekend: 0 };
+    x.liften++; x.keer += l.storingen;
+    if (l.status === 'buiten_werking') x.nu++;
+    x.buiten += l.pct_buiten; x.onbekend += l.pct_onbekend;
+  });
+  const r = Object.values(st).map(x => ({ ...x, pct: Math.round(10 * x.buiten / x.liften) / 10, pctOnb: x.onbekend / x.liften }))
+    .sort((a, b) => (b.pct - a.pct) || (b.keer - a.keer) || a.station.localeCompare(b.station));
+  if (sortering === 'zelden') r.reverse();
+  document.getElementById('betrBody').innerHTML = `<table><thead><tr>
+      <th>Station</th><th class="num verberg-mobiel">Liften</th><th class="num">Nu stuk</th>
+      <th title="Gemiddeld deel van de tijd dat een lift op dit station buiten werking was">Buiten werking</th>
+      <th class="num" title="Totaal aantal keer dat een lift op dit station buiten werking ging">Keer</th></tr></thead><tbody>${
+    r.map(x => `<tr><td>${esc(x.station)}</td><td class="num verberg-mobiel">${x.liften}</td>
+      <td class="num">${x.nu ? `<span class="pill bad">${x.nu}</span>` : '0'}</td>
+      <td><div class="pctcel"><b>${x.pct.toLocaleString('nl-NL')}%</b>
+        <div class="balk"><span style="width:${x.pct}%"></span>
+          <span class="onb" style="left:${x.pct}%;width:${x.pctOnb}%"></span></div></div></td>
+      <td class="num">${x.keer}</td></tr>`).join('')
+  }</tbody></table>`;
+  document.getElementById('betrNote').textContent =
+    'Buiten werking = gemiddelde van de liften op het station. Bijvoorbeeld: 2 van de 4 liften steeds stuk geeft 50%. ' +
+    document.getElementById('betrNote').dataset.basis;
 }
 
 function tekenKaart() {
@@ -273,6 +309,12 @@ document.getElementById('filters').addEventListener('click', e => {
   if (data) tekenAlle();
 });
 
+document.getElementById('weergave').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  weergave = b.dataset.w;
+  document.querySelectorAll('#weergave button').forEach(x => x.classList.toggle('aan', x === b));
+  if (data) tekenBetrouwbaarheid();
+});
 document.getElementById('sorteer').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   sortering = b.dataset.s;
