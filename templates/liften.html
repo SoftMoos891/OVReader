@@ -52,6 +52,11 @@
   .filters button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 20px;
                     padding: 4px 12px; font-size: 12px; cursor: pointer; }
   .filters button.aan { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .balk { position: relative; height: 8px; background: var(--panel2); border-radius: 4px; min-width: 80px; overflow: hidden; }
+  .balk span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bad); border-radius: 4px; }
+  .balk span.onb { background: var(--muted); opacity: .45; }
+  .pctcel { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+  .pctcel b { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
   @media (max-width: 600px) { main { padding: 12px; } .panel { padding: 14px; } .verberg-mobiel { display: none; } }
 </style>
   <script src="/dvz-logo.js?v=1" defer></script>
@@ -78,6 +83,16 @@
     <h2>🔴 Nu niet beschikbaar</h2>
     <div class="tabelwrap" id="nuBody"><div class="empty">Laden…</div></div>
     <div class="note">"Sinds" is het moment waarop wij de wissel zagen (elke 10 minuten gecontroleerd). Staat er "≥", dan was de lift al buiten werking toen de meting begon. NS geeft geen oorzaak of verwachte hersteltijd.</div>
+  </div>
+
+  <div class="panel">
+    <h2>📊 Vaak of zelden buiten werking</h2>
+    <div class="filters" id="sorteer">
+      <button data-s="vaak" class="aan">Vaakst buiten werking</button>
+      <button data-s="zelden">Minst vaak buiten werking</button>
+    </div>
+    <div class="tabelwrap" id="betrBody"><div class="empty">Laden…</div></div>
+    <div class="note" id="betrNote"></div>
   </div>
 
   <div class="panel">
@@ -117,7 +132,7 @@ function toggleDarkMode() {
 const LABEL = { buiten_werking: 'Buiten werking', onbekend: 'Status onbekend', beschikbaar: 'Beschikbaar' };
 const KLASSE = { buiten_werking: 'bad', onbekend: 'muted', beschikbaar: 'good' };
 const KLEUR = { buiten_werking: '#d64545', onbekend: '#9a9a9a', beschikbaar: '#2e9e5b' };
-let data = null, filter = 'alle', kaart = null, laag = null, eersteKeer = true;
+let data = null, filter = 'alle', sortering = 'vaak', kaart = null, laag = null, eersteKeer = true;
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pill(st) { return `<span class="pill ${KLASSE[st] || 'muted'}">${LABEL[st] || esc(st)}</span>`; }
@@ -173,6 +188,39 @@ function tekenAlle() {
   }</tbody></table>`;
 }
 
+function kortDuur(sec) {
+  if (sec == null) return '–';
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const u = Math.floor(m / 60);
+  if (u < 48) return `${u} u${m % 60 ? ' ' + (m % 60) + ' min' : ''}`;
+  return `${Math.floor(u / 24)} d ${u % 24} u`;
+}
+
+function tekenBetrouwbaarheid() {
+  const r = [...data.liften].sort((a, b) =>
+    (b.pct_buiten - a.pct_buiten) || (b.storingen - a.storingen) || a.station.localeCompare(b.station));
+  if (sortering === 'zelden') r.reverse();
+  document.getElementById('betrBody').innerHTML = `<table><thead><tr>
+      <th>Station</th><th>Lift</th><th title="Deel van de gemeten tijd dat de lift buiten werking was">Buiten werking</th>
+      <th class="num" title="Aantal keer buiten werking (ook een storing die al liep bij de start)">Keer</th>
+      <th class="num verberg-mobiel" title="Gemiddelde duur van storingen waarvan begin én eind zijn gezien">Gem. duur</th>
+      <th class="num verberg-mobiel">Langste</th></tr></thead><tbody>${
+    r.map(l => `<tr><td>${esc(l.station)}</td><td>${esc(l.naam)}</td>
+      <td><div class="pctcel"><b>${l.pct_buiten.toLocaleString('nl-NL')}%</b>
+        <div class="balk" title="${l.pct_onbekend ? 'grijs: ' + l.pct_onbekend.toLocaleString('nl-NL') + '% status onbekend' : ''}">
+          <span style="width:${l.pct_buiten}%"></span>
+          <span class="onb" style="left:${l.pct_buiten}%;width:${l.pct_onbekend}%"></span></div></div></td>
+      <td class="num">${l.storingen}</td>
+      <td class="num verberg-mobiel">${kortDuur(l.gem_storing)}</td>
+      <td class="num verberg-mobiel">${l.storingen ? (l.sinds_begin_meting && l.status === 'buiten_werking' && l.storingen === 1 ? '≥ ' : '') + kortDuur(l.langste_storing) : '–'}</td></tr>`).join('')
+  }</tbody></table>`;
+  const gemeten = data.meting_sinds ? Date.now() / 1000 - data.meting_sinds : 0;
+  document.getElementById('betrNote').textContent =
+    `Gemeten over ${kortDuur(gemeten)}. Een storing die al liep bij de start telt mee, maar de echte duur ervan is langer. ` +
+    (gemeten < 3 * 86400 ? 'Na een paar dagen meten zeggen deze cijfers pas echt iets.' : '');
+}
+
 function tekenKaart() {
   if (!kaart) {
     kaart = L.map('kaart', { scrollWheelZoom: false });
@@ -215,7 +263,7 @@ async function laad() {
   document.getElementById('meta').textContent = data.meting_sinds
     ? `Meting sinds ${tijd(data.meting_sinds)} · laatst bijgewerkt ${tijd(data.laatst_opgehaald)}`
     : 'Nog geen gegevens opgehaald.';
-  tekenNu(); tekenWissels(); tekenAlle(); tekenKaart();
+  tekenNu(); tekenBetrouwbaarheid(); tekenWissels(); tekenAlle(); tekenKaart();
 }
 
 document.getElementById('filters').addEventListener('click', e => {
@@ -223,6 +271,13 @@ document.getElementById('filters').addEventListener('click', e => {
   filter = b.dataset.f;
   document.querySelectorAll('#filters button').forEach(x => x.classList.toggle('aan', x === b));
   if (data) tekenAlle();
+});
+
+document.getElementById('sorteer').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  sortering = b.dataset.s;
+  document.querySelectorAll('#sorteer button').forEach(x => x.classList.toggle('aan', x === b));
+  if (data) tekenBetrouwbaarheid();
 });
 
 laad();
