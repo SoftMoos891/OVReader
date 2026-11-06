@@ -244,6 +244,9 @@ def _serverfout(_e):
     return _foutpagina(500)
 
 
+OPENBARE_PADEN = {"/liften", "/api/liften"}
+
+
 @app.before_request
 def require_auth():
     if not AUTH_PASSWORD:
@@ -257,6 +260,9 @@ def require_auth():
     if request.url_rule is None:
         return None
     if request.path == "/login" or request.path.startswith("/static/"):
+        return None
+    # Liftenoverzicht is openbaar: alleen openbare NS-gegevens.
+    if request.path in OPENBARE_PADEN:
         return None
     if session.get("authenticated"):
         return None
@@ -1124,7 +1130,7 @@ def busnummers_page():
 
 @app.route("/liften")
 def liften_page():
-    return render_template("liften.html")
+    return render_template("liften.html", ingelogd=bool(session.get("authenticated")))
 
 
 @app.route("/api/liften")
