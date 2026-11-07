@@ -36,7 +36,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tr:hover td { background: var(--panel2); }
   .tabelwrap { overflow-x: auto; }
   .empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 10px 0; }
@@ -57,7 +57,15 @@
   .balk span.onb { background: var(--muted); opacity: .45; }
   .pctcel { display: flex; align-items: center; gap: 8px; min-width: 150px; }
   .pctcel b { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
-  @media (max-width: 600px) { main { padding: 12px; } .panel { padding: 14px; } .verberg-mobiel { display: none; } }
+  .alleen-mobiel { display: none; }
+  @media (max-width: 600px) {
+    main { padding: 12px; } .panel { padding: 14px; } .verberg-mobiel { display: none; }
+    /* station, lift, status en duur passen niet naast elkaar: de lift staat onder het station */
+    .alleen-mobiel { display: block; }
+    th, td { padding: 7px 5px; }
+    .pill { padding: 2px 7px; font-size: 11px; }
+    .pctcel { min-width: 104px; gap: 6px; } .pctcel b { min-width: 38px; } .balk { min-width: 56px; }
+  }
 </style>
   <script src="/dvz-logo.js?v=1" defer></script>
 </head>
@@ -162,8 +170,8 @@ function tekenNu() {
     .sort((a, b) => (a.status === b.status ? a.status_sinds - b.status_sinds : a.status === 'buiten_werking' ? -1 : 1));
   if (!rijen.length) { document.getElementById('nuBody').innerHTML = '<div class="empty">Alle liften zijn beschikbaar.</div>'; return; }
   document.getElementById('nuBody').innerHTML = `<table><thead><tr>
-      <th>Station</th><th>Lift</th><th>Status</th><th class="verberg-mobiel">Sinds</th><th class="num">Duur</th></tr></thead><tbody>${
-    rijen.map(l => `<tr><td>${esc(l.station)}</td><td>${esc(l.naam)}</td><td>${pill(l.status)}</td>
+      <th>Station</th><th class="verberg-mobiel">Lift</th><th>Status</th><th class="verberg-mobiel">Sinds</th><th class="num">Duur</th></tr></thead><tbody>${
+    rijen.map(l => `<tr><td>${esc(l.station)}<div class="alleen-mobiel klein">${esc(l.naam)}</div></td><td class="verberg-mobiel">${esc(l.naam)}</td><td>${pill(l.status)}</td>
       <td class="verberg-mobiel">${l.sinds_begin_meting ? '≥ ' : ''}${tijd(l.status_sinds)}</td>
       <td class="num">${l.sinds_begin_meting ? '≥ ' : ''}${duur(l.status_sinds)}</td></tr>`).join('')
   }</tbody></table>`;
@@ -176,9 +184,9 @@ function tekenWissels() {
     return;
   }
   document.getElementById('wisselBody').innerHTML = `<table><thead><tr>
-      <th>Tijd</th><th>Station</th><th>Lift</th><th>Van</th><th>Naar</th></tr></thead><tbody>${
-    w.map(x => `<tr><td style="white-space:nowrap">${tijd(x.ts)}</td><td>${esc(x.station_naam)}</td><td>${esc(x.naam)}</td>
-      <td>${pill(x.oude_status)}</td><td>${pill(x.nieuwe_status)}</td></tr>`).join('')
+      <th>Tijd</th><th>Station</th><th class="verberg-mobiel">Lift</th><th class="verberg-mobiel">Van</th><th>Naar</th></tr></thead><tbody>${
+    w.map(x => `<tr><td style="white-space:nowrap">${tijd(x.ts)}</td><td>${esc(x.station_naam)}<div class="alleen-mobiel klein">${esc(x.naam)}</div></td><td class="verberg-mobiel">${esc(x.naam)}</td>
+      <td class="verberg-mobiel">${pill(x.oude_status)}</td><td>${pill(x.nieuwe_status)}</td></tr>`).join('')
   }</tbody></table>`;
 }
 
@@ -186,9 +194,9 @@ function tekenAlle() {
   const rijen = data.liften.filter(l => filter === 'alle' || l.status === filter);
   if (!rijen.length) { document.getElementById('alleBody').innerHTML = '<div class="empty">Geen liften in deze selectie.</div>'; return; }
   document.getElementById('alleBody').innerHTML = `<table><thead><tr>
-      <th>Station</th><th>Lift</th><th>Status</th><th class="verberg-mobiel">Sinds</th>
+      <th>Station</th><th class="verberg-mobiel">Lift</th><th>Status</th><th class="verberg-mobiel">Sinds</th>
       <th class="num" title="Aantal keer buiten werking gegaan sinds het begin van de meting">Storingen</th></tr></thead><tbody>${
-    rijen.map(l => `<tr><td>${esc(l.station)}</td><td>${esc(l.naam)}</td><td>${pill(l.status)}</td>
+    rijen.map(l => `<tr><td>${esc(l.station)}<div class="alleen-mobiel klein">${esc(l.naam)}</div></td><td class="verberg-mobiel">${esc(l.naam)}</td><td>${pill(l.status)}</td>
       <td class="verberg-mobiel">${l.sinds_begin_meting ? '<span class="klein">begin meting</span>' : tijd(l.status_sinds)}</td>
       <td class="num">${l.storingen}</td></tr>`).join('')
   }</tbody></table>`;
@@ -212,11 +220,11 @@ function tekenBetrouwbaarheid() {
     (b.pct_buiten - a.pct_buiten) || (b.storingen - a.storingen) || a.station.localeCompare(b.station));
   if (sortering === 'zelden') r.reverse();
   document.getElementById('betrBody').innerHTML = `<table><thead><tr>
-      <th>Station</th><th>Lift</th><th title="Deel van de gemeten tijd dat de lift buiten werking was">Buiten werking</th>
+      <th>Station</th><th class="verberg-mobiel">Lift</th><th title="Deel van de gemeten tijd dat de lift buiten werking was">Buiten werking</th>
       <th class="num" title="Aantal keer buiten werking (ook een storing die al liep bij de start)">Keer</th>
       <th class="num verberg-mobiel" title="Gemiddelde duur van storingen waarvan begin én eind zijn gezien">Gem. duur</th>
       <th class="num verberg-mobiel">Langste</th></tr></thead><tbody>${
-    r.map(l => `<tr><td>${esc(l.station)}</td><td>${esc(l.naam)}</td>
+    r.map(l => `<tr><td>${esc(l.station)}<div class="alleen-mobiel klein">${esc(l.naam)}</div></td><td class="verberg-mobiel">${esc(l.naam)}</td>
       <td><div class="pctcel"><b>${l.pct_buiten.toLocaleString('nl-NL')}%</b>
         <div class="balk" title="${l.pct_onbekend ? 'grijs: ' + l.pct_onbekend.toLocaleString('nl-NL') + '% status onbekend' : ''}">
           <span style="width:${l.pct_buiten}%"></span>

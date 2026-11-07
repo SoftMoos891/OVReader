@@ -223,7 +223,7 @@ def test_rss_wegsituatie_en_bus_linken_naar_verkeerspagina(lite_client, temp_db)
     xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
     assert "<link>https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_c</link>" in xml
     assert "<link>https://reader.dvznet.nl/verkeer#melding=bus-alert-KV15%3AKEOLIS%3A1</link>" in xml
-    assert "ovreader.dvznet.nl/lite" not in xml
+    assert "<link>https://ovreader.dvznet.nl/lite" not in xml  # alleen de atom:link (self) wijst naar de feed zelf
 
 
 def test_rss_knmi_waarschuwing_linkt_naar_verkeerspagina(lite_client, temp_db):
@@ -269,3 +269,23 @@ def test_feed_items_json_zelfde_als_rss_met_soort(lite_client, temp_db):
     assert per_guid["road-situation-NDW01_j"]["link"] == "https://reader.dvznet.nl/verkeer#melding=road-situation-NDW01_j"
     xml = lite_client.get("/lite/rss.xml").get_data(as_text=True)
     assert all(f"<guid isPermaLink=\"false\">{g}</guid>" in xml for g in per_guid)
+
+
+def test_rss_etag_geeft_304_als_er_niets_veranderde(lite_client, temp_db):
+    conn = temp_db.get_conn()
+    conn.execute(
+        """INSERT INTO rss_feed_items (guid, kind, title, description, pub_date, created_at)
+           VALUES ('etag-1', 'rail_alert', 'NS-storing (Verstoring): Seinstoring: Utrecht - Gouda', 'x', 1794000000, 1794000000)"""
+    )
+    conn.commit(); conn.close()
+    eerste = lite_client.get("/lite/rss.xml")
+    assert eerste.status_code == 200 and eerste.headers.get("ETag")
+    assert "<ttl>2</ttl>" in eerste.get_data(as_text=True)
+    assert 'rel="self"' in eerste.get_data(as_text=True)
+    tweede = lite_client.get("/lite/rss.xml", headers={"If-None-Match": eerste.headers["ETag"]})
+    assert tweede.status_code == 304
+    conn = temp_db.get_conn()
+    conn.execute("UPDATE rss_feed_items SET title = title || ' (voorbij)', resolved_at = 1794000600 WHERE guid = 'etag-1'")
+    conn.commit(); conn.close()
+    derde = lite_client.get("/lite/rss.xml", headers={"If-None-Match": eerste.headers["ETag"]})
+    assert derde.status_code == 200 and "(voorbij)" in derde.get_data(as_text=True)

@@ -14,6 +14,7 @@ haltezoeker/vertrektijden -- data die deze lite-scope (storingen + uitval)
 nooit nodig heeft. Deze module leest daarom alleen het kleine
 utrecht_routes.json (~23 KB) in, zodat het hele proces met een fractie van
 het geheugen van de hoofd-webservice kan draaien."""
+import hashlib
 import json
 import os
 import time
@@ -776,6 +777,10 @@ def lite_rss_uitval():
     Een melding verdwijnt dus niet vanzelf zodra de situatie weer normaal
     is."""
     rows = _rss_rows()
+    # lastBuildDate = laatste wijziging in de meldingen (niet 'nu'), zodat de inhoud gelijk blijft
+    # zolang er niets verandert en de ETag hieronder een 304 kan geven.
+    laatst = max([r["pub_date"] for r in rows] + [r["resolved_at"] or 0 for r in rows] + [0])
+    gebouwd = datetime.fromtimestamp(laatst, tz=timezone.utc) if laatst else datetime.now(timezone.utc)
 
     # <link> kreeg vroeger voor elk item dezelfde LITE_BASE_URL -- <guid> was
     # dan wel al uniek, maar sommige RSS-lezers gebruiken (mede) de link om
@@ -799,15 +804,21 @@ def lite_rss_uitval():
     </item>""" for r in rows]
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>{xml_escape(RSS_FEED_TITLE)}</title>
     <link>{xml_escape(VERKEER_URL)}</link>
+    <atom:link href="{xml_escape(LITE_BASE_URL)}/rss.xml" rel="self" type="application/rss+xml"/>
     <description>Meldingen bij uitval van Keolis of Transdev boven de {CANCELLATION_ALERT_THRESHOLD_PCT:.0f}%, bij nieuwe NS-storingen op het spoor in de provincie Utrecht, bij ernstige U-OV-meldingen (bus/tram), bij urgente wegsituaties, en bij KNMI-weerwaarschuwingen (code geel/oranje/rood) voor de provincie Utrecht.</description>
-    <lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>{''.join(items)}
+    <ttl>2</ttl>
+    <lastBuildDate>{format_datetime(gebouwd)}</lastBuildDate>{''.join(items)}
   </channel>
 </rss>"""
-    return Response(xml, mimetype="application/rss+xml")
+    # Afnemers (o.a. NPO) halen de feed elke paar minuten op: met de ETag krijgen ze een 304 als er niets veranderde.
+    resp = Response(xml, mimetype="application/rss+xml")
+    resp.set_etag(hashlib.sha1(xml.encode("utf-8")).hexdigest()[:20])
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp.make_conditional(request)
 
 
 @app.route("/lite/api/uitval/daily")

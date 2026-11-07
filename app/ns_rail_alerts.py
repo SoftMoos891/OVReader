@@ -108,6 +108,25 @@ def _first_consequence_level(d):
     return None
 
 
+def _first_cause_label(d):
+    for ts in d.get("timespans") or []:
+        label = ((ts.get("cause") or {}).get("label") or "").strip()
+        if label:
+            return label
+    return None
+
+
+def _title_with_cause(d):
+    """De NS-titel noemt alleen het traject ("Schiphol - Lelystad; Schiphol - Utrecht.").
+    Met de oorzaak ervoor zie je in de feed, de DVZ Reader en /verkeer meteen wat er
+    aan de hand is. Bij werkzaamheden zegt het type dat al."""
+    route = d.get("title", "")
+    cause = _first_cause_label(d)
+    if not cause or cause.lower() == "werkzaamheden":
+        return route
+    return f"{cause[0].upper()}{cause[1:]}: {route}"
+
+
 def parse_rail_alerts(disruptions):
     """Filtert de landelijke NS-storingenlijst tot alleen storingen die
     minstens één station in de provincie Utrecht raken."""
@@ -123,7 +142,7 @@ def parse_rail_alerts(disruptions):
             continue
         timespans = d.get("timespans") or []
         situation = timespans[0].get("situation") if timespans else None
-        title = d.get("title", "")
+        title = _title_with_cause(d)
         description = situation["label"] if situation else ""
         alt_transport = _first_alternative_transport_label(d)
         if alt_transport:
