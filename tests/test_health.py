@@ -196,3 +196,20 @@ def test_collector_records_error_when_feed_fails(temp_db, monkeypatch):
     rij = _fetchstatus(temp_db)
     assert rij["last_success_at"] is None
     assert "OVapi 503" in rij["last_error"]
+
+
+def test_health_liften_component(client, temp_db):
+    data = client.get("/api/health").get_json()
+    assert data["components"]["liften"]["status"] == "no_data"
+    # Liften tellen niet mee in de totaalstatus (die gaat over de realtime-data).
+    assert data["status"] == "no_data"
+    conn = temp_db.get_conn()
+    nu = int(time.time())
+    conn.execute(
+        "INSERT INTO liften (lift_id, naam, status, first_seen, last_seen) VALUES ('L1', 'Lift', 'beschikbaar', ?, ?)",
+        (nu - 3600, nu - 60),
+    )
+    conn.commit()
+    conn.close()
+    data = client.get("/api/health").get_json()
+    assert data["components"]["liften"]["status"] == "ok"

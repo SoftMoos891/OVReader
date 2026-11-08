@@ -5,14 +5,12 @@
 <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}?v=3">
 <title>DVZ OV-Monitor 1.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
 </script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet" href="/static/vendor/leaflet-1.9.4/leaflet.css">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); transition: background .15s, color .15s; }
@@ -48,6 +46,8 @@
                        text-transform: uppercase; letter-spacing: .02em; }
   .alert .routes { color: var(--muted); font-size: 12px; }
   #alerts { max-height: 420px; overflow-y: auto; }
+  .kaart-legenda summary { cursor: pointer; font-weight: 600; }
+  .kaart-legenda details[open] summary { margin-bottom: 4px; }
   #route-stats, #agency-stats, #agency-cancel-stats { overflow-x: auto; }
   #agency-stats table, #agency-cancel-stats table { table-layout: fixed; }
   #agency-stats th:nth-child(1), #agency-stats td:nth-child(1),
@@ -299,8 +299,7 @@
   &bull; <button class="footer-status-btn" onclick="openHealthModal()"><span class="status-dot" id="healthDot"></span>Systeemstatus</button>
 </footer>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="/static/vendor/leaflet-1.9.4/leaflet.js"></script>
 <script src="{{ url_for('static', filename='js/severity.js') }}"></script>
 <script>
 const map = L.map('map').setView([52.09, 5.20], 10);
@@ -310,8 +309,10 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const legend = L.control({ position: 'bottomleft' });
 legend.onAdd = function () {
-  const div = L.DomUtil.create('div', 'map-legend');
-  div.innerHTML = `
+  const div = L.DomUtil.create('div', 'map-legend kaart-legenda');
+  // Inklapbaar: op de telefoon dekte de open legenda bijna de halve kaart.
+  const open = window.matchMedia('(min-width: 700px)').matches ? ' open' : '';
+  div.innerHTML = `<details${open}><summary>Legenda</summary>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:6px;"></span>Op tijd</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--warn);margin-right:6px;"></span>Lichte vertraging (3-6 min)</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--bad);margin-right:6px;"></span>Grote vertraging (&gt;6 min)</div>
@@ -320,7 +321,8 @@ legend.onAdd = function () {
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgente wegsituatie</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;margin-right:6px;"></span>Probleem bij halte</div>
     <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d6006c;margin-right:6px;"></span>Urgent probleem bij halte</div>
-  `;
+  </details>`;
+  L.DomEvent.disableClickPropagation(div);
   return div;
 };
 legend.addTo(map);
@@ -1284,6 +1286,7 @@ async function loadHealth() {
       ['Weerwaarschuwingen (KNMI)', data.components.knmi_warnings, knmiWarningsNote],
       ['Actueel weer (KNMI)', data.components.knmi_weather, knmiWeatherNote],
       ['Luchtkwaliteit (RIVM)', data.components.air_quality, airQualityNote],
+      ['Liften (NS)', data.components.liften || { status: 'no_data', seconds_ago: null }, 'ververst elke 10 min'],
     ].map(([label, c, note]) => [label, c.status, `${fmtAgo(c.seconds_ago)}${note ? ' · ' + note : ''}`]);
 
     // Dienstregeling: geen "hoelang geleden opgehaald" maar hoelang 'ie nog

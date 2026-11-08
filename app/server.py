@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -126,20 +127,52 @@ STATS_CACHE_TTL_SECONDS = 1800
 _response_cache = {}
 
 
-def _cached(cache_key, ttl_seconds, compute_fn):
+def _cached(cache_key, ttl_seconds, compute_fn, achtergrond=False):
     """Simpele in-process TTL-cache voor dure aggregatie-endpoints (/api/stats,
     /api/records) -- voorkomt dat meerdere gelijktijdige bezoekers (of een
     pollende client) dezelfde zware query binnen een paar seconden/minuten
     steeds opnieuw laten uitvoeren. Per gunicorn-worker, niet gedeeld tussen
     workers -- dat hoeft ook niet, het doel is alleen herhaald werk binnen
-    één worker te schelen."""
+    één worker te schelen.
+
+    Met achtergrond=True krijgt een bezoeker na het verlopen meteen de vorige
+    uitkomst en wordt de nieuwe op de achtergrond berekend; alleen de allereerste
+    keer na een herstart wordt er gewacht (de collector warmt dat voor)."""
     now = time.time()
     cached = _response_cache.get(cache_key)
     if cached and now - cached[0] < ttl_seconds:
         return cached[1]
+    if cached and achtergrond:
+        _ververs_op_achtergrond(cache_key, compute_fn)
+        return cached[1]
     value = compute_fn()
-    _response_cache[cache_key] = (now, value)
+    _response_cache[cache_key] = (time.time(), value)
     return value
+
+
+# Sleutels die nu op de achtergrond opnieuw berekend worden (nooit twee tegelijk).
+_bezig = set()
+_bezig_lock = threading.Lock()
+
+
+def _ververs_op_achtergrond(cache_key, compute_fn):
+    """Verlopen waarde opnieuw berekenen zonder dat de bezoeker wacht: hij krijgt
+    nog de vorige uitkomst, de volgende bezoeker de nieuwe."""
+    with _bezig_lock:
+        if cache_key in _bezig:
+            return
+        _bezig.add(cache_key)
+
+    def werk():
+        try:
+            _response_cache[cache_key] = (time.time(), compute_fn())
+        except Exception:
+            app.logger.exception("achtergrondberekening %s mislukt", cache_key)
+        finally:
+            with _bezig_lock:
+                _bezig.discard(cache_key)
+
+    threading.Thread(target=werk, daemon=True).start()
 
 
 TRENDS_REFRESH_HOUR, TRENDS_REFRESH_MINUTE = 3, 30  # servertijd
@@ -376,6 +409,7 @@ KNMI_WEATHER_STALE_AFTER_SECONDS = 2700
 # voor een paar gemiste cycli. Publieke, sleutelloze bron (geen
 # 'not_configured'), net als road_situations.
 AIR_QUALITY_STALE_AFTER_SECONDS = 5400
+LIFTEN_STALE_AFTER_SECONDS = 1800  # liften worden elke 10 min opgehaald
 
 
 @app.route("/api/health")
@@ -423,6 +457,7 @@ def api_health():
         air_quality_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM air_quality_fetch_status WHERE id = 1"
         ).fetchone()
+        liften_last = conn.execute("SELECT MAX(last_seen) AS t FROM liften").fetchone()["t"]
     finally:
         conn.close()
 
@@ -466,6 +501,7 @@ def api_health():
         "knmi_warnings": knmi_warnings_component,
         "knmi_weather": knmi_weather_component,
         "air_quality": air_quality_component,
+        "liften": component(liften_last, stale_after=LIFTEN_STALE_AFTER_SECONDS),
     }
     # Uitval en NS-spoorstoringen tellen bewust niet mee in de totaalstatus:
     # dat signaal gaat over of de collector-loop voor bus/tram leeft, niet
@@ -987,7 +1023,8 @@ def api_stats():
     dit de dagelijkse ververscyclus van die pagina, zie _cached_daily()."""
     range_key = request.args.get("range")
     if range_key is None:
-        return jsonify(_cached(("stats", range_key), STATS_CACHE_TTL_SECONDS, lambda: _compute_stats(range_key)))
+        return jsonify(_cached(("stats", range_key), STATS_CACHE_TTL_SECONDS, lambda: _compute_stats(range_key),
+                               achtergrond=True))
     return jsonify(_cached_daily(("stats", range_key), lambda: _compute_stats(range_key)))
 
 

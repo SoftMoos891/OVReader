@@ -5,8 +5,7 @@
 <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}?v=3">
 <title>Uitval-dashboard — busvervoer Utrecht</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
@@ -189,7 +188,7 @@
   </div>
 </main>
 
-<script src="https://unpkg.com/chart.js@4/dist/chart.umd.js" crossorigin=""></script>
+<script src="/static/vendor/chart.js-4.6.1/chart.umd.min.js"></script>
 <script>
 let currentRange = 'week';
 let upToNow = true;
@@ -287,9 +286,8 @@ function renderScheduleBanner() {
     el.textContent = `Zomerdienstregeling actief · t/m ${endShort}`;
     el.title = `Zomerdienstregeling actief sinds ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
   } else {
-    el.className = 'pill muted schedule-pill';
-    el.textContent = `Zomerdienstregeling liep t/m ${endShort}`;
-    el.title = `Zomerdienstregeling liep van ${SUMMER_SCHEDULE_START_LABEL} t/m ${SUMMER_SCHEDULE_END_LABEL}`;
+    // Voorbij: geen pill meer (de arcering in de dag-grafieken blijft).
+    el.style.display = 'none';
   }
 }
 

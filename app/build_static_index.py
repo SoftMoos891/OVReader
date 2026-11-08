@@ -453,6 +453,9 @@ ALL_OUTPUTS = (
 )
 
 
+HERBOUWD_MARKER = DATA_DIR / ".herbouwd"
+
+
 def main():
     force = "--force" in sys.argv
     DATA_DIR.mkdir(exist_ok=True)
@@ -604,6 +607,9 @@ def main():
     state["build_version"] = BUILD_VERSION
     state["built_at"] = int(time.time())
     FEED_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Signaal voor utrecht-bus-rebuild.service: alleen na een echte herbouw de
+    # diensten herstarten (die lezen de nieuwe json's pas bij het opstarten).
+    HERBOUWD_MARKER.write_text(str(state["built_at"]), encoding="utf-8")
 
 
 if __name__ == "__main__":

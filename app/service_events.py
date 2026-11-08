@@ -15,6 +15,12 @@ KNOWN_SERVICE_EVENTS = [
         "label": "Staking",
         "description": "Staking bij Transdev en Keolis.",
     },
+    {
+        "date": "2026-10-14",
+        "operators": ["Transdev", "Keolis"],
+        "label": "Staking",
+        "description": "Staking in het streekvervoer: de hele dag minder bussen en trams.",
+    },
 ]
 
 

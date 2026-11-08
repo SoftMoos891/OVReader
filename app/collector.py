@@ -385,8 +385,21 @@ def _today_start_epoch():
     return int(dt.datetime.combine(today, dt.time.min).timestamp())
 
 
-_ROLLUP_UPSERT_DAILY = """
-    INSERT INTO route_stats_daily (day, route_id, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
+_ON_CONFLICT_SOM = """
+        sample_count = sample_count + excluded.sample_count,
+        on_time_count = on_time_count + excluded.on_time_count,
+        avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
+                            / (sample_count + excluded.sample_count),
+        max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
+"""
+
+# Optellen en wegschrijven zijn twee stappen: de SELECT over een hele dag ruwe
+# trip_delays duurt tientallen seconden, en als INSERT ... SELECT hield die de
+# schrijflock al die tijd vast (elke nacht rond 00:02 "database is locked" in
+# de andere jobs). Een losse SELECT leest naast de schrijvers (WAL); daarna is
+# het wegschrijven van een paar duizend rijen een kwestie van milliseconden.
+# De dag is afgesloten, dus er komen tussen de twee stappen geen rijen bij.
+_ROLLUP_SELECT_DAILY = """
     SELECT
         strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
         route_id,
@@ -397,18 +410,16 @@ _ROLLUP_UPSERT_DAILY = """
     FROM trip_delays
     WHERE fetched_at >= ? AND fetched_at < ?
     GROUP BY day, route_id
-    ON CONFLICT(day, route_id) DO UPDATE SET
-        sample_count = sample_count + excluded.sample_count,
-        on_time_count = on_time_count + excluded.on_time_count,
-        avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
-                            / (sample_count + excluded.sample_count),
-        max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
 """
 
+_ROLLUP_INSERT_DAILY = """
+    INSERT INTO route_stats_daily (day, route_id, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(day, route_id) DO UPDATE SET""" + _ON_CONFLICT_SOM
 
-def _rollup_upsert_period_daily():
+
+def _rollup_select_period_daily():
     return f"""
-    INSERT INTO route_stats_period_daily (day, route_id, period, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
     SELECT
         strftime('%Y-%m-%d', fetched_at, 'unixepoch', 'localtime') AS day,
         route_id,
@@ -420,13 +431,13 @@ def _rollup_upsert_period_daily():
     FROM trip_delays
     WHERE fetched_at >= ? AND fetched_at < ?
     GROUP BY day, route_id, period
-    ON CONFLICT(day, route_id, period) DO UPDATE SET
-        sample_count = sample_count + excluded.sample_count,
-        on_time_count = on_time_count + excluded.on_time_count,
-        avg_delay_seconds = (avg_delay_seconds * sample_count + excluded.avg_delay_seconds * excluded.sample_count)
-                            / (sample_count + excluded.sample_count),
-        max_delay_seconds = MAX(max_delay_seconds, excluded.max_delay_seconds)
 """
+
+
+_ROLLUP_INSERT_PERIOD_DAILY = """
+    INSERT INTO route_stats_period_daily (day, route_id, period, sample_count, on_time_count, avg_delay_seconds, max_delay_seconds)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(day, route_id, period) DO UPDATE SET""" + _ON_CONFLICT_SOM
 
 
 def rollup_completed_days():
@@ -476,8 +487,11 @@ def rollup_completed_days():
             if since >= today_start:
                 return
             day_end = min(since + 86400, today_start)
-            conn.execute(_ROLLUP_UPSERT_DAILY, (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, day_end))
-            conn.execute(_rollup_upsert_period_daily(), (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, day_end))
+            args = (ON_TIME_MIN_DELAY, ON_TIME_MAX_DELAY, since, day_end)
+            daily = [tuple(r) for r in conn.execute(_ROLLUP_SELECT_DAILY, args).fetchall()]
+            period = [tuple(r) for r in conn.execute(_rollup_select_period_daily(), args).fetchall()]
+            conn.executemany(_ROLLUP_INSERT_DAILY, daily)
+            conn.executemany(_ROLLUP_INSERT_PERIOD_DAILY, period)
             conn.execute(
                 "INSERT INTO rollup_watermark (id, rolled_through_epoch) VALUES (1, ?) "
                 "ON CONFLICT(id) DO UPDATE SET rolled_through_epoch = excluded.rolled_through_epoch",
@@ -795,6 +809,21 @@ def warm_trends_cache():
                 print(f"[collector] voorverwarmen {path} mislukt:")
                 traceback.print_exc()
     print("[collector] /trends voorverwarmd")
+
+
+def warm_dashboard_stats():
+    """Houdt /api/stats (punctualiteit op het live overzicht) warm. Koud kost
+    die ~13 s (alle ruwe metingen van vandaag); de webservice rekent een
+    verlopen waarde op de achtergrond opnieuw uit, maar na een herstart is er
+    nog niets om terug te geven. Een verzoek per 20 minuten vangt beide op."""
+    auth = None
+    password = os.environ.get("BUS_MONITOR_PASSWORD")
+    if password:
+        auth = (os.environ.get("BUS_MONITOR_USER", "admin"), password)
+    try:
+        requests.get(f"{WEB_BASE_URL}/api/stats", auth=auth, timeout=120)
+    except requests.RequestException as e:
+        print(f"[collector] voorverwarmen /api/stats mislukt: {e}")
 
 
 def fetch_rail_alerts_job():
@@ -1406,6 +1435,8 @@ def start_scheduler():
     # 5 minuten na de cache-boundary in server.py (TRENDS_REFRESH_HOUR:MINUTE
     # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
+    scheduler.add_job(warm_dashboard_stats, "interval", minutes=20, id="warm_stats", max_instances=1,
+                      next_run_time=dt.datetime.now().astimezone() + dt.timedelta(minutes=2))
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
     scheduler.add_job(fetch_rail_alerts_job, "interval", minutes=2, id="rail_alerts", max_instances=1)
     scheduler.add_job(fetch_liften_job, "interval", minutes=10, id="liften", max_instances=1)

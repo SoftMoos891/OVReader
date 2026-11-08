@@ -18,5 +18,8 @@ ExecStart=/opt/utrecht-bus-monitor/venv/bin/python -m app.build_static_index
 # utrechtbus zelf geen systemctl-rechten heeft. Draait alleen als ExecStart
 # is geslaagd (systemd slaat ExecStartPost over bij een mislukte oneshot-
 # ExecStart), dus een mislukte download/build laat de services gewoon op de
-# laatst bekende goede data doordraaien.
-ExecStartPost=+/usr/bin/systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite
+# laatst bekende goede data doordraaien. Alleen herstarten als er echt is
+# herbouwd (build_static_index schrijft dan data/.herbouwd): bij een
+# ongewijzigde feed kostte de herstart elke nacht ~45 s realtime-data en de
+# opgewarmde caches, voor niets.
+ExecStartPost=+/bin/sh -c 'if [ -e /opt/utrecht-bus-monitor/data/.herbouwd ]; then rm -f /opt/utrecht-bus-monitor/data/.herbouwd; /usr/bin/systemctl restart utrecht-bus-collector utrecht-bus-web utrecht-bus-lite; else echo "geen herbouw, diensten niet herstart"; fi'

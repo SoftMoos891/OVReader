@@ -56,6 +56,7 @@ ROAD_SITUATIONS_STALE_AFTER_SECONDS = 1200  # zelfde marge als in app/server.py 
 KNMI_WARNINGS_STALE_AFTER_SECONDS = 5400  # zelfde marge als in app/server.py (job draait elke 30 min)
 KNMI_WEATHER_STALE_AFTER_SECONDS = 2700  # zelfde marge als in app/server.py (job draait elke 15 min)
 AIR_QUALITY_STALE_AFTER_SECONDS = 5400  # zelfde marge als in app/server.py (job draait elke 30 min)
+LIFTEN_STALE_AFTER_SECONDS = 1800  # liften worden elke 10 min opgehaald
 
 app = Flask(
     __name__,
@@ -245,6 +246,7 @@ def lite_api_health():
         air_quality_status = conn.execute(
             "SELECT last_success_at, last_error_at FROM air_quality_fetch_status WHERE id = 1"
         ).fetchone()
+        liften_last = conn.execute("SELECT MAX(last_seen) AS t FROM liften").fetchone()["t"]
     finally:
         conn.close()
 
@@ -288,6 +290,7 @@ def lite_api_health():
         "knmi_warnings": knmi_warnings_component,
         "knmi_weather": knmi_weather_component,
         "air_quality": air_quality_component,
+        "liften": component(liften_last, stale_after=LIFTEN_STALE_AFTER_SECONDS),
     }
     # Ook de laatste geslaagde fetch telt mee: 's nachts kan de feed een uur leeg
     # zijn (geen bussen) terwijl de collector gewoon draait (15 okt 2026).

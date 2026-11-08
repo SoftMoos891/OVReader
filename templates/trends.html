@@ -5,8 +5,7 @@
 <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}?v=3">
 <title>Trends &amp; analyse — busvervoer Utrecht</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
@@ -78,7 +77,7 @@
   .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
   .bar-row { display: grid; grid-template-columns: 96px 1fr 58px; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; }
   .bar-row .track { background: var(--panel2); border-radius: 4px; height: 16px; overflow: hidden; }
-  .bar-row .fill { background: var(--accent); height: 100%; border-radius: 4px; min-width: 2px; }
+  .bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 4px; min-width: 2px; }
   .bar-row .num { font-family: 'IBM Plex Mono', monospace; color: var(--muted); text-align: right; }
   .bar-row.muted .fill { background: var(--border2); }
   td.mono, th.mono { font-family: 'IBM Plex Mono', monospace; }
@@ -394,15 +393,26 @@ function renderTramKpis(data) {
 // staven = hoeveel uur de tram die dag verstoord was, lijn = het aandeel
 // metingen dat op tijd was. Handmatige SVG -- de pagina laadt bewust geen
 // grafiekbibliotheek.
+let tramDayChartData = null;
+let tramDayChartTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(tramDayChartTimer);
+  tramDayChartTimer = setTimeout(() => { if (tramDayChartData) renderTramDayChart(tramDayChartData); }, 200);
+});
+
 function renderTramDayChart(data) {
   const days = data.per_day;
   const host = document.getElementById('tram-daychart');
   if (!days.length) { host.innerHTML = '<div class="empty">Geen dagen in deze periode</div>'; return; }
 
   const punctualityByDay = Object.fromEntries(data.punctuality.map(p => [p.date, p.on_time_pct]));
-  const barW = Math.max(9, Math.min(30, Math.floor(760 / days.length)));
-  const gap = barW > 14 ? 3 : 2;
-  const w = days.length * (barW + gap) + 54, h = 190, top = 14, bottom = 26;
+  // Vult de breedte van het paneel; staven hooguit 30 px, de rest wordt ruimte ertussen.
+  tramDayChartData = data;
+  const beschikbaar = Math.max(300, (host.clientWidth || 760) - 2);
+  const slot = Math.max(11, (beschikbaar - 54) / days.length);
+  const barW = Math.max(9, Math.min(30, Math.floor(slot * 0.75)));
+  const gap = slot - barW;
+  const w = Math.round(days.length * slot + 54), h = 190, top = 14, bottom = 26;
   const plotH = h - top - bottom;
   const maxHours = Math.max(1, ...days.map(d => d.disrupted_seconds / 3600));
 

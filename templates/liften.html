@@ -5,11 +5,9 @@
 <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}?v=3">
 <title>Liften — NS-stations provincie Utrecht</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v={{ css_versie }}">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="/static/vendor/leaflet-1.9.4/leaflet.css">
 <script>
   if (localStorage.getItem('ovreader_dark') === 'true') document.documentElement.classList.add('dark');
 </script>
@@ -135,8 +133,7 @@
   Copyright (c) 2026 DVZNET - Alle rechten voorbehouden &bull; Liftstatus: NS Places-API
 </footer>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="/static/vendor/leaflet-1.9.4/leaflet.js"></script>
 <script>
 function toggleDarkMode() {
   document.documentElement.classList.toggle('dark');
