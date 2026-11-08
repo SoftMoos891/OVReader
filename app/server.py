@@ -280,6 +280,14 @@ def _serverfout(_e):
 OPENBARE_PADEN = {"/liften", "/api/liften"}
 
 
+def _via_tweestaps():
+    """True als nginx de bezoeker al via de tweestapsinlog (dvz-auth) heeft
+    doorgelaten: dan zet nginx de kop X-DVZ-2FA (naam van het apparaat). nginx
+    overschrijft die kop altijd, dus een bezoeker kan hem niet zelf meesturen;
+    alleen verzoeken via de lokale proxy tellen."""
+    return bool(request.headers.get("X-DVZ-2FA")) and request.remote_addr in ("127.0.0.1", "::1")
+
+
 @app.before_request
 def require_auth():
     if not AUTH_PASSWORD:
@@ -297,7 +305,7 @@ def require_auth():
     # Liftenoverzicht is openbaar: alleen openbare NS-gegevens.
     if request.path in OPENBARE_PADEN:
         return None
-    if session.get("authenticated"):
+    if session.get("authenticated") or _via_tweestaps():
         return None
     # Basic Auth blijft ook werken (naast de sessie-login hieronder) -- o.a.
     # /api/backup/latest wordt vanaf een andere machine met `curl -u`
@@ -324,6 +332,8 @@ def login():
     normalized = next_url.replace("\\", "/")
     if not normalized.startswith("/") or normalized.startswith("//"):
         next_url = url_for("index")
+    if _via_tweestaps():
+        return redirect(next_url)
     error = None
     if request.method == "POST":
         if _valid_credentials(request.form.get("username", ""), request.form.get("password", "")):
@@ -340,6 +350,9 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
+    if _via_tweestaps():
+        # Uitloggen bij de tweestapsinlog gaat via de apparatenpagina van dvz-auth.
+        return redirect("/auth/apparaten.html")
     return redirect(url_for("login"))
 
 
@@ -1127,6 +1140,22 @@ def _compute_stats(range_key):
     per_route.sort(key=lambda x: -x["sample_count"])
     operator_stats.sort(key=lambda x: -x["sample_count"])
 
+    # Alleen de ruwe rijen = alles sinds de laatste dag-rollup, normaal dus
+    # vandaag. Het live overzicht zet dit naast "Uitval per operator (vandaag)".
+    today_agg = {}
+    for r in raw:
+        if not _index.is_bus_route(r["route_id"]) or not r["sample_count"]:
+            continue
+        a = today_agg.setdefault(route_meta(r["route_id"])["operator"], {"n": 0, "op_tijd": 0, "som": 0.0})
+        a["n"] += r["sample_count"]
+        a["op_tijd"] += r["on_time_count"] or 0
+        a["som"] += (r["avg_delay_seconds"] or 0) * r["sample_count"]
+    operator_today = sorted(
+        ({"operator": name, "sample_count": a["n"], "on_time_pct": round(100.0 * a["op_tijd"] / a["n"], 1),
+          "avg_delay_seconds": round(a["som"] / a["n"], 1)} for name, a in today_agg.items()),
+        key=lambda x: -x["sample_count"],
+    )
+
     return {
         "on_time_threshold_seconds": ON_TIME_MAX_DELAY,
         "on_time_min_delay_seconds": ON_TIME_MIN_DELAY,
@@ -1134,6 +1163,7 @@ def _compute_stats(range_key):
         "since_date": since_date,
         "until_date": until_date,
         "per_operator": operator_stats,
+        "per_operator_today": operator_today,
         "per_route": per_route,
     }
 
@@ -1167,7 +1197,7 @@ def busnummers_page():
 
 @app.route("/liften")
 def liften_page():
-    return render_template("liften.html", ingelogd=bool(session.get("authenticated")))
+    return render_template("liften.html", ingelogd=bool(session.get("authenticated")) or _via_tweestaps())
 
 
 @app.route("/api/liften")
@@ -2107,8 +2137,15 @@ def api_cancellations_available_months():
 @app.route("/api/cancellations/trips")
 def api_cancellation_trips():
     """Drill-down: individuele vervallen ritten, gepagineerd en optioneel
-    gefilterd op lijn/operator, voor wie de ruwe data wil inzien."""
+    gefilterd op lijn/operator, voor wie de ruwe data wil inzien.
+
+    ?up_to_now=1: net als /api/cancellations geen vooraf aangekondigde uitval
+    van vandaag met een vertrektijd die nog moet komen, zodat de lijst bij de
+    tegels erboven past."""
     range_key = request.args.get("range", "today")
+    up_to_now = request.args.get("up_to_now") in ("1", "true", "yes")
+    today_str = date.today().isoformat()
+    now_time_str = datetime.now().strftime("%H:%M:%S")
     since_date, until_date = _date_bounds_for_range(range_key)
     route_id = request.args.get("route_id")
     operator = request.args.get("operator")
@@ -2139,6 +2176,9 @@ def api_cancellation_trips():
             continue
         if route_ids_filter is not None and r["route_id"] not in route_ids_filter:
             continue
+        if (up_to_now and r["service_date"] == today_str
+                and r["start_time"] and r["start_time"] > now_time_str):
+            continue  # vooraf aangekondigd, vertrektijd moet nog komen
         meta = route_meta(r["route_id"])
         items.append({
             "trip_id": r["trip_id"],

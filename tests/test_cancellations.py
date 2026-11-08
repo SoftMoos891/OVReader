@@ -267,3 +267,9 @@ def test_up_to_now_excludes_future_start_times_for_today(client, temp_db, monkey
     # Gisteren is sowieso al helemaal voorbij -- up_to_now maakt daar geen verschil.
     up_to_now_week = client.get("/api/cancellations?range=week&up_to_now=1").get_json()
     assert up_to_now_week["total_canceled"] == 2  # 'past' (vandaag) + 'yesterday'
+
+    # De lijst met losse ritten volgt dezelfde keuze (anders telde de lijst op
+    # /uitval meer ritten dan de tegels erboven).
+    ids = lambda q: {i["trip_id"] for i in client.get("/api/cancellations/trips?" + q).get_json()["items"]}
+    assert ids("range=week") == {"past", "future", "yesterday"}
+    assert ids("range=week&up_to_now=1") == {"past", "yesterday"}

@@ -739,6 +739,7 @@ async function loadTrips() {
   const params = new URLSearchParams({ range: currentRange, limit: TRIP_PAGE_SIZE, offset: tripPage * TRIP_PAGE_SIZE });
   if (filterRouteId) params.set('route_id', filterRouteId);
   if (operator) params.set('operator', operator);
+  if (upToNow) params.set('up_to_now', '1');
   const res = await fetch(`/api/cancellations/trips?${params}`);
   const data = await res.json();
 

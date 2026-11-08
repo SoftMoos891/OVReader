@@ -269,7 +269,7 @@
         <div id="agency-cancel-stats"><div class="empty">Laden...</div></div>
       </div>
       <div class="section">
-        <h2>Punctualiteit per operator</h2>
+        <h2>Punctualiteit per operator (vandaag)</h2>
         <div id="agency-stats"><div class="empty">Laden...</div></div>
       </div>
     </div>
@@ -1053,11 +1053,12 @@ async function refreshStats() {
   const data = await res.json();
 
   const ag = document.getElementById('agency-stats');
-  if (data.per_operator.length === 0) {
-    ag.innerHTML = '<div class="empty">Nog geen data verzameld</div>';
+  const vandaag = data.per_operator_today || [];
+  if (vandaag.length === 0) {
+    ag.innerHTML = '<div class="empty">Vandaag nog geen metingen</div>';
   } else {
     ag.innerHTML = '<table><tr><th>Operator</th><th>Op tijd</th><th>Gem. vertr.</th></tr>' +
-      data.per_operator.map(a => `<tr>
+      vandaag.map(a => `<tr>
         <td>${a.operator}</td>
         <td><span class="pill ${pillClass(a.on_time_pct)}">${a.on_time_pct}%</span></td>
         <td>${Math.round(a.avg_delay_seconds)}s</td>

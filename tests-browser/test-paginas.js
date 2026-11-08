@@ -4,20 +4,22 @@
 // telefoon. De API-tests (pytest) zien niet wat er in de browser misgaat; zo
 // bleven de lege balkjes op /trends twee maanden onopgemerkt.
 //
-// Draait via nginx (https://ovreader.dvznet.nl, vastgezet op het eigen IP) met
-// de inlog uit .env (als utrechtbus, zoals de nachtcontrole doet). De inlogkop
-// gaat alleen naar de eigen host. Gebruik: node tests-browser/test-paginas.js
-// Instellingen: OV_URL (bv. http://127.0.0.1:5161 voor een proefserver; dan
-// komen /dvz-logo.js en de logolabels uit de public_html van de Reader, zoals
-// nginx dat doet), OV_IP (standaard 51.195.20.254), OVAUTH (base64
-// gebruiker:wachtwoord; anders uit .env), CHROME (pad naar Chrome).
+// Draait tegen de lokale webservice (http://127.0.0.1:5151) met de inlog uit
+// .env (als utrechtbus, zoals de nachtcontrole doet); via nginx zit de OV
+// Reader achter de tweestapsinlog. /dvz-logo.js en de logolabels komen dan uit
+// de public_html van de Reader, zoals nginx dat doet. De inlogkop gaat alleen
+// naar de eigen host. Gebruik: node tests-browser/test-paginas.js
+// Instellingen: OV_URL (bv. http://127.0.0.1:5161 voor een proefserver, of
+// https://ovreader.dvznet.nl om via nginx te testen met OV_IP, standaard
+// 51.195.20.254), OVAUTH (base64 gebruiker:wachtwoord; anders uit .env),
+// CHROME (pad naar Chrome).
 'use strict';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const puppeteer = require('/opt/dvz-rooktest/node_modules/puppeteer-core');
 
-const BASIS = (process.env.OV_URL || 'https://ovreader.dvznet.nl').replace(/\/$/, '');
+const BASIS = (process.env.OV_URL || 'http://127.0.0.1:5151').replace(/\/$/, '');
 const VIA_NGINX = new URL(BASIS).hostname === 'ovreader.dvznet.nl';
 const LOGO_MAP = '/home/dvz100/web/reader.dvznet.nl/public_html';
 const EIGEN_HOST = new URL(BASIS).host;
@@ -105,8 +107,10 @@ const overloop = page => page.evaluate(() => document.documentElement.scrollWidt
   try {
     console.log('Live overzicht (/)');
     let r = await open(browser, '/', { auth });
-    controleer(await wachtOp(r.page, () => document.querySelector('#agency-stats table') && document.querySelector('#route-stats table')),
-      '/: punctualiteit per operator en per lijn gevuld');
+    // 's Nachts kan "vandaag" nog leeg zijn; dan staat er een melding i.p.v. "Laden...".
+    controleer(await wachtOp(r.page, () => document.querySelector('#agency-stats table, #agency-stats .empty:not(:empty)')
+        && !/Laden/.test(document.getElementById('agency-stats').textContent) && document.querySelector('#route-stats table')),
+      '/: punctualiteit per operator (vandaag) en per lijn gevuld');
     controleer(await r.page.evaluate(() => document.querySelectorAll('#cancel-kpis .kpi-box').length === 3), '/: drie uitval-tegels');
     controleer(await r.page.evaluate(() => !!document.querySelector('.kaart-legenda details[open]')), '/: legenda open op de computer');
     await r.page.evaluate(() => openHealthModal());

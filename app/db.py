@@ -440,6 +440,15 @@ CREATE TABLE IF NOT EXISTS lift_wissels (
 );
 CREATE INDEX IF NOT EXISTS idx_lift_wissels_ts ON lift_wissels(ts);
 CREATE INDEX IF NOT EXISTS idx_lift_wissels_lift ON lift_wissels(lift_id, ts);
+-- Stakingsdagen die de collector zelf uit de U-OV-meldingen haalt (zie
+-- app/staking.py); app/service_events.py voegt ze bij de handmatige lijst.
+CREATE TABLE IF NOT EXISTS staking_dagen (
+    date TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    description TEXT,
+    alert_id TEXT,
+    found_at INTEGER NOT NULL
+);
 """
 
 

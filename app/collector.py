@@ -20,6 +20,7 @@ from .knmi_warnings import format_active_from
 from .bridge_weer import fetch_air_quality, fetch_de_bilt_weather, fetch_utrecht_warnings
 from .ns_rail_alerts import fetch_utrecht_rail_alerts
 from .ns_liften import fetch_utrecht_liften
+from .staking import staking_dagen_uit_meldingen
 # Sinds 2 okt 2026 maakt de DVZ RSS-bridge de wegsituaties (zie bridge_wegen.py); de
 # regels (welke situaties een melding geven) staan nog steeds in road_situations.py.
 from .bridge_wegen import fetch_utrecht_road_situations
@@ -811,6 +812,35 @@ def warm_trends_cache():
     print("[collector] /trends voorverwarmd")
 
 
+def detect_strike_days_job():
+    """Zet stakingsdagen uit de U-OV-meldingen in staking_dagen (zie
+    app/staking.py), zodat ze net als de handmatige lijst buiten de records en
+    trends blijven. Afgeblazen stakingen gaan er weer uit."""
+    conn = db.get_conn()
+    try:
+        meldingen = conn.execute(
+            "SELECT alert_id, first_seen, header, description FROM alerts "
+            "WHERE header LIKE '%stak%' OR description LIKE '%stak%'"
+        ).fetchall()
+        dagen, afgeblazen = staking_dagen_uit_meldingen(meldingen)
+        nu = _now()
+        nieuw = 0
+        for datum, (alert_id, tekst) in dagen.items():
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO staking_dagen (date, label, description, alert_id, found_at) VALUES (?, ?, ?, ?, ?)",
+                (datum, "Staking", tekst[:300], alert_id, nu),
+            )
+            nieuw += cur.rowcount
+        weg = 0
+        for datum in afgeblazen:
+            weg += conn.execute("DELETE FROM staking_dagen WHERE date = ?", (datum,)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    if nieuw or weg:
+        print(f"[collector] stakingsdagen: {nieuw} nieuw, {weg} afgeblazen")
+
+
 def warm_dashboard_stats():
     """Houdt /api/stats (punctualiteit op het live overzicht) warm. Koud kost
     die ~13 s (alle ruwe metingen van vandaag); de webservice rekent een
@@ -1435,6 +1465,8 @@ def start_scheduler():
     # 5 minuten na de cache-boundary in server.py (TRENDS_REFRESH_HOUR:MINUTE
     # = 03:30) zodat er geen twijfel is of die grens al gepasseerd is.
     scheduler.add_job(warm_trends_cache, "cron", hour=3, minute=35, id="warm_trends", max_instances=1)
+    scheduler.add_job(detect_strike_days_job, "interval", hours=1, id="stakingsdagen", max_instances=1,
+                      next_run_time=dt.datetime.now().astimezone() + dt.timedelta(minutes=3))
     scheduler.add_job(warm_dashboard_stats, "interval", minutes=20, id="warm_stats", max_instances=1,
                       next_run_time=dt.datetime.now().astimezone() + dt.timedelta(minutes=2))
     scheduler.add_job(backup_history, "cron", hour=4, minute=15, id="backup", max_instances=1)
