@@ -29,7 +29,7 @@ from flask import Flask, Response, jsonify, redirect, render_template, request
 from . import db, trendalarm
 from .collector import FETCH_INTERVAL_SECONDS
 from .concession_mapping import TRANSDEV_TRAM
-from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES
+from .road_situations import DEMONSTRATION_CAUSE, NEGLIGIBLE_SEVERITY, SEVERE_ROAD_TYPES, road_where
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -682,7 +682,7 @@ def lite_api_melding():
                 return jsonify({"error": "melding niet gevonden"}), 404
             if s is not None and row is None:
                 # Zelfde titel en tekst als de collector voor de feed maakt.
-                where = " ".join(p for p in (s["road_number"], s["road_location"]) if p)
+                where = road_where(s["road_number"], s["road_location"])
                 melding["title"] = f"Wegsituatie ({s['type_label']}): {where or s['comment'] or s['type_label']}"
                 delen = [f"{s['type_label']} op {where}." if where else f"{s['type_label']}."]
                 if s["cause"] and s["cause"] != s["type_label"]:

@@ -28,6 +28,7 @@ from .road_situations import (
     NEGLIGIBLE_SEVERITY,
     RSS_ROAD_TYPES,
     is_demonstration,
+    road_where,
 )
 
 FETCH_INTERVAL_SECONDS = 30
@@ -1005,7 +1006,7 @@ def fetch_road_situations_job():
             ):
                 # Wegnummer + plaatsaanduiding vooraan: zonder die context zegt
                 # "Ongeval" in een feedlezer weinig.
-                where = " ".join(p for p in (s["road_number"], s["road_location"]) if p)
+                where = road_where(s["road_number"], s["road_location"])
                 title = f"Wegsituatie ({s['type_label']}): {where or s['comment'] or s['type_label']}"
                 parts = [f"{s['type_label']} op {where}." if where else f"{s['type_label']}."]
                 # cause (sit:causeDescription, bv. "Demonstratie") is vaak

@@ -33,3 +33,13 @@ def test_rss_item_follows_a_cause_that_arrives_later(temp_db, monkeypatch):
     assert second["title"].startswith("Wegsituatie (Defecte vrachtwagen)")
     assert second["description"].startswith("Defecte vrachtwagen")
     assert second["pub_date"] == first["pub_date"]
+
+
+def test_road_where_zonder_dubbel_wegnummer():
+    from app.road_situations import road_where
+
+    assert road_where("A28", "A28 vanuit Amersfoort - A27 richting Breda") == "A28 vanuit Amersfoort - A27 richting Breda"
+    assert road_where("A28", "vanuit Amersfoort") == "A28 vanuit Amersfoort"
+    assert road_where("A28", None) == "A28"
+    assert road_where(None, "bij Utrecht") == "bij Utrecht"
+    assert road_where("N237", "N237") == "N237"

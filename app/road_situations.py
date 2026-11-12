@@ -43,3 +43,16 @@ DEMONSTRATION_CAUSE = "demonstratie"
 
 def is_demonstration(cause):
     return bool(cause) and DEMONSTRATION_CAUSE in cause.lower()
+
+
+def road_where(road_number, road_location):
+    """Wegnummer + plaatsaanduiding, zonder het wegnummer dubbel ("A28 A28 vanuit ...").
+
+    NDW zet het wegnummer regelmatig ook vooraan in de plaatsaanduiding."""
+    nummer = (road_number or "").strip()
+    plek = (road_location or "").strip()
+    if nummer and plek:
+        woord = plek.split(None, 1)
+        if woord and woord[0].rstrip(":,").lower() == nummer.lower():
+            plek = woord[1] if len(woord) > 1 else ""
+    return " ".join(p for p in (nummer, plek) if p)
