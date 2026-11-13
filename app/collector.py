@@ -1079,8 +1079,13 @@ def fetch_road_situations_job():
         )
         conn.commit()
     except Exception as e:
-        print("[collector] fout bij ophalen wegsituaties:")
-        traceback.print_exc()
+        # Een verwachte toestand (bridge net herstart, nog geen of te oude wegsituaties,
+        # bridge even onbereikbaar) is één regel waard; alleen onverwachte fouten de hele traceback.
+        if isinstance(e, (RuntimeError, requests.RequestException)):
+            print(f"[collector] wegsituaties niet opgehaald: {e}")
+        else:
+            print("[collector] fout bij ophalen wegsituaties:")
+            traceback.print_exc()
         conn.execute(
             """INSERT INTO road_fetch_status (id, last_error_at, last_error) VALUES (1, :now, :err)
                ON CONFLICT(id) DO UPDATE SET last_error_at=:now, last_error=:err""",
