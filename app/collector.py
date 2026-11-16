@@ -9,7 +9,7 @@ import traceback
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import db
+from . import db, tram_disruptions
 from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
     parse_trip_delays, parse_cancellations, fetch_alerts,
@@ -338,8 +338,12 @@ def collect_once():
                 # melding zelf weer inactief wordt.
                 if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at,
                                     len(a["stop_ids"]), len(a["route_ids"]), a["effect"]):
-                    title = f"Melding U-OV: {a['header'] or (a['description'] or '')[:80] or 'zie details'}"
-                    description = f"{a['description'] or a['header'] or ''}".strip()
+                    header, body = a["header"], a["description"]
+                    if tram_disruptions.is_tram_alert(
+                            {**a, "route_ids": ",".join(a["route_ids"]), "stop_ids": ",".join(a["stop_ids"])}, _index):
+                        header, body = tram_disruptions.mark_tram(header, body)
+                    title = f"Melding U-OV: {header or (body or '')[:80] or 'zie details'}"
+                    description = f"{body or header or ''}".strip()
                     if a["stop_ids"]:
                         description += f" Aantal betrokken haltes: {len(a['stop_ids'])}."
                     description += " Klik hier voor meer data."

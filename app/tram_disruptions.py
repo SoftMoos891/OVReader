@@ -141,6 +141,26 @@ def is_tram_alert(row, index):
     return True
 
 
+_UOV_PREFIX_RE = re.compile(r"^\s*U-OV:\s*", re.IGNORECASE)
+
+
+def mark_tram(header, description):
+    """Zet "Tram: " voor een trammelding die het woord tram zelf niet noemt.
+
+    U-OV schrijft trammeldingen vaak generiek ("vanwege een storing komt het
+    traject CS Jaarbeursplein - P&R Westraven tijdelijk te vervallen"); dat het
+    om de tram gaat blijkt alleen uit de haltes. De kop staat ook letterlijk in
+    de beschrijving en lezers van de feed halen die dubbeling weg, dus de
+    beschrijving krijgt dezelfde aanpassing. Geeft (header, description) terug.
+    """
+    header = header or ""
+    description = description or ""
+    if not header or _TRAM_WORD_RE.search(f"{header} {description}"):
+        return header, description
+    marked = "Tram: " + _UOV_PREFIX_RE.sub("", header)
+    return marked, description.replace(header, marked)
+
+
 def reported_cause(row):
     """De oorzaak zoals U-OV die meldt, met de GTFS-oorzaak als terugval."""
     match = _REPORTED_CAUSE_RE.search(row["description"] or "")

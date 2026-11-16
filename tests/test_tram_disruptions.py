@@ -216,3 +216,18 @@ def test_api_tram_disruptions(client, temp_db, monkeypatch):
     assert data["causes"][0]["label"] == "Stroomstoring"
     assert data["incidents"][0]["duration_seconds"] == 3600
     assert data["punctuality"] == []
+
+
+def test_mark_tram_zet_tram_voor_generieke_melding():
+    kop = "U-OV: vanwege een storing komt het traject CS Jaarbeursplein - P&R Westraven tijdelijk te vervallen."
+    tekst = f"Oorzaak : Stremming \nEffect : Vervoer ontregeld \n{kop}"
+    nieuw_kop, nieuw_tekst = td.mark_tram(kop, tekst)
+    assert nieuw_kop == "Tram: vanwege een storing komt het traject CS Jaarbeursplein - P&R Westraven tijdelijk te vervallen."
+    assert nieuw_tekst == f"Oorzaak : Stremming \nEffect : Vervoer ontregeld \n{nieuw_kop}"
+
+
+def test_mark_tram_laat_melding_met_tram_in_de_tekst_ongemoeid():
+    kop = "Geen tramverkeer tussen Jaarbeursplein en Zuilenstein wegens spanningsuitval."
+    assert td.mark_tram(kop, kop) == (kop, kop)
+    assert td.mark_tram("Halte vervalt.", "Door een defecte tram. Halte vervalt.") == ("Halte vervalt.", "Door een defecte tram. Halte vervalt.")
+    assert td.mark_tram(None, None) == ("", "")
