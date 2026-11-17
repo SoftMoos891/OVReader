@@ -285,11 +285,26 @@ function renderScheduleBanner() {
     el.className = 'pill warn schedule-pill';
     el.textContent = `Zomerdienstregeling actief · t/m ${endShort}`;
     el.title = `Zomerdienstregeling actief sinds ${SUMMER_SCHEDULE_START_LABEL} (t/m ${SUMMER_SCHEDULE_END_LABEL})`;
+  } else if (todayIso >= DIENSTREGELING_WISSEL_PILL_VAN && todayIso <= DIENSTREGELING_WISSEL_PILL_TOT) {
+    // Zelfde plek als de zomerpill: rond de jaarlijkse dienstregelingswissel.
+    el.className = 'pill warn schedule-pill';
+    el.textContent = todayIso < DIENSTREGELING_WISSEL
+      ? `Nieuwe dienstregeling vanaf ${fmtDateShort(DIENSTREGELING_WISSEL)}`
+      : `Nieuwe dienstregeling sinds ${fmtDateShort(DIENSTREGELING_WISSEL)}`;
+    el.title = `Dienstregeling 2027 gaat in op ${DIENSTREGELING_WISSEL_LABEL}. Rond die dag kunnen uitval en "gepland maar niet gezien" een paar dagen afwijken: ritnummers veranderen en de vergelijking met normaal schuift.`;
   } else {
     // Voorbij: geen pill meer (de arcering in de dag-grafieken blijft).
     el.style.display = 'none';
   }
 }
+
+// Jaarlijkse dienstregelingswissel (Danny, 17 nov 2026): een verticale stippellijn op de
+// dag-grafieken, zodat een sprong in de cijfers rond die dag meteen verklaard is.
+// Vast ingegeven, net als de zomerdienstregeling. Volgend jaar: datum aanpassen.
+const DIENSTREGELING_WISSEL = '2026-12-13';
+const DIENSTREGELING_WISSEL_LABEL = '13 december 2026';
+const DIENSTREGELING_WISSEL_PILL_VAN = '2026-11-29';
+const DIENSTREGELING_WISSEL_PILL_TOT = '2026-12-27';
 
 // Chart.js-plugin: arceert de zomerdienstregeling-periode op de dag-grafieken
 // (indien zichtbaar in de gekozen periode), zodat een knik in de uitvalcijfers
@@ -333,6 +348,36 @@ const summerSchedulePlugin = {
   },
 };
 Chart.register(summerSchedulePlugin);
+
+// Leest dezelfde dateKeys als de zomer-plugin (options.plugins.summerSchedule).
+const dienstregelingWisselPlugin = {
+  id: 'dienstregelingWissel',
+  afterDatasetsDraw(chart) {
+    const cfg = chart.options.plugins && chart.options.plugins.summerSchedule;
+    const dateKeys = cfg && cfg.dateKeys;
+    if (!dateKeys || !dateKeys.length) return;
+    const idx = dateKeys.indexOf(DIENSTREGELING_WISSEL);
+    if (idx === -1) return;   // de wisseldag valt buiten de gekozen periode
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales.x) return;
+    const step = dateKeys.length > 1 ? scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0) : 0;
+    const x = Math.round(scales.x.getPixelForValue(idx) - step / 2) + 0.5;
+    ctx.save();
+    ctx.strokeStyle = CHART_COLORS.warn;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = CHART_COLORS.warn;
+    ctx.font = "11px 'Inter', sans-serif";
+    ctx.textBaseline = 'top';
+    const tekst = 'nieuwe dienstregeling';
+    const tw = ctx.measureText(tekst).width;
+    ctx.fillText(tekst, x + 4 + tw > chartArea.right ? x - 4 - tw : x + 4, chartArea.top + 18);
+    ctx.restore();
+  },
+};
+Chart.register(dienstregelingWisselPlugin);
 
 function fmtDateShort(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });

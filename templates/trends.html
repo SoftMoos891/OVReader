@@ -450,9 +450,17 @@ function renderTramDayChart(data) {
       <text x="40" y="${y + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)">${v.toFixed(v < 10 ? 1 : 0)}u</text>`;
   }).join('');
 
+  // Jaarlijkse dienstregelingswissel (17 nov 2026): stippellijn vóór die dag, zodat een sprong
+  // erna verklaard is. Volgend jaar de datum aanpassen (ook in cancellations.html).
+  const wisselIdx = days.findIndex(d => d.date === '2026-12-13');
+  const wissel = wisselIdx > 0
+    ? `<line x1="${46 + wisselIdx * (barW + gap) - gap / 2}" x2="${46 + wisselIdx * (barW + gap) - gap / 2}" y1="${top}" y2="${top + plotH}"
+        stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="4 3"><title>Nieuwe dienstregeling (13 december 2026)</title></line>
+       <text x="${46 + wisselIdx * (barW + gap) - gap / 2 + 4}" y="${top + 10}" font-size="10" fill="var(--warn)">nieuwe dienstregeling</text>` : '';
+
   host.innerHTML = `<svg width="${w}" height="${h}" role="img"
       aria-label="Storingsuren per dag met daaroverheen het percentage op tijd">
-    ${yAxis}${bars}${line}${labels}
+    ${yAxis}${bars}${line}${labels}${wissel}
     <text x="${w - 8}" y="${punctY(100) + 3.5}" text-anchor="end" font-size="10" fill="var(--accent)">100%</text>
     <text x="${w - 8}" y="${top + plotH - 2}" text-anchor="end" font-size="10" fill="var(--accent)">${punctMin}%</text>
   </svg>`;
