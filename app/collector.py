@@ -9,7 +9,7 @@ import traceback
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import db, tram_disruptions
+from . import db, tram_disruptions, uov_bericht
 from .gtfs_rt import (
     UtrechtIndex, fetch_vehicle_positions, fetch_trip_updates_feed,
     parse_trip_delays, parse_cancellations, fetch_alerts,
@@ -339,14 +339,13 @@ def collect_once():
                 if _is_severe_alert(a["header"], a["description"], a["cause"], a["valid_from"], fetched_at,
                                     len(a["stop_ids"]), len(a["route_ids"]), a["effect"]):
                     header, body = a["header"], a["description"]
-                    if tram_disruptions.is_tram_alert(
-                            {**a, "route_ids": ",".join(a["route_ids"]), "stop_ids": ",".join(a["stop_ids"])}, _index):
+                    tram = tram_disruptions.is_tram_alert(
+                        {**a, "route_ids": ",".join(a["route_ids"]), "stop_ids": ",".join(a["stop_ids"])}, _index)
+                    if tram:
                         header, body = tram_disruptions.mark_tram(header, body)
-                    title = f"Melding U-OV: {header or (body or '')[:80] or 'zie details'}"
-                    description = f"{body or header or ''}".strip()
-                    if a["stop_ids"]:
-                        description += f" Aantal betrokken haltes: {len(a['stop_ids'])}."
-                    description += " Klik hier voor meer data."
+                    kern, description = uov_bericht.titel_en_tekst(a, _index.stops, header, body, tram, fetched_at)
+                    title = f"Melding U-OV: {kern or 'zie details'}"
+                    description = (description + " Klik hier voor meer data.").strip()
                     kritiek = _is_extra_dienst_kritiek(a["effect"], len(a["stop_ids"]), a["valid_from"], fetched_at)
                     conn.execute(
                         """INSERT OR IGNORE INTO rss_feed_items
